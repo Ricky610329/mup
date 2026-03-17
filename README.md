@@ -9,13 +9,49 @@
 
 ## Demos
 
-| Demo | MUPs used | Description |
-|------|-----------|-------------|
-| [Draw & Analyze](https://youtu.be/14-4sgN2hSk) | Pixel Art + Chart | Draw a tree, then chart its color distribution |
-| [Beat Making](https://youtu.be/vp6W5ZiFfuM) | Drum Machine | Make beats — user clicks pads, LLM programs patterns |
-| [See & Draw](https://youtu.be/jk7Hlzcy4ko) | Camera + Pixel Art | Camera captures a scene, LLM recreates it in pixel art |
-| [Smart Notes](https://youtu.be/9EG0XhwVn1c) | Sticky Notes | Ask the LLM to list 10 sports — each one appears as a sticky note |
-| [File Report](https://youtu.be/wcM7zEUrIHY) | File Organizer + Chart | Scan files, then visualize the breakdown in a chart |
+<table>
+<tr>
+<td width="50%" align="center">
+
+![Draw & Analyze](docs/demos/demo-tree.gif)
+
+**[Draw & Analyze](https://youtu.be/14-4sgN2hSk)** — Pixel Art + Chart
+
+</td>
+<td width="50%" align="center">
+
+![Beat Making](docs/demos/demo-beat.gif)
+
+**[Beat Making](https://youtu.be/vp6W5ZiFfuM)** — Drum Machine
+
+</td>
+</tr>
+<tr>
+<td align="center">
+
+![See & Draw](docs/demos/demo-see-draw.gif)
+
+**[See & Draw](https://youtu.be/jk7Hlzcy4ko)** — Camera + Pixel Art
+
+</td>
+<td align="center">
+
+![Smart Notes](docs/demos/demo-notes.gif)
+
+**[Smart Notes](https://youtu.be/9EG0XhwVn1c)** — Sticky Notes
+
+</td>
+</tr>
+<tr>
+<td colspan="2" align="center">
+
+![File Report](docs/demos/demo-file-report.gif)
+
+**[File Report](https://youtu.be/wcM7zEUrIHY)** — File Organizer + Chart
+
+</td>
+</tr>
+</table>
 
 ---
 

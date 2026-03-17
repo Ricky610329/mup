@@ -7,15 +7,51 @@
 
 > 在 LLM 聊天介面裡放進可互動的 UI — 讓每個人都能體驗 agentic AI，不只是開發者。
 
-## 示範影片
+## 示範
 
-| 示範 | 使用的 MUP | 說明 |
-|------|-----------|------|
-| [畫圖 & 分析](https://youtu.be/14-4sgN2hSk) | Pixel Art + Chart | 畫一棵樹，再用圖表分析顏色分佈 |
-| [打節拍](https://youtu.be/vp6W5ZiFfuM) | Drum Machine | 使用者點鼓墊，LLM 編排節奏 |
-| [看到什麼畫什麼](https://youtu.be/jk7Hlzcy4ko) | Camera + Pixel Art | 相機拍照，LLM 用像素畫重現 |
-| [智慧便利貼](https://youtu.be/9EG0XhwVn1c) | Sticky Notes | 請 LLM 列出 10 種運動，每一種自動變成一張便利貼 |
-| [檔案報表](https://youtu.be/wcM7zEUrIHY) | File Organizer + Chart | 掃描檔案，再用圖表呈現結果 |
+<table>
+<tr>
+<td width="50%" align="center">
+
+![畫圖 & 分析](docs/demos/demo-tree.gif)
+
+**[畫圖 & 分析](https://youtu.be/14-4sgN2hSk)** — Pixel Art + Chart
+
+</td>
+<td width="50%" align="center">
+
+![打節拍](docs/demos/demo-beat.gif)
+
+**[打節拍](https://youtu.be/vp6W5ZiFfuM)** — Drum Machine
+
+</td>
+</tr>
+<tr>
+<td align="center">
+
+![看到什麼畫什麼](docs/demos/demo-see-draw.gif)
+
+**[看到什麼畫什麼](https://youtu.be/jk7Hlzcy4ko)** — Camera + Pixel Art
+
+</td>
+<td align="center">
+
+![智慧便利貼](docs/demos/demo-notes.gif)
+
+**[智慧便利貼](https://youtu.be/9EG0XhwVn1c)** — Sticky Notes
+
+</td>
+</tr>
+<tr>
+<td colspan="2" align="center">
+
+![檔案報表](docs/demos/demo-file-report.gif)
+
+**[檔案報表](https://youtu.be/wcM7zEUrIHY)** — File Organizer + Chart
+
+</td>
+</tr>
+</table>
 
 ---
 
