@@ -130,12 +130,31 @@ Opens a local MUP host at `http://localhost:5173`. By default it runs in **demo 
 
 ### 4. (Optional) Connect a real LLM
 
-Create a `poc/.env` file:
+Create a `poc/.env` file with your provider of choice:
 
 ```env
-VITE_OPENAI_API_KEY=sk-...
-VITE_OPENAI_MODEL=o4-mini
+# OpenAI
+VITE_LLM_PROVIDER=openai
+VITE_LLM_API_KEY=sk-...
+VITE_LLM_MODEL=gpt-4o
+
+# Anthropic
+VITE_LLM_PROVIDER=anthropic
+VITE_LLM_API_KEY=sk-ant-...
+VITE_LLM_MODEL=claude-sonnet-4-6
+
+# Google Gemini
+VITE_LLM_PROVIDER=gemini
+VITE_LLM_API_KEY=AIza...
+VITE_LLM_MODEL=gemini-2.5-flash
+
+# Ollama (local, no API key needed)
+VITE_LLM_PROVIDER=ollama
+VITE_LLM_MODEL=llama3
+# VITE_OLLAMA_ENDPOINT=http://localhost:11434
 ```
+
+Or skip the `.env` file — the setup screen lets you choose a provider interactively.
 
 Restart the dev server after creating the file.
 

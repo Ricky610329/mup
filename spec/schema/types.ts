@@ -6,7 +6,7 @@
 // those are implementation details for the host to decide.
 
 // ============================================================
-// JSON Schema Reference (for inputSchema / outputSchema fields)
+// JSON Schema Reference (for inputSchema fields)
 // ============================================================
 export type JSONSchema = Record<string, unknown>;
 
@@ -61,17 +61,6 @@ export interface MupFunction {
   description: string;
   /** JSON Schema for parameters */
   inputSchema: JSONSchema;
-  /** JSON Schema for return value */
-  outputSchema?: JSONSchema;
-  /** Optional metadata hints */
-  annotations?: FunctionAnnotations;
-}
-
-export interface FunctionAnnotations {
-  /** Safe to call multiple times with same args */
-  idempotent?: boolean;
-  /** Modifies or deletes data */
-  destructive?: boolean;
 }
 
 // ============================================================

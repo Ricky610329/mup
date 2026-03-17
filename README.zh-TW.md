@@ -130,12 +130,31 @@ npm run dev
 
 ### 4.（選用）接上真正的 LLM
 
-在 `poc/` 目錄建立 `.env` 檔：
+在 `poc/` 目錄建立 `.env` 檔，選擇你的 LLM 供應商：
 
 ```env
-VITE_OPENAI_API_KEY=sk-...
-VITE_OPENAI_MODEL=o4-mini
+# OpenAI
+VITE_LLM_PROVIDER=openai
+VITE_LLM_API_KEY=sk-...
+VITE_LLM_MODEL=gpt-4o
+
+# Anthropic
+VITE_LLM_PROVIDER=anthropic
+VITE_LLM_API_KEY=sk-ant-...
+VITE_LLM_MODEL=claude-sonnet-4-6
+
+# Google Gemini
+VITE_LLM_PROVIDER=gemini
+VITE_LLM_API_KEY=AIza...
+VITE_LLM_MODEL=gemini-2.5-flash
+
+# Ollama（本地，不需要 API key）
+VITE_LLM_PROVIDER=ollama
+VITE_LLM_MODEL=llama3
+# VITE_OLLAMA_ENDPOINT=http://localhost:11434
 ```
+
+也可以不建立 `.env` — 啟動後的設定畫面可以互動選擇供應商。
 
 建立後重啟 dev server 即可。
 

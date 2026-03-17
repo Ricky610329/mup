@@ -343,6 +343,56 @@ If you need browser APIs (camera, microphone, geolocation), declare them in `per
 
 ---
 
+## 9. Lifecycle
+
+A MUP goes through a fixed sequence of stages:
+
+```
+load → initialize → onReady → active → shutdown → destroyed
+```
+
+**Rules:**
+
+1. **`registerFunction` MUST be called synchronously during script evaluation** — before the host sends `initialize`. The host reads registered function names during initialization; late registrations are ignored.
+2. **Host MUST send `initialize` exactly once**, as the first JSON-RPC message after the MUP loads.
+3. **Host MUST NOT send `functions/call` before receiving the `initialize` response.** Any function calls before that point are invalid.
+4. **After `gracePeriodMs` expires, host MAY destroy the container** without waiting for `notifications/shutdown/complete`. MUPs should clean up quickly.
+5. **`onReady` fires after `initialize` succeeds.** This is the right place for initial state setup, DOM rendering, and the first `updateState` call.
+
+---
+
+## 10. Error Handling
+
+### Function errors
+
+If a function handler throws an exception, the SDK catches it and returns:
+
+```json
+{ "content": [{ "type": "text", "text": "Error: <message>" }], "isError": true }
+```
+
+The host forwards this to the LLM so it can react accordingly.
+
+### Invalid function calls
+
+| Scenario | Host behavior |
+|----------|--------------|
+| LLM calls a function name that doesn't exist in the manifest | Host returns a JSON-RPC error (`-32601 Method not found`). The call is **not** forwarded to the MUP. |
+| `registerFunction` called with a name not declared in the manifest | Host SHOULD log a warning. The function is **not** callable. |
+| Function call times out (handler doesn't respond) | Host MAY return `{ isError: true }` after an implementation-defined timeout. |
+
+### JSON-RPC error codes
+
+Hosts SHOULD use standard JSON-RPC 2.0 error codes:
+
+| Code | Meaning |
+|------|---------|
+| `-32600` | Invalid request |
+| `-32601` | Method not found |
+| `-32603` | Internal error |
+
+---
+
 ## Appendix A: JSON-RPC 2.0 (for host implementers)
 
 All host↔MUP communication uses JSON-RPC 2.0 over a `MessageChannel` (or equivalent). The SDK handles serialization — MUP authors don't need to know this. For host implementers, see the [JSON-RPC 2.0 spec](https://www.jsonrpc.org/specification).
@@ -356,7 +406,18 @@ All host↔MUP communication uses JSON-RPC 2.0 over a `MessageChannel` (or equiv
 | `notifications/grid/resize` | Notification | Host resized the MUP's allocation. Params: `width`, `height`. |
 | `notifications/shutdown` | Notification | Host is destroying the container. Params: `reason`, `gracePeriodMs`. |
 
+### MUP → Host messages
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `notifications/state/update` | Notification | MUP state changed. Params: `summary`, `data?`. |
+| `notifications/interaction` | Notification | User interacted with MUP UI. Params: `action`, `summary`, `data?`. |
+| `grid/resize` | Request | MUP requests more/less space. Params: `width`, `height`, `reason`. Returns: `{ granted, width, height }`. |
+| `notifications/shutdown/complete` | Notification | MUP acknowledges shutdown. No params. |
+
 ## Appendix B: Comparison with MCP
+
+MUP and MCP are complementary — MCP connects LLMs to backend tools and data; MUP brings interactive UI to the user. A host can support both protocols simultaneously.
 
 | | MCP | MUP |
 |--|-----|-----|

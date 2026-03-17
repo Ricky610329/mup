@@ -343,6 +343,56 @@ MUP 應該零外部依賴就能運作。內嵌你的 CSS、打包你的 JS、嵌
 
 ---
 
+## 9. 生命週期
+
+MUP 依循固定的階段順序：
+
+```
+load → initialize → onReady → active → shutdown → destroyed
+```
+
+**規則：**
+
+1. **`registerFunction` 必須在 script 求值時同步呼叫** — 在 host 發送 `initialize` 之前。Host 在初始化時讀取已註冊的函式名稱；遲到的註冊會被忽略。
+2. **Host 必須發送 `initialize` 恰好一次**，作為 MUP 載入後的第一個 JSON-RPC 訊息。
+3. **Host 在收到 `initialize` 回應之前，不得發送 `functions/call`。** 在此之前的任何函式呼叫都是無效的。
+4. **`gracePeriodMs` 到期後，host 可以直接銷毀容器**，不需等待 `notifications/shutdown/complete`。MUP 應盡快完成清理。
+5. **`onReady` 在 `initialize` 成功後觸發。** 這是進行初始狀態設定、DOM 渲染和第一次 `updateState` 呼叫的正確時機。
+
+---
+
+## 10. 錯誤處理
+
+### 函式錯誤
+
+如果函式 handler 拋出例外，SDK 會攔截並回傳：
+
+```json
+{ "content": [{ "type": "text", "text": "Error: <message>" }], "isError": true }
+```
+
+Host 將此轉發給 LLM，讓它可以做出相應反應。
+
+### 無效的函式呼叫
+
+| 情境 | Host 行為 |
+|------|----------|
+| LLM 呼叫了 manifest 中不存在的函式名稱 | Host 回傳 JSON-RPC 錯誤（`-32601 Method not found`）。呼叫**不會**轉發給 MUP。 |
+| `registerFunction` 使用了 manifest 中未宣告的名稱 | Host 應記錄警告。該函式**不可**被呼叫。 |
+| 函式呼叫逾時（handler 沒有回應） | Host 可以在實作定義的逾時後回傳 `{ isError: true }`。 |
+
+### JSON-RPC 錯誤碼
+
+Host 應使用標準 JSON-RPC 2.0 錯誤碼：
+
+| 代碼 | 意義 |
+|------|------|
+| `-32600` | 無效的請求 |
+| `-32601` | 方法未找到 |
+| `-32603` | 內部錯誤 |
+
+---
+
 ## 附錄 A：JSON-RPC 2.0（給 host 實作者）
 
 所有 host↔MUP 通訊使用 JSON-RPC 2.0，經由 `MessageChannel`（或等效機制）。SDK 處理序列化 — MUP 作者不需要知道這些。Host 實作者請參考 [JSON-RPC 2.0 規格](https://www.jsonrpc.org/specification)。
@@ -356,7 +406,18 @@ MUP 應該零外部依賴就能運作。內嵌你的 CSS、打包你的 JS、嵌
 | `notifications/grid/resize` | Notification | Host 調整了 MUP 的分配空間。參數：`width`、`height`。 |
 | `notifications/shutdown` | Notification | Host 即將銷毀容器。參數：`reason`、`gracePeriodMs`。 |
 
+### MUP → Host 訊息
+
+| 方法 | 類型 | 說明 |
+|------|------|------|
+| `notifications/state/update` | Notification | MUP 狀態變更。參數：`summary`、`data?`。 |
+| `notifications/interaction` | Notification | 使用者與 MUP UI 互動。參數：`action`、`summary`、`data?`。 |
+| `grid/resize` | Request | MUP 請求調整空間。參數：`width`、`height`、`reason`。回傳：`{ granted, width, height }`。 |
+| `notifications/shutdown/complete` | Notification | MUP 確認收到關閉通知。無參數。 |
+
 ## 附錄 B：與 MCP 的比較
+
+MUP 和 MCP 是互補的 — MCP 負責連接 LLM 與後端工具及資料；MUP 負責將互動式 UI 帶給使用者。Host 可以同時支援兩個協議。
 
 | | MCP | MUP |
 |--|-----|-----|
