@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sticky Notes</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Sticky Notes",
+    "description": "A board of draggable sticky notes. Users can add, edit, move, and delete notes. LLM can add notes with specific text and color, remove notes, or read all notes. Great for brainstorming and organizing ideas.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "functions": [
+      {
+        "name": "addNote",
+        "description": "Add a new sticky note to the board",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "Note content" },
+            "color": { "type": "string", "enum": ["yellow", "pink", "blue", "green", "purple", "orange"], "description": "Note color" }
+          },
+          "required": ["text"]
+        }
+      },
+      {
+        "name": "removeNote",
+        "description": "Remove a note by its ID",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" }
+          },
+          "required": ["id"]
+        }
+      },
+      {
+        "name": "editNote",
+        "description": "Change the text of an existing note",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "text": { "type": "string" }
+          },
+          "required": ["id", "text"]
+        }
+      },
+      {
+        "name": "getNotes",
+        "description": "Get all notes on the board with their IDs, text, and colors",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "clearAll",
+        "description": "Remove all notes from the board",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: transparent;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .board {
+      width: 100%; height: 100%;
+      position: relative;
+      cursor: crosshair;
+    }
+
+    .hint {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(60,60,67,0.3);
+      font-size: 13px;
+      font-weight: 500;
+      pointer-events: none;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .note {
+      position: absolute;
+      width: 160px;
+      min-height: 80px;
+      border-radius: 4px;
+      padding: 28px 12px 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      cursor: grab;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: box-shadow 0.15s, transform 0.1s;
+      overflow-wrap: break-word;
+    }
+    .note:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+    .note.dragging { cursor: grabbing; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transform: rotate(2deg) scale(1.03); z-index: 100; }
+
+    .note-text {
+      outline: none;
+      min-height: 20px;
+      color: rgba(0,0,0,0.75);
+      font-family: inherit;
+    }
+
+    .note-delete {
+      position: absolute;
+      top: 6px; right: 6px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0,0,0,0.1);
+      color: rgba(0,0,0,0.3);
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s;
+      font-family: inherit;
+    }
+    .note:hover .note-delete { opacity: 1; }
+    .note-delete:hover { background: rgba(0,0,0,0.2); color: rgba(0,0,0,0.6); }
+
+    .note-id {
+      position: absolute;
+      top: 7px; left: 12px;
+      font-size: 10px;
+      font-weight: 700;
+      color: rgba(0,0,0,0.15);
+      letter-spacing: 0.3px;
+    }
+
+    /* Colors */
+    .note.yellow { background: #fff9c4; }
+    .note.pink   { background: #f8bbd0; }
+    .note.blue   { background: #bbdefb; }
+    .note.green  { background: #c8e6c9; }
+    .note.purple { background: #d1c4e9; }
+    .note.orange { background: #ffe0b2; }
+  </style>
+</head>
+<body>
+  <div class="board" id="board">
+    <div class="hint" id="hint">Click anywhere to add a note</div>
+  </div>
+
+  <script>
+    const COLORS = ['yellow', 'pink', 'blue', 'green', 'purple', 'orange'];
+    let notes = []; // { id, text, color, x, y }
+    let nextId = 1;
+    let colorIndex = 0;
+
+    const board = document.getElementById('board');
+    const hint = document.getElementById('hint');
+
+    // Click on empty space to add note
+    board.addEventListener('click', (e) => {
+      if (e.target !== board) return;
+      const rect = board.getBoundingClientRect();
+      const x = Math.min(e.clientX - rect.left, rect.width - 170);
+      const y = Math.min(e.clientY - rect.top, rect.height - 90);
+      const color = COLORS[colorIndex++ % COLORS.length];
+      const note = createNote('', color, Math.max(8, x), Math.max(8, y));
+      // Focus for editing
+      setTimeout(() => {
+        const textEl = note.el.querySelector('.note-text');
+        textEl.focus();
+      }, 50);
+    });
+
+    function createNote(text, color, x, y) {
+      const id = 'n' + nextId++;
+      color = color || 'yellow';
+      x = x ?? 20 + Math.random() * 200;
+      y = y ?? 20 + Math.random() * 200;
+
+      const note = { id, text, color, x, y };
+      notes.push(note);
+
+      const el = document.createElement('div');
+      el.className = `note ${color}`;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      el.dataset.id = id;
+
+      el.innerHTML = `
+        <span class="note-id">${id}</span>
+        <button class="note-delete">&times;</button>
+        <div class="note-text" contenteditable="true">${escapeHtml(text)}</div>
+      `;
+
+      // Drag
+      let dragging = false, startX, startY, origX, origY;
+      el.addEventListener('pointerdown', (e) => {
+        if (e.target.classList.contains('note-text') || e.target.classList.contains('note-delete')) return;
+        dragging = true;
+        el.classList.add('dragging');
+        startX = e.clientX; startY = e.clientY;
+        origX = note.x; origY = note.y;
+        el.setPointerCapture(e.pointerId);
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        note.x = origX + (e.clientX - startX);
+        note.y = origY + (e.clientY - startY);
+        el.style.left = note.x + 'px';
+        el.style.top = note.y + 'px';
+      });
+      el.addEventListener('pointerup', () => {
+        if (!dragging) return;
+        dragging = false;
+        el.classList.remove('dragging');
+        mup.notifyInteraction('move', `User moved note "${note.text.slice(0, 30)}"`, { id: note.id });
+      });
+
+      // Delete
+      el.querySelector('.note-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeNoteById(id, true);
+      });
+
+      // Edit
+      const textEl = el.querySelector('.note-text');
+      textEl.addEventListener('blur', () => {
+        const newText = textEl.textContent.trim();
+        if (newText !== note.text) {
+          note.text = newText;
+          if (newText) {
+            mup.notifyInteraction('edit', `User wrote: "${newText.slice(0, 50)}"`, { id: note.id, text: newText });
+          }
+        }
+      });
+      // Stop click from propagating to board
+      textEl.addEventListener('click', (e) => e.stopPropagation());
+
+      board.appendChild(el);
+      note.el = el;
+      updateHint();
+      sendNoteState();
+
+      return note;
+    }
+
+    function removeNoteById(id, notify) {
+      const idx = notes.findIndex(n => n.id === id);
+      if (idx === -1) return false;
+      const note = notes[idx];
+      note.el.remove();
+      notes.splice(idx, 1);
+      updateHint();
+      sendNoteState();
+      if (notify) {
+        mup.notifyInteraction('delete', `User deleted note "${note.text.slice(0, 30)}"`, { id });
+      }
+      return true;
+    }
+
+    function updateHint() {
+      hint.style.display = notes.length === 0 ? '' : 'none';
+    }
+
+    function sendNoteState() {
+      const label = notes.length === 0 ? 'Board empty' : `${notes.length} note(s)`;
+      mup.updateState(label, { noteCount: notes.length, noteIds: notes.map(n => n.id) });
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // === MUP Functions ===
+
+    mup.registerFunction('addNote', async (params) => {
+      const note = createNote(params.text || '', params.color || 'yellow');
+      return {
+        content: [{ type: 'text', text: `Added note ${note.id}: "${note.text.slice(0, 40)}"` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('removeNote', async (params) => {
+      const ok = removeNoteById(params.id, false);
+      return {
+        content: [{ type: 'text', text: ok ? `Removed note ${params.id}` : `Note ${params.id} not found` }],
+        isError: !ok
+      };
+    });
+
+    mup.registerFunction('editNote', async (params) => {
+      const note = notes.find(n => n.id === params.id);
+      if (!note) return { content: [{ type: 'text', text: `Note ${params.id} not found` }], isError: true };
+      note.text = params.text;
+      note.el.querySelector('.note-text').textContent = params.text;
+      return { content: [{ type: 'text', text: `Updated note ${params.id}` }], isError: false };
+    });
+
+    mup.registerFunction('getNotes', async () => {
+      const data = notes.map(n => ({ id: n.id, text: n.text, color: n.color }));
+      const summary = notes.length === 0
+        ? 'Board is empty'
+        : `${notes.length} note(s): ${notes.map(n => `[${n.id}] "${n.text.slice(0, 25)}"`).join(', ')}`;
+      return {
+        content: [
+          { type: 'text', text: summary },
+          { type: 'data', data }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('clearAll', async () => {
+      while (notes.length > 0) removeNoteById(notes[0].id, false);
+      return { content: [{ type: 'text', text: 'All notes cleared' }], isError: false };
+    });
+
+    mup.onReady((params) => {
+      mup.updateState('Board empty', { noteCount: 0, noteIds: [] });
+    });
+  </script>
+</body>
+</html>

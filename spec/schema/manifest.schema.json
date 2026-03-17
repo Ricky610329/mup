@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mup-protocol.dev/schema/manifest.json",
+  "title": "MUP Manifest",
+  "description": "Schema for MUP protocol manifest files",
+  "type": "object",
+  "required": ["name", "description", "grid"],
+  "properties": {
+    "protocol": {
+      "type": "string",
+      "description": "Protocol version identifier",
+      "pattern": "^mup/\\d{4}-\\d{2}-\\d{2}$",
+      "default": "mup/2026-03-17"
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique mup identifier (reverse-domain recommended)",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9._-]*$"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable display name",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version",
+      "default": "1.0.0"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description for both humans and LLMs"
+    },
+    "author": {
+      "type": "string"
+    },
+    "icon": {
+      "type": "string"
+    },
+    "grid": {
+      "$ref": "#/$defs/GridRequirements"
+    },
+    "functions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/MupFunction" },
+      "minItems": 0,
+      "default": []
+    },
+    "permissions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Browser Permissions Policy directives this mup needs (e.g., camera, microphone)"
+    }
+  },
+  "$defs": {
+    "GridRequirements": {
+      "type": "object",
+      "required": ["minWidth", "minHeight"],
+      "properties": {
+        "minWidth": { "type": "integer", "minimum": 0 },
+        "minHeight": { "type": "integer", "minimum": 0 },
+        "maxWidth": { "type": "integer", "minimum": 1 },
+        "maxHeight": { "type": "integer", "minimum": 1 },
+        "preferredWidth": { "type": "integer", "minimum": 1 },
+        "preferredHeight": { "type": "integer", "minimum": 1 },
+        "resizable": { "type": "boolean" }
+      }
+    },
+    "MupFunction": {
+      "type": "object",
+      "required": ["name", "description", "inputSchema"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$"
+        },
+        "description": { "type": "string" },
+        "inputSchema": { "type": "object" },
+        "outputSchema": { "type": "object" },
+        "annotations": {
+          "type": "object",
+          "properties": {
+            "idempotent": { "type": "boolean" },
+            "destructive": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}
