@@ -38,20 +38,27 @@
       color: #1d1d1f;
       height: 100vh;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 16px;
-      gap: 14px;
+      padding: 12px;
+      gap: 12px;
       user-select: none;
       -webkit-font-smoothing: antialiased;
       overflow: hidden;
     }
 
+    /* Responsive: row when wide, column when tall */
+    @media (min-aspect-ratio: 1/1) {
+      body { flex-direction: row; }
+    }
+    @media (max-aspect-ratio: 1/1) {
+      body { flex-direction: column; }
+    }
+
     /* === D6 face with CSS dots === */
     .die {
-      width: 72px;
-      height: 72px;
+      width: min(72px, 40vw);
+      height: min(72px, 40vw);
       background: rgba(0, 0, 0, 0.04);
       border: 1px solid rgba(0, 0, 0, 0.1);
       border-radius: 12px;
@@ -91,12 +98,21 @@
       background: #1d1d1f;
     }
 
+    /* Right side info group */
+    .info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
     /* === Result === */
     .result {
-      font-size: 14px;
+      font-size: 13px;
       color: rgba(60, 60, 67, 0.5);
       font-weight: 600;
-      min-height: 18px;
+      min-height: 16px;
       text-align: center;
       letter-spacing: 0.3px;
     }
@@ -107,10 +123,10 @@
 
     /* === Roll button === */
     .roll-btn {
-      height: 36px;
-      padding: 0 28px;
+      height: 30px;
+      padding: 0 16px;
       border: none;
-      border-radius: 18px;
+      border-radius: 15px;
       background: rgba(52, 199, 89, 0.1);
       color: #34c759;
       font-family: inherit;
@@ -132,8 +148,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 2px;
-      min-height: 68px;
+      gap: 1px;
     }
     .history-label {
       font-size: 10px;
@@ -156,11 +171,12 @@
 <body>
 
   <div id="diceArea"></div>
-  <div class="result" id="result"></div>
-  <button class="roll-btn" id="rollBtn">Roll</button>
-
-  <div class="history" id="history">
-    <div class="history-label">History</div>
+  <div class="info">
+    <div class="result" id="result"></div>
+    <button class="roll-btn" id="rollBtn">Roll</button>
+    <div class="history" id="history">
+      <div class="history-label">History</div>
+    </div>
   </div>
 
   <script>

@@ -107,60 +107,93 @@ Drop this into a MUP-compatible host, and it works.
 
 ## Getting Started
 
-### 1. Clone and install
+There are three ways to use MUP, depending on your setup:
+
+### Option A: Chrome Extension (recommended)
+
+Use MUP panels alongside **ChatGPT, Gemini, or Claude** — right in your browser.
 
 ```bash
 git clone https://github.com/Ricky610329/mup.git
-cd mup/poc
-npm install
 ```
 
-### 2. Run the PoC
+1. Open `chrome://extensions` → Enable "Developer mode" → "Load unpacked" → select `mup-extension/`
+2. Open ChatGPT or Gemini → click the MUP extension icon to open the side panel
+3. Drag `.html` MUP files from `poc/examples/` into the panel
+4. Chat normally — the LLM automatically uses your MUP panels
+
+**For full OS access (file system, camera):**
 
 ```bash
+cd mup-native-host
+node install.js
+```
+
+This registers a native messaging host that lets MUPs access your file system, open folder pickers, and capture photos. Run once, works forever.
+
+### Option B: Standalone PoC
+
+A self-contained MUP host with its own chat interface. No external LLM account needed (demo mode included).
+
+```bash
+cd poc
+npm install
 npm run dev
 ```
 
-Opens a local MUP host at `http://localhost:5173`. By default it runs in **demo mode** — no API key needed, you can start playing right away.
+Opens at `http://localhost:5173`. Supports OpenAI, Anthropic, Gemini, and Ollama — configure via `.env` or the interactive setup screen.
 
-### 3. Load a MUP
+### Option C: MCP Bridge
 
-- Pick one from the built-in menu, or
-- Drag and drop any `.html` MUP file into the window
+Use MUP panels in **Claude Desktop, Cursor**, or any MCP-compatible client.
 
-### 4. (Optional) Connect a real LLM
-
-Create a `poc/.env` file with your provider of choice:
-
-```env
-# OpenAI
-VITE_LLM_PROVIDER=openai
-VITE_LLM_API_KEY=sk-...
-VITE_LLM_MODEL=gpt-4o
-
-# Anthropic
-VITE_LLM_PROVIDER=anthropic
-VITE_LLM_API_KEY=sk-ant-...
-VITE_LLM_MODEL=claude-sonnet-4-6
-
-# Google Gemini
-VITE_LLM_PROVIDER=gemini
-VITE_LLM_API_KEY=AIza...
-VITE_LLM_MODEL=gemini-2.5-flash
-
-# Ollama (local, no API key needed)
-VITE_LLM_PROVIDER=ollama
-VITE_LLM_MODEL=llama3
-# VITE_OLLAMA_ENDPOINT=http://localhost:11434
+```bash
+cd mup-mcp-server
+npm install
+npm run build
+node dist/index.js --mups-dir ../poc/examples
 ```
 
-Or skip the `.env` file — the setup screen lets you choose a provider interactively.
-
-Restart the dev server after creating the file.
+Registers all MUP functions as MCP tools. A browser panel opens automatically for the MUP UI.
 
 ### Built-in examples
 
-Counter, Dice, Timer, Chart, Camera, Drum Machine, Pixel Art, Sticky Notes, File Organizer — 9 ready-to-use MUPs included in `poc/examples/`.
+9 ready-to-use MUPs in `poc/examples/`:
+
+| MUP | Size | Description |
+|-----|------|-------------|
+| Counter | 1×1 | Click +/−, LLM sets value |
+| Dice | 1×1 | Roll with animation, history |
+| Timer | 1×1 | Countdown timer |
+| Chart | 2×2 | Bar, line, pie charts |
+| Camera | 2×2 | Live camera feed + snapshot |
+| Drum Machine | 2×2 | 4-track step sequencer |
+| Pixel Art | 2×2 | 16×16 pixel canvas |
+| Sticky Notes | 2×2 | Draggable notes board |
+| File Organizer | 2×2 | Browse and organize local files |
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────┐
+│                    MUP (.html file)                   │
+│  manifest + UI + functions                           │
+└──────────────┬───────────────────────────────────────┘
+               │ loaded by
+    ┌──────────┴──────────┬─────────────────┐
+    ▼                     ▼                 ▼
+┌─────────┐     ┌──────────────┐   ┌─────────────┐
+│   PoC   │     │  Extension   │   │ MCP Bridge  │
+│ (Vite)  │     │ (Side Panel) │   │  (stdio)    │
+└─────────┘     └──────┬───────┘   └─────────────┘
+                       │
+                       ▼
+              ┌─────────────────┐
+              │  Native Host    │
+              │ (file system,   │
+              │  camera, OS)    │
+              └─────────────────┘
+```
 
 ## Docs
 

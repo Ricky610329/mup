@@ -4,3 +4,9 @@ dist/
 *.local
 .env
 sample-mess/
+image.png
+.claude/
+
+# Native host generated files
+mup-native-host/host.bat
+mup-native-host/com.mup.native.json
