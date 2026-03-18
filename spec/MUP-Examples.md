@@ -177,7 +177,6 @@ A single six-sided die with CSS-rendered dot faces and roll animation.
 | `onReady` | All 9 |
 | `updateState` | All 9 |
 | `notifyInteraction` | Counter, Drum Machine, Sticky Notes, Camera, File Organizer, Chart, Timer, Dice |
-| `requestResize` | — (none currently, candidates: chart, sticky notes) |
 | `permissions` | Camera, File Organizer |
 | `text` content | All 9 |
 | `data` content | Counter, Drum Machine, Pixel Art, Sticky Notes, File Organizer, Chart, Timer, Dice |

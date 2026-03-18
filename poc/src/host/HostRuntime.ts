@@ -327,26 +327,12 @@ export class HostRuntime {
     }
   }
 
-  /** Handle requests from MUPs (grid/resize, system/request, etc.) */
+  /** Handle requests from MUPs */
   private setupRequestHandler(): void {
-    this.router.onRequest(async (mupId, method, params) => {
-      if (method === "grid/resize") {
-        const reqW = (params as { width?: number }).width ?? 2;
-        const reqH = (params as { height?: number }).height ?? 2;
-        const ok = this.grid.resizeMup(mupId, reqW, reqH);
-        if (ok) {
-          const alloc = this.grid.getAllocation(mupId)!;
-          const container = this.containers.get(mupId);
-          if (container) container.updateGridPlacement(alloc);
-        }
-        const finalAlloc = this.grid.getAllocation(mupId);
-        return {
-          granted: ok,
-          width: finalAlloc?.widthSpan ?? reqW,
-          height: finalAlloc?.heightSpan ?? reqH,
-        };
-      }
-      throw new Error(`Unsupported method: ${method}`);
+    this.router.onRequest(async (_mupId, method, _params) => {
+      const err = new Error(`Method not found: ${method}`);
+      (err as any).code = -32601;
+      throw err;
     });
   }
 

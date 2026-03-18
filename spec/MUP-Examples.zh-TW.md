@@ -177,7 +177,6 @@ MUP 的 "hello world"。一個數字、兩個按鈕、兩個函式。
 | `onReady` | 全部 9 個 |
 | `updateState` | 全部 9 個 |
 | `notifyInteraction` | Counter、Drum Machine、Sticky Notes、Camera、File Organizer、Chart、Timer、Dice |
-| `requestResize` | —（目前無，候選：Chart、Sticky Notes） |
 | `permissions` | Camera、File Organizer |
 | `text` 內容 | 全部 9 個 |
 | `data` 內容 | Counter、Drum Machine、Pixel Art、Sticky Notes、File Organizer、Chart、Timer、Dice |

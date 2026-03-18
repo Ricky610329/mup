@@ -190,6 +190,5 @@ export const Methods = {
   // MUP → Host
   StateUpdate: "notifications/state/update",
   UserInteraction: "notifications/interaction",
-  GridResizeRequest: "grid/resize",
   ShutdownComplete: "notifications/shutdown/complete",
 } as const;

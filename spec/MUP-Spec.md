@@ -4,6 +4,8 @@ Version: `mup/2026-03-17` (Draft)
 
 ---
 
+# Protocol
+
 ## 1. What is MUP
 
 A **MUP** is an interactive UI component that lives inside an LLM chat interface. It bundles a visual interface with callable functions — the user operates it through the UI, the LLM operates it through function calls, and both sides see each other's actions.
@@ -192,25 +194,6 @@ Functions are the core of MUP. Each function is callable by the LLM (as a tool) 
 | `description` | string | Yes | What this function does. **The LLM reads this** to decide when to call it. |
 | `inputSchema` | JSON Schema | Yes | JSON Schema for the function's parameters. |
 
-### Implementing in JavaScript
-
-```javascript
-mup.registerFunction('renderChart', async (params, source) => {
-  // params = the arguments from inputSchema
-  // source = "llm" or "user" — who called this function
-
-  drawChart(params.type, params.data);
-
-  return {
-    content: [
-      { type: 'text', text: `Rendered ${params.type} chart with ${params.data.length} points` },
-      { type: 'data', data: { type: params.type, pointCount: params.data.length } }
-    ],
-    isError: false
-  };
-});
-```
-
 ### Function Result Format
 
 Every function must return a `FunctionCallResult`:
@@ -234,7 +217,68 @@ Always include at least one `text` content item — the LLM needs it to understa
 
 ---
 
-## 6. SDK Reference
+## 6. Lifecycle
+
+A MUP goes through a fixed sequence of stages:
+
+```
+load → initialize → onReady → active → shutdown → destroyed
+```
+
+**Rules:**
+
+1. **`registerFunction` MUST be called synchronously during script evaluation** — before the host sends `initialize`. The host reads registered function names during initialization; late registrations are ignored.
+2. **Host MUST send `initialize` exactly once**, as the first JSON-RPC message after the MUP loads.
+3. **Host MUST NOT send `functions/call` before receiving the `initialize` response.** Any function calls before that point are invalid.
+4. **After `gracePeriodMs` expires, host MAY destroy the container** without waiting for `notifications/shutdown/complete`. MUPs should clean up quickly.
+5. **`onReady` fires after `initialize` succeeds.** This is the right place for initial state setup, DOM rendering, and the first `updateState` call.
+
+---
+
+## 7. Error Handling
+
+### Function errors
+
+If a function handler throws an exception, the SDK catches it and returns:
+
+```json
+{ "content": [{ "type": "text", "text": "Error: <message>" }], "isError": true }
+```
+
+The host forwards this to the LLM so it can react accordingly.
+
+### Invalid function calls
+
+| Scenario | Host behavior |
+|----------|--------------|
+| LLM calls a function name that doesn't exist in the manifest | Host returns a JSON-RPC error (`-32601 Method not found`). The call is **not** forwarded to the MUP. |
+| `registerFunction` called with a name not declared in the manifest | Host SHOULD log a warning. The function is **not** callable. |
+| Function call times out (handler doesn't respond) | Host MAY return `{ isError: true }` after an implementation-defined timeout. |
+
+### Unknown methods
+
+Both sides may encounter methods they do not recognize — for example, a MUP using an extension method that the host does not support.
+
+- **Host** receiving an unknown MUP→Host request MUST respond with JSON-RPC error code `-32601` (Method not found).
+- **MUP** receiving an unknown Host→MUP request MUST respond with JSON-RPC error code `-32601` (Method not found).
+- Unknown **notifications** (no `id`) SHOULD be silently ignored by both sides.
+- The caller SHOULD handle `-32601` gracefully (e.g., fall back to alternative behavior) rather than treating it as a fatal error.
+
+### JSON-RPC error codes
+
+Both hosts and MUPs SHOULD use standard JSON-RPC 2.0 error codes:
+
+| Code | Meaning |
+|------|---------|
+| `-32600` | Invalid request |
+| `-32601` | Method not found |
+| `-32603` | Internal error |
+
+---
+
+# Guidance
+
+## 8. SDK Reference
 
 The host injects a global `mup` object into your MUP. No import needed.
 
@@ -269,7 +313,7 @@ Tell the host your current state. The host forwards `summary` to the LLM's conte
 mup.updateState('Timer running: 45s remaining', { status: 'running', remaining: 45 });
 ```
 
-**Throttle this** — call at most once per second. Excess calls may be silently dropped.
+**Throttle this** — the host may silently drop excess calls. Call frequency should be reasonable for the data being reported.
 
 ### `mup.notifyInteraction(action, summary, data?)`
 
@@ -283,20 +327,9 @@ mup.notifyInteraction('paint', 'User painted 12 pixels in red', { color: '#ff000
 - `summary`: LLM-readable description of what the user did
 - `data`: optional structured data
 
-### `mup.requestResize(width, height, reason)`
-
-Ask the host for more (or less) grid space. Returns a promise with the actual allocation.
-
-```javascript
-const result = await mup.requestResize(4, 3, 'Need more space for expanded view');
-// result = { granted: boolean, width: number, height: number }
-```
-
-The host may grant a different size than requested, or deny entirely.
-
 ---
 
-## 7. Writing Good Descriptions
+## 9. Writing Good Descriptions
 
 The `description` field in your manifest and functions is **the only thing the LLM sees**. It doesn't see your UI, your CSS, or your HTML. Write descriptions as if you're explaining to a colleague what this MUP does and when to use each function.
 
@@ -314,7 +347,7 @@ The `description` field in your manifest and functions is **the only thing the L
 
 ---
 
-## 8. Best Practices
+## 10. Best Practices
 
 ### updateState vs. notifyInteraction
 
@@ -322,7 +355,7 @@ The `description` field in your manifest and functions is **the only thing the L
 |--|---------------|---------------------|
 | **When** | State changed (timer ticked, data loaded) | User did something (clicked, typed, dragged) |
 | **Purpose** | Keep LLM informed of current state | Tell LLM about user actions |
-| **Throttle** | Max 1/second | Per-event, but batch rapid actions |
+| **Throttle** | Host may drop excess calls | Per-event, but batch rapid actions |
 
 ### Handle concurrent function calls
 
@@ -343,55 +376,7 @@ If you need browser APIs (camera, microphone, geolocation), declare them in `per
 
 ---
 
-## 9. Lifecycle
-
-A MUP goes through a fixed sequence of stages:
-
-```
-load → initialize → onReady → active → shutdown → destroyed
-```
-
-**Rules:**
-
-1. **`registerFunction` MUST be called synchronously during script evaluation** — before the host sends `initialize`. The host reads registered function names during initialization; late registrations are ignored.
-2. **Host MUST send `initialize` exactly once**, as the first JSON-RPC message after the MUP loads.
-3. **Host MUST NOT send `functions/call` before receiving the `initialize` response.** Any function calls before that point are invalid.
-4. **After `gracePeriodMs` expires, host MAY destroy the container** without waiting for `notifications/shutdown/complete`. MUPs should clean up quickly.
-5. **`onReady` fires after `initialize` succeeds.** This is the right place for initial state setup, DOM rendering, and the first `updateState` call.
-
----
-
-## 10. Error Handling
-
-### Function errors
-
-If a function handler throws an exception, the SDK catches it and returns:
-
-```json
-{ "content": [{ "type": "text", "text": "Error: <message>" }], "isError": true }
-```
-
-The host forwards this to the LLM so it can react accordingly.
-
-### Invalid function calls
-
-| Scenario | Host behavior |
-|----------|--------------|
-| LLM calls a function name that doesn't exist in the manifest | Host returns a JSON-RPC error (`-32601 Method not found`). The call is **not** forwarded to the MUP. |
-| `registerFunction` called with a name not declared in the manifest | Host SHOULD log a warning. The function is **not** callable. |
-| Function call times out (handler doesn't respond) | Host MAY return `{ isError: true }` after an implementation-defined timeout. |
-
-### JSON-RPC error codes
-
-Hosts SHOULD use standard JSON-RPC 2.0 error codes:
-
-| Code | Meaning |
-|------|---------|
-| `-32600` | Invalid request |
-| `-32601` | Method not found |
-| `-32603` | Internal error |
-
----
+# Appendices
 
 ## Appendix A: JSON-RPC 2.0 (for host implementers)
 
@@ -412,7 +397,6 @@ All host↔MUP communication uses JSON-RPC 2.0 over a `MessageChannel` (or equiv
 |--------|------|-------------|
 | `notifications/state/update` | Notification | MUP state changed. Params: `summary`, `data?`. |
 | `notifications/interaction` | Notification | User interacted with MUP UI. Params: `action`, `summary`, `data?`. |
-| `grid/resize` | Request | MUP requests more/less space. Params: `width`, `height`, `reason`. Returns: `{ granted, width, height }`. |
 | `notifications/shutdown/complete` | Notification | MUP acknowledges shutdown. No params. |
 
 ## Appendix B: Comparison with MCP

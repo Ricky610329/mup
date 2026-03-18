@@ -146,10 +146,11 @@ export class MessageRouter {
         const response: JsonRpcResponse = { jsonrpc: "2.0", id: msg.id, result: result as Record<string, unknown> };
         port.postMessage(response);
       } catch (err) {
+        const code = (err as any).code ?? -32603;
         const response: JsonRpcResponse = {
           jsonrpc: "2.0",
           id: msg.id,
-          error: { code: -32603, message: (err as Error).message },
+          error: { code, message: (err as Error).message },
         };
         port.postMessage(response);
       }

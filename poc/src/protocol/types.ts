@@ -90,12 +90,6 @@ export interface UserInteractionParams {
   data?: Record<string, unknown>;
 }
 
-export interface GridResizeRequestParams {
-  width: number;
-  height: number;
-  reason: string;
-}
-
 // ---- Protocol Method Names (matches spec) ----
 
 export const Methods = {
@@ -105,7 +99,6 @@ export const Methods = {
   Shutdown: "notifications/shutdown",
   StateUpdate: "notifications/state/update",
   UserInteraction: "notifications/interaction",
-  GridResizeRequest: "grid/resize",
   ShutdownComplete: "notifications/shutdown/complete",
 } as const;
 

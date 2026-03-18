@@ -17,8 +17,7 @@ const MUP_SDK_SOURCE = [
   "  onReady(callback) { this._readyCallback = callback; if (this._initialized && this._initParams) callback(this._initParams); }",
   '  updateState(summary, data) { this._notify("notifications/state/update", { summary, data }); }',
   '  notifyInteraction(action, summary, data) { this._notify("notifications/interaction", { action, summary, data }); }',
-  '  requestResize(width, height, reason) { return this._request("grid/resize", { width, height, reason }); }',
-  '  system(action, params) { return this._request("system/request", { action, params }); }',
+    '  system(action, params) { return this._request("system/request", { action, params }); }',
   "  _handleMessage(data) {",
   '    if (!data || data.jsonrpc !== "2.0") return;',
   '    if ("id" in data && !("method" in data)) {',
@@ -44,7 +43,7 @@ const MUP_SDK_SOURCE = [
   "    }",
   '    if (method === "functions/call") {',
   "      const handler = this._functions.get(params.name);",
-  '      if (!handler) { this._sendError(id, -33002, "Function not found: " + params.name); return; }',
+  '      if (!handler) { this._sendError(id, -32603, "Function not registered: " + params.name); return; }',
   "      try { this._sendResponse(id, await handler(params.arguments, params.source)); }",
   '      catch (e) { this._sendError(id, -32603, e.message || "Internal error"); }',
   "      return;",
@@ -233,12 +232,7 @@ function handleMupMessage(mupId, data) {
     const mup = mups.get(mupId);
     if (!mup) return;
 
-    if (data.method === "grid/resize") {
-      mup.port.postMessage({
-        jsonrpc: "2.0", id: data.id,
-        result: { granted: true, width: (data.params && data.params.width) || 2, height: (data.params && data.params.height) || 2 },
-      });
-    } else if (data.method === "system/request") {
+    if (data.method === "system/request") {
       // Route to panel → service worker → native host
       const reqId = "sys-" + mupId + "-" + data.id;
       systemRequests.set(reqId, { mupId: mupId, rpcId: data.id });
@@ -248,6 +242,11 @@ function handleMupMessage(mupId, data) {
         action: data.params.action,
         params: data.params.params,
       }, "*");
+    } else {
+      mup.port.postMessage({
+        jsonrpc: "2.0", id: data.id,
+        error: { code: -32601, message: "Method not found: " + data.method },
+      });
     }
   }
 }

@@ -222,7 +222,6 @@ class MupSDK {
   onReady(callback) { this._readyCallback = callback; if (this._initialized && this._initParams) callback(this._initParams); }
   updateState(summary, data) { this._notify("notifications/state/update", { summary, data }); }
   notifyInteraction(action, summary, data) { this._notify("notifications/interaction", { action, summary, data }); }
-  requestResize(width, height, reason) { return this._request("grid/resize", { width, height, reason }); }
   system(action, params) { return this._request("system/request", { action, params }); }
   _handleMessage(data) {
     if (!data || data.jsonrpc !== "2.0") return;
@@ -249,7 +248,7 @@ class MupSDK {
     }
     if (method === "functions/call") {
       const handler = this._functions.get(params.name);
-      if (!handler) { this._sendError(id, -33002, "Function not found: " + params.name); return; }
+      if (!handler) { this._sendError(id, -32603, "Function not registered: " + params.name); return; }
       try { this._sendResponse(id, await handler(params.arguments, params.source)); }
       catch (e) { this._sendError(id, -32603, e.message || "Internal error"); }
       return;
@@ -482,29 +481,16 @@ function handleMupMessage(mupId, mupName, data) {
     return;
   }
 
-  // Request from MUP (e.g., grid/resize)
+  // Request from MUP
   if ("id" in data && "method" in data) {
     const mup = mups.get(mupId);
     if (!mup) return;
 
-    if (data.method === "grid/resize") {
-      // Grant resize requests
-      mup.port.postMessage({
-        jsonrpc: "2.0",
-        id: data.id,
-        result: {
-          granted: true,
-          width: data.params?.width || 2,
-          height: data.params?.height || 2,
-        },
-      });
-    } else {
-      mup.port.postMessage({
-        jsonrpc: "2.0",
-        id: data.id,
-        error: { code: -32601, message: "Method not found: " + data.method },
-      });
-    }
+    mup.port.postMessage({
+      jsonrpc: "2.0",
+      id: data.id,
+      error: { code: -32601, message: "Method not found: " + data.method },
+    });
   }
 }
 
