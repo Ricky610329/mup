@@ -81,6 +81,12 @@ MUP changes this. It puts clickable, visual UI right inside the chat — so anyo
 - **LLM as orchestrator.** MUPs don't talk to each other. The LLM reads outputs and decides what to do next.
 - **Just HTML.** Write a manifest, register your functions, done. Ship a single file.
 
+## Docs
+
+- **[Spec](spec/MUP-Spec.md)** — Protocol definition: manifest, functions, lifecycle, error handling
+- **[Design Philosophy](spec/MUP-Philosophy.md)** — Why MUP is designed this way, and what we intentionally left out
+- **[Examples](spec/MUP-Examples.md)** — 9 example MUPs with walkthroughs
+
 ## Quick Example
 
 ```html
@@ -194,11 +200,6 @@ Registers all MUP functions as MCP tools. A browser panel opens automatically fo
               │  camera, OS)    │
               └─────────────────┘
 ```
-
-## Docs
-
-- [Spec](spec/MUP-Spec.md)
-- [Examples](spec/MUP-Examples.md)
 
 ## Star History
 
