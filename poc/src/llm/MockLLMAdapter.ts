@@ -13,7 +13,7 @@ export class MockLLMAdapter implements LLMAdapter {
 
     const toolNames = tools.map((t) => `\`${t.name}\``).join(", ");
     return {
-      text: `Demo mode — I can see these tools: ${toolNames}\n\nConnect an OpenAI API key for real tool calling.`,
+      text: `Demo mode — I can see these tools: ${toolNames}\n\nConnect an LLM provider (OpenAI, Anthropic, Gemini, or Ollama) for real tool calling.`,
     };
   }
 
