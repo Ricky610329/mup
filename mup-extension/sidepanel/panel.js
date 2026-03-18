@@ -176,8 +176,8 @@ function loadMup(html, fileName) {
   // grid ready
 
   gm.updateCols();
-  const w = Math.min(manifest.grid.minWidth || 1, gm.getColumns());
-  const h = manifest.grid.minHeight || 1;
+  const w = Math.min(manifest.grid.preferredWidth || manifest.grid.minWidth || 1, gm.getColumns());
+  const h = manifest.grid.preferredHeight || manifest.grid.minHeight || 1;
   const alloc = gm.allocate(manifest.id, w, h);
   if (!alloc) return;
 

@@ -175,11 +175,6 @@ export class ChatPanel {
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
-  /** Add to LLM context without rendering in the chat UI */
-  addHiddenMessage(message: ChatMessage): void {
-    this.messages.push(message);
-  }
-
   /** Show a dismissible event badge + store hidden message for LLM context */
   addEventBadge(sourceName: string, summary: string): void {
     // Store in messages so LLM sees it via getMessages()

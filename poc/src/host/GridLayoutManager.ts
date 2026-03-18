@@ -1,4 +1,4 @@
-import type { GridAllocation, GridRequirements, GridState } from "../protocol/types";
+import type { GridAllocation, GridRequirements } from "../protocol/types";
 
 export class GridLayoutManager {
   private totalColumns: number;
@@ -50,10 +50,6 @@ export class GridLayoutManager {
     if (alloc.widthSpan > 0) this.markFree(alloc);
     this.allocations.delete(mupId);
     this.renderEmptyCells();
-  }
-
-  getState(): GridState {
-    return { totalColumns: this.totalColumns, totalRows: this.totalRows, allocations: Array.from(this.allocations.values()) };
   }
 
   getAllocation(mupId: string): GridAllocation | undefined {
@@ -114,23 +110,6 @@ export class GridLayoutManager {
     return true;
   }
 
-  /** Convert pixel coordinates (relative to container) to grid col/row (1-based) */
-  pixelToGrid(px: number, py: number): { col: number; row: number } {
-    const cs = this.cellSize;
-    const g = this.gap;
-    const col = Math.floor(px / (cs + g)) + 1;
-    const row = Math.floor(py / (cs + g)) + 1;
-    return {
-      col: Math.max(1, Math.min(col, this.totalColumns)),
-      row: Math.max(1, Math.min(row, this.totalRows)),
-    };
-  }
-
-  /** Get the container's bounding rect */
-  getContainerRect(): DOMRect {
-    return this.container.getBoundingClientRect();
-  }
-
   /** Get the actual pixel offset where the grid content starts (accounting for centering) */
   getGridOrigin(): { x: number; y: number } {
     const rect = this.container.getBoundingClientRect();
@@ -142,17 +121,6 @@ export class GridLayoutManager {
     const offsetX = (rect.width - totalGridW) / 2;
     const offsetY = (rect.height - totalGridH) / 2;
     return { x: rect.left + Math.max(0, offsetX), y: rect.top + Math.max(0, offsetY) };
-  }
-
-  resize(columns: number, rows: number): void {
-    this.totalColumns = columns;
-    this.totalRows = rows;
-    this.occupancy = this.createOccupancyGrid();
-    for (const alloc of this.allocations.values()) {
-      if (alloc.widthSpan > 0) this.markOccupied(alloc);
-    }
-    this.applyGridCSS();
-    this.renderEmptyCells();
   }
 
   renderEmptyCells(): void {

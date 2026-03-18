@@ -21,6 +21,7 @@ class MupSDK {
   updateState(summary, data) { this._notify("notifications/state/update", { summary, data }); }
   notifyInteraction(action, summary, data) { this._notify("notifications/interaction", { action, summary, data }); }
   requestResize(width, height, reason) { return this._request("grid/resize", { width, height, reason }); }
+  system(action, params) { return this._request("system/request", { action, params }); }
   _handleMessage(data) {
     if (!data || data.jsonrpc !== "2.0") return;
     if ("id" in data && !("method" in data)) {
@@ -29,6 +30,12 @@ class MupSDK {
       return;
     }
     if ("id" in data && "method" in data) { this._handleRequest(data); return; }
+    if ("method" in data) { this._handleNotification(data); return; }
+  }
+  _handleNotification(msg) {
+    if (msg.method === "notifications/shutdown") {
+      this._notify("notifications/shutdown/complete", {});
+    }
   }
   async _handleRequest(msg) {
     const { id, method, params } = msg;

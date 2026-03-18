@@ -29,7 +29,7 @@ export class LLMBridge {
 
       for (const fn of manifest.functions ?? []) {
         tools.push({
-          name: `${manifest.id.replace(/\./g, "_")}__${fn.name}`,
+          name: `${manifest.id.replace(/[^a-zA-Z0-9]/g, "_")}__${fn.name}`,
           description: `[${manifest.name}] ${fn.description}`,
           inputSchema: fn.inputSchema,
           _mupId: manifest.id,
@@ -61,7 +61,7 @@ export class LLMBridge {
     // Find MUP by matching sanitized ID
     const allMups = this.registry.getAll();
     const match = allMups.find(
-      (s) => s.manifest.id.replace(/\./g, "_") === mupIdSanitized && s.state === "active"
+      (s) => s.manifest.id.replace(/[^a-zA-Z0-9]/g, "_") === mupIdSanitized && s.state === "active"
     );
     if (!match) {
       return {

@@ -164,12 +164,6 @@ export interface GridAllocation {
   heightSpan: number;
 }
 
-export interface GridState {
-  totalColumns: number;
-  totalRows: number;
-  allocations: GridAllocation[];
-}
-
 export type MupState =
   | "discovered"
   | "registered"

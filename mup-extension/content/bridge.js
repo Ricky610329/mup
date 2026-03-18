@@ -8,6 +8,10 @@
   let observer = null;
   const processedBlocks = new WeakSet();
 
+  // Anti-loop: cap consecutive auto-sends without user input
+  const MAX_AUTO_SENDS = 5;
+  let consecutiveAutoSends = 0;
+
   // Guard: stop everything if extension context is invalidated (after reload)
   function isContextValid() {
     try { return !!chrome.runtime.id; } catch { return false; }
@@ -146,6 +150,7 @@
   // The original Enter event continues to propagate and the platform sends the modified text.
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+    consecutiveAutoSends = 0; // User sent a message — reset loop guard
     maybeInjectContext();
     // Don't preventDefault — let Enter propagate normally
   }, true);
@@ -162,6 +167,7 @@
       btn.matches('[aria-label*="傳送"]') ||
       btn.closest("form") && btn.matches('[type="submit"]');
     if (!isSend) return;
+    consecutiveAutoSends = 0; // User sent a message — reset loop guard
     maybeInjectContext();
     // Don't preventDefault — let click propagate normally
   }, true);
@@ -396,7 +402,11 @@
     if (resultText) {
       const msg = "[MUP " + call.fn + " result] " + resultText;
       typeIntoChat(msg);
-      setTimeout(() => clickSendButton(), 200);
+      consecutiveAutoSends++;
+      if (consecutiveAutoSends < MAX_AUTO_SENDS) {
+        setTimeout(() => clickSendButton(), 200);
+      }
+      // Over limit: text stays in input box, user decides whether to send
     }
   }
 

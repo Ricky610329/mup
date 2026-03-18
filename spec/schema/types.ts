@@ -25,8 +25,8 @@ export interface MupManifest {
   version?: string;
   /** Description for both humans and LLMs */
   description: string;
-  /** Grid layout requirements */
-  grid: GridRequirements;
+  /** Grid layout requirements (optional — host uses default if omitted) */
+  grid?: GridRequirements;
   /** Functions exposed by this mup */
   functions?: MupFunction[];
   /** Browser Permissions Policy directives (e.g., ["camera", "microphone"]) */
