@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Voice</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Voice",
+    "description": "Voice input with automatic speech detection. Continuously listens for speech and transcribes it. When the user speaks, the transcript is sent as an interaction so the LLM can react. LLM can also start/stop listening or read the latest transcript.",
+    "grid": { "minWidth": 1, "minHeight": 1 },
+    "permissions": ["microphone"],
+    "functions": [
+      {
+        "name": "startListening",
+        "description": "Start listening for speech. The MUP will automatically detect when the user speaks and send the transcript as an interaction.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "stopListening",
+        "description": "Stop listening for speech.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "getTranscript",
+        "description": "Get the most recent transcript text.",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: transparent;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .mic-btn {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      border: 2px solid rgba(60,60,67,0.15);
+      background: rgba(255,255,255,0.6);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .mic-btn:hover { border-color: rgba(60,60,67,0.3); }
+    .mic-btn.listening {
+      border-color: #ff3b30;
+      background: rgba(255,59,48,0.08);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .mic-btn.listening svg { color: #ff3b30; }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255,59,48,0.3); }
+      50% { box-shadow: 0 0 0 10px rgba(255,59,48,0); }
+    }
+
+    .mic-btn svg {
+      width: 22px; height: 22px;
+      color: rgba(60,60,67,0.6);
+      transition: color 0.2s;
+    }
+
+    .status {
+      font-size: 11px;
+      color: rgba(60,60,67,0.4);
+      text-align: center;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status.active { color: #ff3b30; }
+
+    .transcript {
+      font-size: 11px;
+      color: rgba(60,60,67,0.6);
+      text-align: center;
+      max-width: 100%;
+      max-height: 40px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.4;
+      padding: 0 4px;
+    }
+
+    .unsupported {
+      font-size: 12px;
+      color: rgba(255,59,48,0.6);
+      text-align: center;
+      padding: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="main"></div>
+
+  <script>
+    const main = document.getElementById('main');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    let listening = false;
+    let recognition = null;
+    let lastTranscript = '';
+    let micBtn, statusEl, transcriptEl;
+
+    if (!SpeechRecognition) {
+      main.innerHTML = '<div class="unsupported">Speech recognition not supported in this browser</div>';
+    } else {
+      main.parentElement.innerHTML = `
+        <button class="mic-btn" id="micBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+        <div class="status" id="status">Tap to listen</div>
+        <div class="transcript" id="transcript"></div>
+      `;
+
+      micBtn = document.getElementById('micBtn');
+      statusEl = document.getElementById('status');
+      transcriptEl = document.getElementById('transcript');
+
+      micBtn.addEventListener('click', () => {
+        if (listening) {
+          stopRecognition();
+          mup.notifyInteraction('stop', 'User stopped listening');
+        } else {
+          startRecognition();
+          mup.notifyInteraction('start', 'User started listening');
+        }
+      });
+    }
+
+    function startRecognition() {
+      if (listening || !SpeechRecognition) return;
+
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = navigator.language || 'en-US';
+
+      recognition.onstart = () => {
+        listening = true;
+        micBtn.classList.add('listening');
+        statusEl.textContent = 'Listening...';
+        statusEl.classList.add('active');
+        mup.updateState('Listening', { listening: true });
+      };
+
+      recognition.onresult = (event) => {
+        let interim = '';
+        let final = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const text = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            final += text;
+          } else {
+            interim += text;
+          }
+        }
+
+        // Show interim results
+        if (interim) {
+          transcriptEl.textContent = interim;
+        }
+
+        // When we get a final result, notify the LLM
+        if (final.trim()) {
+          lastTranscript = final.trim();
+          transcriptEl.textContent = lastTranscript;
+          mup.updateState(`Heard: "${lastTranscript.slice(0, 50)}"`, { listening: true, transcript: lastTranscript });
+          mup.notifyInteraction('speech', `User said: "${lastTranscript}"`, { transcript: lastTranscript });
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'no-speech') return; // normal, keep listening
+        if (event.error === 'aborted') return;
+        statusEl.textContent = 'Error: ' + event.error;
+        stopRecognition();
+      };
+
+      recognition.onend = () => {
+        // Auto-restart if we're supposed to be listening
+        if (listening) {
+          try { recognition.start(); } catch (e) { stopRecognition(); }
+        }
+      };
+
+      try {
+        recognition.start();
+      } catch (e) {
+        statusEl.textContent = 'Error starting';
+      }
+    }
+
+    function stopRecognition() {
+      listening = false;
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+        recognition = null;
+      }
+      if (micBtn) micBtn.classList.remove('listening');
+      if (statusEl) {
+        statusEl.textContent = 'Tap to listen';
+        statusEl.classList.remove('active');
+      }
+      mup.updateState('Idle', { listening: false });
+    }
+
+    // === MUP Functions ===
+
+    mup.registerFunction('startListening', async () => {
+      startRecognition();
+      return { content: [{ type: 'text', text: 'Listening started' }], isError: false };
+    });
+
+    mup.registerFunction('stopListening', async () => {
+      stopRecognition();
+      return { content: [{ type: 'text', text: 'Listening stopped' }], isError: false };
+    });
+
+    mup.registerFunction('getTranscript', async () => {
+      return {
+        content: [
+          { type: 'text', text: lastTranscript || 'No transcript yet' },
+          { type: 'data', data: { transcript: lastTranscript, listening } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.onReady(() => {
+      mup.updateState('Idle', { listening: false });
+    });
+  </script>
+</body>
+</html>
