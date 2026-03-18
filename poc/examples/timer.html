@@ -34,6 +34,17 @@
         "name": "getStatus",
         "description": "Get the current timer state including status, remaining seconds, and total duration",
         "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setTime",
+        "description": "Set the countdown duration without starting. Use this to prepare a timer that the user can start manually.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "seconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+          },
+          "required": ["seconds"]
+        }
       }
     ]
   }
@@ -367,6 +378,21 @@
           { type: 'data', data: { status, remainingSeconds: Math.ceil(remaining), totalSeconds } }
         ],
         isError: false,
+      };
+    });
+
+    mup.registerFunction('setTime', async (params) => {
+      if (status === 'running') {
+        return { content: [{ type: 'text', text: 'Timer is running. Pause or reset first.' }], isError: true };
+      }
+      totalSeconds = params.seconds;
+      remaining = params.seconds;
+      status = 'idle';
+      updateDisplay();
+      sendState(`Timer set to ${totalSeconds}s`);
+      return {
+        content: [{ type: 'text', text: `Timer set to ${totalSeconds}s (not started)` }],
+        isError: false
       };
     });
 

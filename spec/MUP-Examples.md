@@ -9,14 +9,14 @@ This document describes the example MUPs included in `poc/examples/`. Each demon
 | MUP | Grid | Functions | Demonstrates |
 |-----|------|-----------|-------------|
 | [Counter](#counter) | 1×1 | `setCount`, `getCount` | Basic bidirectional function calls |
-| [Pixel Art](#pixel-art) | 2×2 | `setPixels`, `clear`, `getGrid` | LLM-driven pixel display |
-| [Drum Machine](#drum-machine) | 2×2 | `setPattern`, `setBPM`, `play`, `stop`, `clear`, `getState` | Complex state + Web Audio |
-| [Sticky Notes](#sticky-notes) | 2×2 | `addNote`, `removeNote`, `editNote`, `getNotes`, `clearAll` | Full CRUD operations |
+| [Pixel Art](#pixel-art) | 2×2 | `setPixels`, `fillRect`, `clear`, `getGrid` | LLM-driven pixel display |
+| [Drum Machine](#drum-machine) | 2×2 | `setPattern`, `toggleStep`, `setBPM`, `play`, `stop`, `clear`, `getState` | Complex state + Web Audio |
+| [Sticky Notes](#sticky-notes) | 2×2 | `addNote`, `moveNote`, `removeNote`, `editNote`, `getNotes`, `clearAll` | Full CRUD + position control |
 | [Camera](#camera) | 2×2 | `capturePhoto`, `startCamera`, `stopCamera` | Browser permissions + multimodal `image` content |
-| [File Organizer](#file-organizer) | 2×2 | `getStatus`, `listFiles`, `createFolder`, `moveFile`, `readFileText` | File System Access API |
-| [Chart](#chart) | 2×2 | `renderChart`, `clear`, `getData` | LLM → visual data pipeline |
-| [Timer](#timer) | 1×1 | `start`, `pause`, `reset`, `getStatus` | `updateState` at state transitions |
-| [Dice](#dice) | 1×1 | `roll`, `getLastRoll` | Single d6, interactive entertainment |
+| [File Organizer](#file-organizer) | 2×2 | `getStatus`, `listFiles`, `createFolder`, `moveFile`, `readFileText`, `writeFile` | File System Access API |
+| [Chart](#chart) | 2×2 | `renderChart`, `exportChart`, `clear`, `getData` | LLM → visual data pipeline + image export |
+| [Timer](#timer) | 1×1 | `start`, `pause`, `reset`, `setTime`, `getStatus` | `updateState` at state transitions |
+| [Dice](#dice) | 1×1 | `roll(count?)`, `getLastRoll` | Multi-dice rolls, interactive entertainment |
 
 ---
 

@@ -9,14 +9,14 @@
 | MUP | Grid | 函式 | 展示能力 |
 |-----|------|------|---------|
 | [Counter](#counter-計數器) | 1×1 | `setCount`, `getCount` | 基礎雙向 function call |
-| [Pixel Art](#pixel-art-像素畫布) | 2×2 | `setPixels`, `clear`, `getGrid` | LLM 驅動的像素顯示 |
-| [Drum Machine](#drum-machine-鼓機) | 2×2 | `setPattern`, `setBPM`, `play`, `stop`, `clear`, `getState` | 複雜狀態 + Web Audio |
-| [Sticky Notes](#sticky-notes-便利貼) | 2×2 | `addNote`, `removeNote`, `editNote`, `getNotes`, `clearAll` | 完整 CRUD 操作 |
+| [Pixel Art](#pixel-art-像素畫布) | 2×2 | `setPixels`, `fillRect`, `clear`, `getGrid` | LLM 驅動的像素顯示 |
+| [Drum Machine](#drum-machine-鼓機) | 2×2 | `setPattern`, `toggleStep`, `setBPM`, `play`, `stop`, `clear`, `getState` | 複雜狀態 + Web Audio |
+| [Sticky Notes](#sticky-notes-便利貼) | 2×2 | `addNote`, `moveNote`, `removeNote`, `editNote`, `getNotes`, `clearAll` | 完整 CRUD + 位置控制 |
 | [Camera](#camera-相機) | 2×2 | `capturePhoto`, `startCamera`, `stopCamera` | 瀏覽器權限 + 多模態 `image` 內容 |
-| [File Organizer](#file-organizer-檔案管理) | 2×2 | `getStatus`, `listFiles`, `createFolder`, `moveFile`, `readFileText` | File System Access API |
-| [Chart](#chart-圖表) | 2×2 | `renderChart`, `clear`, `getData` | LLM → 視覺化資料管線 |
-| [Timer](#timer-計時器) | 1×1 | `start`, `pause`, `reset`, `getStatus` | 狀態轉換時 `updateState` |
-| [Dice](#dice-骰子) | 1×1 | `roll`, `getLastRoll` | 單顆 d6，互動娛樂 |
+| [File Organizer](#file-organizer-檔案管理) | 2×2 | `getStatus`, `listFiles`, `createFolder`, `moveFile`, `readFileText`, `writeFile` | File System Access API |
+| [Chart](#chart-圖表) | 2×2 | `renderChart`, `exportChart`, `clear`, `getData` | LLM → 視覺化資料管線 + 圖片匯出 |
+| [Timer](#timer-計時器) | 1×1 | `start`, `pause`, `reset`, `setTime`, `getStatus` | 狀態轉換時 `updateState` |
+| [Dice](#dice-骰子) | 1×1 | `roll(count?)`, `getLastRoll` | 多骰子投擲，互動娛樂 |
 
 ---
 

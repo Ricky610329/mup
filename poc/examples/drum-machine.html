@@ -52,6 +52,19 @@
         "name": "getState",
         "description": "Get current patterns, BPM, and playback status",
         "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "toggleStep",
+        "description": "Toggle a single step on or off for an instrument. Easier than setPattern when changing just one or a few steps.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "instrument": { "type": "string", "enum": ["kick", "snare", "hihat", "clap"] },
+            "step": { "type": "integer", "minimum": 0, "maximum": 15, "description": "Step index (0-15)" },
+            "on": { "type": "boolean", "description": "true = hit, false = silent. Omit to toggle current state." }
+          },
+          "required": ["instrument", "step"]
+        }
       }
     ]
   }
@@ -440,6 +453,17 @@
       updateAllUI();
       sendState();
       return { content: [{ type: 'text', text: 'All patterns cleared' }], isError: false };
+    });
+
+    mup.registerFunction('toggleStep', async (params) => {
+      const { instrument, step } = params;
+      if (!patterns[instrument]) return { content: [{ type: 'text', text: 'Unknown instrument: ' + instrument }], isError: true };
+      if (step < 0 || step >= STEPS) return { content: [{ type: 'text', text: 'Step must be 0-15' }], isError: true };
+      const newVal = params.on !== undefined ? params.on : !patterns[instrument][step];
+      patterns[instrument][step] = newVal;
+      updateStepUI(instrument, step);
+      sendState();
+      return { content: [{ type: 'text', text: `${instrument} step ${step}: ${newVal ? 'ON' : 'OFF'}` }], isError: false };
     });
 
     mup.registerFunction('getState', async () => {

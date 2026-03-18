@@ -33,6 +33,21 @@
         }
       },
       {
+        "name": "fillRect",
+        "description": "Fill a rectangle with a single color. More efficient than setPixels for solid shapes.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "integer", "minimum": 0, "maximum": 15, "description": "Left column" },
+            "y": { "type": "integer", "minimum": 0, "maximum": 15, "description": "Top row" },
+            "width": { "type": "integer", "minimum": 1, "maximum": 16 },
+            "height": { "type": "integer", "minimum": 1, "maximum": 16 },
+            "color": { "type": "string", "description": "CSS color" }
+          },
+          "required": ["x", "y", "width", "height", "color"]
+        }
+      },
+      {
         "name": "clear",
         "description": "Clear the entire canvas to white",
         "inputSchema": { "type": "object", "properties": {} }
@@ -146,6 +161,26 @@
       mup.updateState(describeGrid(), { coloredPixels: countColored() });
       return {
         content: [{ type: 'text', text: `Set ${pixels.length} pixel(s)` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('fillRect', async (params) => {
+      const { x, y, width, height, color } = params;
+      let count = 0;
+      for (let dy = 0; dy < height; dy++) {
+        for (let dx = 0; dx < width; dx++) {
+          const px = x + dx, py = y + dy;
+          if (px >= 0 && px < SIZE && py >= 0 && py < SIZE) {
+            setPixel(px, py, color);
+            count++;
+          }
+        }
+      }
+      render();
+      mup.updateState(describeGrid(), { coloredPixels: countColored() });
+      return {
+        content: [{ type: 'text', text: `Filled ${count} pixels (${width}×${height} at ${x},${y})` }],
         isError: false
       };
     });

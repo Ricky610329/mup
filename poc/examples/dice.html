@@ -12,10 +12,12 @@
     "functions": [
       {
         "name": "roll",
-        "description": "Roll the die. Returns the result (1-6).",
+        "description": "Roll the die one or more times. Returns each result (1-6) and the total.",
         "inputSchema": {
           "type": "object",
-          "properties": {}
+          "properties": {
+            "count": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Number of dice to roll (default 1)" }
+          }
         }
       },
       {
@@ -289,12 +291,21 @@
 
     // === MUP Functions ===
 
-    mup.registerFunction('roll', async () => {
-      const value = performRoll();
+    mup.registerFunction('roll', async (params) => {
+      const count = Math.max(1, Math.min(10, params.count || 1));
+      const results = [];
+      for (let i = 0; i < count; i++) {
+        results.push(performRoll());
+        if (i < count - 1) await new Promise(r => setTimeout(r, 300));
+      }
+      const total = results.reduce((a, b) => a + b, 0);
+      const text = count === 1
+        ? `Rolled a ${results[0]}`
+        : `Rolled ${count}d6: [${results.join(', ')}] = ${total}`;
       return {
         content: [
-          { type: 'text', text: `Rolled a ${value}` },
-          { type: 'data', data: { result: value } }
+          { type: 'text', text },
+          { type: 'data', data: { results, total } }
         ],
         isError: false
       };

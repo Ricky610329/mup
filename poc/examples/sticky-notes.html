@@ -7,19 +7,34 @@
   <script type="application/mup-manifest">
   {
     "name": "Sticky Notes",
-    "description": "A board of draggable sticky notes. Users can add, edit, move, and delete notes. LLM can add notes with specific text and color, remove notes, or read all notes. Great for brainstorming and organizing ideas.",
+    "description": "A board of draggable sticky notes for brainstorming, organizing ideas, or collecting information. Users add notes by clicking, edit inline, and drag to rearrange. LLM can add notes at specific positions, move notes to organize them, edit text and color, or read the entire board. Positions use percentage coordinates (0-100 for both x and y). Colors: yellow, pink, blue, green, purple, orange.",
     "grid": { "minWidth": 2, "minHeight": 2 },
     "functions": [
       {
         "name": "addNote",
-        "description": "Add a new sticky note to the board",
+        "description": "Add a new sticky note. Positions are percentages (0-100). Omit x/y for auto-placement.",
         "inputSchema": {
           "type": "object",
           "properties": {
             "text": { "type": "string", "description": "Note content" },
-            "color": { "type": "string", "enum": ["yellow", "pink", "blue", "green", "purple", "orange"], "description": "Note color" }
+            "color": { "type": "string", "enum": ["yellow", "pink", "blue", "green", "purple", "orange"], "description": "Note color" },
+            "x": { "type": "number", "description": "Horizontal position 0-100 (percentage)" },
+            "y": { "type": "number", "description": "Vertical position 0-100 (percentage)" }
           },
           "required": ["text"]
+        }
+      },
+      {
+        "name": "moveNote",
+        "description": "Move a note to a new position. Use this to organize or group related notes together.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "x": { "type": "number", "description": "Horizontal position 0-100 (percentage)" },
+            "y": { "type": "number", "description": "Vertical position 0-100 (percentage)" }
+          },
+          "required": ["id", "x", "y"]
         }
       },
       {
@@ -35,25 +50,39 @@
       },
       {
         "name": "editNote",
-        "description": "Change the text of an existing note",
+        "description": "Change the text and/or color of an existing note",
         "inputSchema": {
           "type": "object",
           "properties": {
             "id": { "type": "string" },
-            "text": { "type": "string" }
+            "text": { "type": "string" },
+            "color": { "type": "string", "enum": ["yellow", "pink", "blue", "green", "purple", "orange"] }
           },
-          "required": ["id", "text"]
+          "required": ["id"]
         }
       },
       {
         "name": "getNotes",
-        "description": "Get all notes on the board with their IDs, text, and colors",
+        "description": "Get all notes on the board with their IDs, text, colors, and positions",
         "inputSchema": { "type": "object", "properties": {} }
       },
       {
         "name": "clearAll",
         "description": "Remove all notes from the board",
         "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setNotifications",
+        "description": "Configure which user actions trigger notifications to the LLM. Defaults: move=false, edit=true, delete=true, add=true.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "move": { "type": "boolean", "description": "Notify when user drags a note" },
+            "edit": { "type": "boolean", "description": "Notify when user edits note text" },
+            "delete": { "type": "boolean", "description": "Notify when user deletes a note" },
+            "add": { "type": "boolean", "description": "Notify when user clicks to add a note" }
+          }
+        }
       }
     ]
   }
@@ -89,19 +118,23 @@
 
     .note {
       position: absolute;
-      width: 160px;
-      min-height: 80px;
+      width: clamp(110px, 30%, 160px);
+      min-height: 60px;
       border-radius: 4px;
-      padding: 28px 12px 12px;
-      font-size: 13px;
+      padding: 24px 10px 10px;
+      font-size: 12px;
       line-height: 1.5;
       cursor: grab;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      transition: box-shadow 0.15s, transform 0.1s;
+      transition: box-shadow 0.15s, transform 0.1s, left 0.3s ease, top 0.3s ease;
       overflow-wrap: break-word;
     }
     .note:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
-    .note.dragging { cursor: grabbing; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transform: rotate(2deg) scale(1.03); z-index: 100; }
+    .note.dragging {
+      cursor: grabbing; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      transform: rotate(2deg) scale(1.03); z-index: 100;
+      transition: box-shadow 0.15s, transform 0.1s;
+    }
 
     .note-text {
       outline: none;
@@ -159,17 +192,27 @@
     let nextId = 1;
     let colorIndex = 0;
 
+    // Notification preferences — MUP author sets defaults, LLM can adjust
+    let notifySettings = { move: false, edit: true, delete: true, add: true };
+
     const board = document.getElementById('board');
     const hint = document.getElementById('hint');
+
+    // Percentage to pixel conversion
+    function pctToX(pct) { return (pct / 100) * board.clientWidth; }
+    function pctToY(pct) { return (pct / 100) * board.clientHeight; }
+    function xToPct(px) { return (px / board.clientWidth) * 100; }
+    function yToPct(py) { return (py / board.clientHeight) * 100; }
 
     // Click on empty space to add note
     board.addEventListener('click', (e) => {
       if (e.target !== board) return;
       const rect = board.getBoundingClientRect();
-      const x = Math.min(e.clientX - rect.left, rect.width - 170);
-      const y = Math.min(e.clientY - rect.top, rect.height - 90);
+      const noteW = Math.min(160, rect.width * 0.3);
+      const px = Math.min(e.clientX - rect.left, rect.width - noteW - 10);
+      const py = Math.min(e.clientY - rect.top, rect.height - 70);
       const color = COLORS[colorIndex++ % COLORS.length];
-      const note = createNote('', color, Math.max(8, x), Math.max(8, y));
+      const note = createNote('', color, xToPct(Math.max(8, px)), yToPct(Math.max(8, py)));
       // Focus for editing
       setTimeout(() => {
         const textEl = note.el.querySelector('.note-text');
@@ -177,19 +220,19 @@
       }, 50);
     });
 
-    function createNote(text, color, x, y) {
+    function createNote(text, color, xPct, yPct) {
       const id = 'n' + nextId++;
       color = color || 'yellow';
-      x = x ?? 20 + Math.random() * 200;
-      y = y ?? 20 + Math.random() * 200;
+      xPct = xPct ?? (5 + Math.random() * 60);
+      yPct = yPct ?? (5 + Math.random() * 60);
 
-      const note = { id, text, color, x, y };
+      const note = { id, text, color, xPct, yPct };
       notes.push(note);
 
       const el = document.createElement('div');
       el.className = `note ${color}`;
-      el.style.left = x + 'px';
-      el.style.top = y + 'px';
+      el.style.left = pctToX(xPct) + 'px';
+      el.style.top = pctToY(yPct) + 'px';
       el.dataset.id = id;
 
       el.innerHTML = `
@@ -199,27 +242,29 @@
       `;
 
       // Drag
-      let dragging = false, startX, startY, origX, origY;
+      let dragging = false, startX, startY, origPx, origPy;
       el.addEventListener('pointerdown', (e) => {
         if (e.target.classList.contains('note-text') || e.target.classList.contains('note-delete')) return;
         dragging = true;
         el.classList.add('dragging');
         startX = e.clientX; startY = e.clientY;
-        origX = note.x; origY = note.y;
+        origPx = pctToX(note.xPct); origPy = pctToY(note.yPct);
         el.setPointerCapture(e.pointerId);
       });
       el.addEventListener('pointermove', (e) => {
         if (!dragging) return;
-        note.x = origX + (e.clientX - startX);
-        note.y = origY + (e.clientY - startY);
-        el.style.left = note.x + 'px';
-        el.style.top = note.y + 'px';
+        const newPx = origPx + (e.clientX - startX);
+        const newPy = origPy + (e.clientY - startY);
+        el.style.left = newPx + 'px';
+        el.style.top = newPy + 'px';
+        note.xPct = xToPct(newPx);
+        note.yPct = yToPct(newPy);
       });
       el.addEventListener('pointerup', () => {
         if (!dragging) return;
         dragging = false;
         el.classList.remove('dragging');
-        mup.notifyInteraction('move', `User moved note "${note.text.slice(0, 30)}"`, { id: note.id });
+        if (notifySettings.move) mup.notifyInteraction('move', `User moved note "${note.text.slice(0, 30)}" to (${Math.round(note.xPct)}%, ${Math.round(note.yPct)}%)`, { id: note.id, x: Math.round(note.xPct), y: Math.round(note.yPct) });
       });
 
       // Delete
@@ -235,7 +280,7 @@
         if (newText !== note.text) {
           note.text = newText;
           if (newText) {
-            mup.notifyInteraction('edit', `User wrote: "${newText.slice(0, 50)}"`, { id: note.id, text: newText });
+            if (notifySettings.edit) mup.notifyInteraction('edit', `User wrote: "${newText.slice(0, 50)}"`, { id: note.id, text: newText });
           }
         }
       });
@@ -250,6 +295,13 @@
       return note;
     }
 
+    function moveNoteToPosition(note, xPct, yPct) {
+      note.xPct = xPct;
+      note.yPct = yPct;
+      note.el.style.left = pctToX(xPct) + 'px';
+      note.el.style.top = pctToY(yPct) + 'px';
+    }
+
     function removeNoteById(id, notify) {
       const idx = notes.findIndex(n => n.id === id);
       if (idx === -1) return false;
@@ -259,7 +311,7 @@
       updateHint();
       sendNoteState();
       if (notify) {
-        mup.notifyInteraction('delete', `User deleted note "${note.text.slice(0, 30)}"`, { id });
+        if (notifySettings.delete) mup.notifyInteraction('delete', `User deleted note "${note.text.slice(0, 30)}"`, { id });
       }
       return true;
     }
@@ -277,12 +329,37 @@
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
+    // Reposition notes on resize
+    const resizeObserver = new ResizeObserver(() => {
+      for (const note of notes) {
+        note.el.style.left = pctToX(note.xPct) + 'px';
+        note.el.style.top = pctToY(note.yPct) + 'px';
+      }
+    });
+    resizeObserver.observe(board);
+
     // === MUP Functions ===
 
     mup.registerFunction('addNote', async (params) => {
-      const note = createNote(params.text || '', params.color || 'yellow');
+      const note = createNote(
+        params.text || '',
+        params.color || 'yellow',
+        params.x,
+        params.y
+      );
       return {
-        content: [{ type: 'text', text: `Added note ${note.id}: "${note.text.slice(0, 40)}"` }],
+        content: [{ type: 'text', text: `Added note ${note.id}: "${note.text.slice(0, 40)}" at (${Math.round(note.xPct)}%, ${Math.round(note.yPct)}%)` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('moveNote', async (params) => {
+      const note = notes.find(n => n.id === params.id);
+      if (!note) return { content: [{ type: 'text', text: `Note ${params.id} not found` }], isError: true };
+      moveNoteToPosition(note, params.x, params.y);
+      sendNoteState();
+      return {
+        content: [{ type: 'text', text: `Moved note ${params.id} to (${Math.round(params.x)}%, ${Math.round(params.y)}%)` }],
         isError: false
       };
     });
@@ -298,16 +375,23 @@
     mup.registerFunction('editNote', async (params) => {
       const note = notes.find(n => n.id === params.id);
       if (!note) return { content: [{ type: 'text', text: `Note ${params.id} not found` }], isError: true };
-      note.text = params.text;
-      note.el.querySelector('.note-text').textContent = params.text;
+      if (params.text !== undefined) {
+        note.text = params.text;
+        note.el.querySelector('.note-text').textContent = params.text;
+      }
+      if (params.color && COLORS.includes(params.color)) {
+        note.el.classList.remove(note.color);
+        note.color = params.color;
+        note.el.classList.add(params.color);
+      }
       return { content: [{ type: 'text', text: `Updated note ${params.id}` }], isError: false };
     });
 
     mup.registerFunction('getNotes', async () => {
-      const data = notes.map(n => ({ id: n.id, text: n.text, color: n.color }));
+      const data = notes.map(n => ({ id: n.id, text: n.text, color: n.color, x: Math.round(n.xPct), y: Math.round(n.yPct) }));
       const summary = notes.length === 0
         ? 'Board is empty'
-        : `${notes.length} note(s): ${notes.map(n => `[${n.id}] "${n.text.slice(0, 25)}"`).join(', ')}`;
+        : `${notes.length} note(s): ${notes.map(n => `[${n.id}] "${n.text.slice(0, 25)}" (${n.color}, ${Math.round(n.xPct)}%,${Math.round(n.yPct)}%)`).join(', ')}`;
       return {
         content: [
           { type: 'text', text: summary },
@@ -320,6 +404,18 @@
     mup.registerFunction('clearAll', async () => {
       while (notes.length > 0) removeNoteById(notes[0].id, false);
       return { content: [{ type: 'text', text: 'All notes cleared' }], isError: false };
+    });
+
+    mup.registerFunction('setNotifications', async (params) => {
+      if (params.move !== undefined) notifySettings.move = params.move;
+      if (params.edit !== undefined) notifySettings.edit = params.edit;
+      if (params.delete !== undefined) notifySettings.delete = params.delete;
+      if (params.add !== undefined) notifySettings.add = params.add;
+      const active = Object.entries(notifySettings).filter(([, v]) => v).map(([k]) => k);
+      return {
+        content: [{ type: 'text', text: `Notifications: ${active.length ? active.join(', ') : 'all off'}` }],
+        isError: false
+      };
     });
 
     mup.onReady((params) => {

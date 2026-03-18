@@ -20,6 +20,12 @@ export class HostRuntime {
   private containers = new Map<string, MupContainer>();
   private appEl: HTMLElement;
 
+  // Agent loop state
+  private agentRunning = false;
+  private interactionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly MAX_TOOL_ROUNDS = 15;
+  private static readonly INTERACTION_DEBOUNCE_MS = 800;
+
   constructor(
     chatContainer: HTMLElement,
     gridContainer: HTMLElement,
@@ -262,18 +268,34 @@ export class HostRuntime {
   }
 
   private setupChatHandler(): void {
-    this.chat.onMessage(async (text) => {
-      this.chat.setLoading(true);
+    this.chat.onMessage(async (_text) => {
+      await this.runAgentLoop();
+    });
+  }
 
-      try {
-        const messages = this.chat.getMessages().map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
+  /**
+   * Core agent loop: send conversation to LLM, execute any tool calls,
+   * feed results back, repeat until LLM has nothing left to do.
+   * Prevents concurrent runs — if already running, the interaction
+   * will be picked up in the next LLM turn automatically (it's in the messages).
+   */
+  private async runAgentLoop(): Promise<void> {
+    if (this.agentRunning) return;
+    this.agentRunning = true;
+    this.chat.setLoading(true);
 
-        const tools = this.bridge.getToolDefinitions();
-        const response = await this.llm.chat(messages, tools);
+    try {
+      const tools = this.bridge.getToolDefinitions();
+      const messages = this.chat.getMessages().map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
 
+      let response = await this.llm.chat(messages, tools);
+      let rounds = 0;
+
+      while (rounds < HostRuntime.MAX_TOOL_ROUNDS) {
+        // Display any text the LLM produced
         if (response.text) {
           this.chat.addMessage({
             role: "assistant",
@@ -282,49 +304,58 @@ export class HostRuntime {
           });
         }
 
-        if (response.toolCalls) {
-          await this.executeToolCalls(response.toolCalls, messages, tools);
+        // No tool calls → agent is done
+        if (!response.toolCalls || response.toolCalls.length === 0) break;
+
+        // Execute all tool calls in this round
+        for (const call of response.toolCalls) {
+          this.chat.addMessage({
+            role: "system",
+            content: `Calling ${call.toolName}...`,
+            timestamp: Date.now(),
+          });
+
+          const result = await this.bridge.routeToolCall(call.toolName, call.arguments);
+
+          // Feed result back and get next response
+          response = await this.llm.feedToolResult(messages, tools, call.toolName, result);
         }
-      } catch (err) {
+
+        rounds++;
+      }
+
+      if (rounds >= HostRuntime.MAX_TOOL_ROUNDS) {
         this.chat.addMessage({
           role: "system",
-          content: `Error: ${(err as Error).message}`,
+          content: `Agent stopped: reached ${HostRuntime.MAX_TOOL_ROUNDS} tool rounds.`,
           timestamp: Date.now(),
         });
-      } finally {
-        this.chat.setLoading(false);
       }
-    });
-  }
-
-  private async executeToolCalls(
-    toolCalls: { toolName: string; arguments: Record<string, unknown> }[],
-    messages: { role: "user" | "assistant" | "system"; content: string }[],
-    tools: ReturnType<LLMBridge["getToolDefinitions"]>
-  ): Promise<void> {
-    for (const call of toolCalls) {
+    } catch (err) {
       this.chat.addMessage({
         role: "system",
-        content: `Calling ${call.toolName}...`,
+        content: `Error: ${(err as Error).message}`,
         timestamp: Date.now(),
       });
-
-      const result = await this.bridge.routeToolCall(call.toolName, call.arguments);
-
-      const followUp = await this.llm.feedToolResult(messages, tools, call.toolName, result);
-
-      if (followUp.text) {
-        this.chat.addMessage({
-          role: "assistant",
-          content: followUp.text,
-          timestamp: Date.now(),
-        });
-      }
-
-      if (followUp.toolCalls) {
-        await this.executeToolCalls(followUp.toolCalls, messages, tools);
-      }
+    } finally {
+      this.agentRunning = false;
+      this.chat.setLoading(false);
     }
+  }
+
+  /**
+   * When a MUP reports a user interaction, debounce and auto-trigger
+   * the agent loop so the LLM can react without waiting for user to type.
+   */
+  private scheduleAgentFromInteraction(): void {
+    if (this.interactionDebounceTimer) clearTimeout(this.interactionDebounceTimer);
+    this.interactionDebounceTimer = setTimeout(() => {
+      this.interactionDebounceTimer = null;
+      // Only auto-trigger if there are messages (conversation started)
+      if (this.chat.getMessages().length > 0) {
+        this.runAgentLoop();
+      }
+    }, HostRuntime.INTERACTION_DEBOUNCE_MS);
   }
 
   /** Handle requests from MUPs */
@@ -352,6 +383,8 @@ export class HostRuntime {
       const name = mup?.manifest.name ?? mupId;
       const interaction = params as { action: string; summary: string };
       this.chat.addEventBadge(name, interaction.summary);
+      // Auto-trigger agent loop so LLM can react to user interaction
+      this.scheduleAgentFromInteraction();
     });
   }
 }

@@ -55,6 +55,18 @@
           "properties": { "path": { "type": "string" } },
           "required": ["path"]
         }
+      },
+      {
+        "name": "writeFile",
+        "description": "Write text content to a file. Creates the file if it doesn't exist, overwrites if it does.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "Relative file path" },
+            "content": { "type": "string", "description": "Text content to write" }
+          },
+          "required": ["path", "content"]
+        }
       }
     ]
   }
@@ -324,6 +336,21 @@
         if (file.size > 1048576) return { content: [{ type: 'text', text: 'File too large (max 1MB). Size: ' + fmtSize(file.size) }], isError: true };
         const text = await file.text();
         return { content: [{ type: 'text', text: text.slice(0, 5000) + (text.length > 5000 ? '\n...(truncated)' : '') }], isError: false };
+      } catch (e) { return { content: [{ type: 'text', text: 'Error: ' + e.message }], isError: true }; }
+    });
+
+    mup.registerFunction('writeFile', async (params) => {
+      if (!rootHandle) return { content: [{ type: 'text', text: 'No folder open.' }], isError: true };
+      try {
+        const parts = params.path.split('/').filter(Boolean);
+        let dir = rootHandle;
+        for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p, { create: true });
+        const fh = await dir.getFileHandle(parts.at(-1), { create: true });
+        const writable = await fh.createWritable();
+        await writable.write(params.content);
+        await writable.close();
+        await refresh();
+        return { content: [{ type: 'text', text: `Wrote ${params.content.length} chars to ${params.path}` }], isError: false };
       } catch (e) { return { content: [{ type: 'text', text: 'Error: ' + e.message }], isError: true }; }
     });
 
