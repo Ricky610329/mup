@@ -241,10 +241,39 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
 
   // ---- MUP interaction → steer ----
 
+  // ---- MUP interaction handling ----
+  // "discuss" actions trigger agent immediately (user explicitly wants AI response)
+  // Other actions are debounced and only steer (don't start new loops)
+  let interactionDebounce: ReturnType<typeof setTimeout> | null = null;
+  const INTERACTION_DEBOUNCE_MS = 3000;
+
   bridge.on("interaction", (_mupId: string, _action: string, summary: string) => {
     const mup = manager.get(_mupId);
     const name = mup?.manifest.name ?? _mupId;
-    agent.steer({ role: "user", content: `[${name}] User: ${summary}`, timestamp: Date.now() } as AgentMessage);
+    const content = `[${name}] User: ${summary}`;
+
+    // Explicit "discuss" action → immediate prompt
+    if (_action === "discuss") {
+      agent.prompt({ role: "user", content, timestamp: Date.now() } as AgentMessage).catch(err => {
+        console.error("[mup-agent] Discuss prompt error:", err);
+      });
+      return;
+    }
+
+    // Other interactions → steer if running, debounced followUp if idle
+    if (agent.state.isStreaming) {
+      agent.steer({ role: "user", content, timestamp: Date.now() } as AgentMessage);
+    } else {
+      // Debounce: collapse rapid interactions into one
+      if (interactionDebounce) clearTimeout(interactionDebounce);
+      interactionDebounce = setTimeout(() => {
+        interactionDebounce = null;
+        // Only followUp if there are messages (conversation started)
+        if (agent.state.messages.length > 0) {
+          agent.followUp({ role: "user", content, timestamp: Date.now() } as AgentMessage);
+        }
+      }, INTERACTION_DEBOUNCE_MS);
+    }
   });
 
   // ---- Chat ----
