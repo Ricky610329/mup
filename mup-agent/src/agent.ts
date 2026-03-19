@@ -139,16 +139,11 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
       if (manager.isActive(mupId)) {
         return { content: [{ type: "text", text: `${mupId} is already active.` }], details: null };
       }
-      const loaded = manager.activate(mupId);
-      if (!loaded) {
+      const name = doActivateMup(mupId);
+      if (!name) {
         return { content: [{ type: "text", text: `MUP not found: ${mupId}` }], details: null };
       }
-      bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
-      // Rebuild tools to include the new MUP's functions
-      const newTools = [...buildMupTools(manager, bridge), activateMupTool];
-      agent.setTools(newTools);
-      agent.setSystemPrompt(buildSystemPrompt(manager));
-      return { content: [{ type: "text", text: `Activated ${loaded.manifest.name}. Its functions are now available.` }], details: null };
+      return { content: [{ type: "text", text: `Activated ${name}. Its functions are now available.` }], details: null };
     },
   };
 
@@ -239,41 +234,35 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
     }
   });
 
-  // ---- MUP interaction → steer ----
+  // ---- Helper: rebuild tools + system prompt after MUP changes ----
 
-  // ---- MUP interaction handling ----
-  // "discuss" actions trigger agent immediately (user explicitly wants AI response)
-  // Other actions are debounced and only steer (don't start new loops)
-  let interactionDebounce: ReturnType<typeof setTimeout> | null = null;
-  const INTERACTION_DEBOUNCE_MS = 3000;
+  function refreshAgentTools() {
+    agent.setTools([...buildMupTools(manager, bridge), activateMupTool]);
+    agent.setSystemPrompt(buildSystemPrompt(manager));
+  }
 
+  // Shared activate logic (used by both LLM tool and browser UI)
+  function doActivateMup(mupId: string): string | null {
+    if (manager.isActive(mupId)) return null;
+    const loaded = manager.activate(mupId);
+    if (!loaded) return null;
+    bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
+    refreshAgentTools();
+    return loaded.manifest.name;
+  }
+
+  // ---- MUP interaction ----
+  // "discuss" triggers agent immediately; other interactions are ignored when idle
   bridge.on("interaction", (_mupId: string, _action: string, summary: string) => {
-    const mup = manager.get(_mupId);
-    const name = mup?.manifest.name ?? _mupId;
+    const name = manager.get(_mupId)?.manifest.name ?? _mupId;
     const content = `[${name}] User: ${summary}`;
 
-    // Explicit "discuss" action → immediate prompt
     if (_action === "discuss") {
-      agent.prompt({ role: "user", content, timestamp: Date.now() } as AgentMessage).catch(err => {
-        console.error("[mup-agent] Discuss prompt error:", err);
-      });
-      return;
-    }
-
-    // Other interactions → steer if running, debounced followUp if idle
-    if (agent.state.isStreaming) {
+      agent.prompt({ role: "user", content, timestamp: Date.now() } as AgentMessage).catch(() => {});
+    } else if (agent.state.isStreaming) {
       agent.steer({ role: "user", content, timestamp: Date.now() } as AgentMessage);
-    } else {
-      // Debounce: collapse rapid interactions into one
-      if (interactionDebounce) clearTimeout(interactionDebounce);
-      interactionDebounce = setTimeout(() => {
-        interactionDebounce = null;
-        // Only followUp if there are messages (conversation started)
-        if (agent.state.messages.length > 0) {
-          agent.followUp({ role: "user", content, timestamp: Date.now() } as AgentMessage);
-        }
-      }, INTERACTION_DEBOUNCE_MS);
     }
+    // Other interactions when idle: ignored (user must chat to trigger agent)
   });
 
   // ---- Chat ----
@@ -283,7 +272,6 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
     try {
       await agent.prompt(text);
     } catch (err) {
-      console.error(`[mup-agent] Prompt error:`, err);
       bridge.sendChat({ type: "chat-message", role: "system", content: `Error: ${(err as Error).message}` });
     }
   });
@@ -293,34 +281,19 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
     agent.clearAllQueues();
   });
 
-  // ---- MUP activation ----
+  // ---- MUP activation (from browser UI) ----
 
-  bridge.on("activate-mup", (mupId: string) => {
-    if (manager.isActive(mupId)) return;
-    const loaded = manager.activate(mupId);
-    if (!loaded) return;
-    console.error(`[mup-agent] Activating: ${loaded.manifest.name}`);
-    bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
-    agent.setTools([...buildMupTools(manager, bridge), activateMupTool]);
-    agent.setSystemPrompt(buildSystemPrompt(manager));
-  });
+  bridge.on("activate-mup", (mupId: string) => doActivateMup(mupId));
 
   bridge.on("deactivate-mup", (mupId: string) => {
-    console.error(`[mup-agent] Deactivating: ${manager.get(mupId)?.manifest.name ?? mupId}`);
     manager.deactivate(mupId);
-    agent.setTools([...buildMupTools(manager, bridge), activateMupTool]);
-    agent.setSystemPrompt(buildSystemPrompt(manager));
+    refreshAgentTools();
   });
 
   bridge.on("register-and-activate", (mupId: string, html: string, fileName: string) => {
     try {
       manager.loadFromHtml(html, fileName);
-      const loaded = manager.get(mupId);
-      if (loaded) {
-        bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
-        agent.setTools([...buildMupTools(manager, bridge), activateMupTool]);
-        agent.setSystemPrompt(buildSystemPrompt(manager));
-      }
+      doActivateMup(mupId);
     } catch (err) {
       console.error(`[mup-agent] Failed to register: ${(err as Error).message}`);
     }
