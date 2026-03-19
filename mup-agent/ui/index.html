@@ -1104,24 +1104,15 @@ function loadMup(mupId, html, manifest, savedState) {
     pendingMups.push({ mupId, html, manifest, savedState });
     return;
   }
-  const w = Math.min(manifest.grid?.preferredWidth || manifest.grid?.minWidth || 1, MAX_COLS);
-  const h = manifest.grid?.preferredHeight || manifest.grid?.minHeight || 1;
-  const minW = manifest.grid?.minWidth || 1;
-  const minH = manifest.grid?.minHeight || 1;
-
-  // Clamp to max 2x2
-  const cw = Math.min(w, 2);
-  const ch = Math.min(h, 2);
+  // All MUPs start at 1×1, user resizes as needed
 
   // Build DOM element with gs- attributes for gridstack v12
   const el = document.createElement('div');
   el.classList.add('grid-stack-item');
-  el.setAttribute('gs-w', cw);
-  el.setAttribute('gs-h', ch);
+  el.setAttribute('gs-w', '1');
+  el.setAttribute('gs-h', '1');
   el.setAttribute('gs-min-w', '1');
   el.setAttribute('gs-min-h', '1');
-  el.setAttribute('gs-max-w', '2');
-  el.setAttribute('gs-max-h', '2');
   el.setAttribute('gs-auto-position', 'true');
   el.setAttribute('gs-id', mupId);
   el.innerHTML = `
