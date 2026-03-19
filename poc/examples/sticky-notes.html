@@ -7,8 +7,8 @@
   <script type="application/mup-manifest">
   {
     "name": "Sticky Notes",
-    "description": "A board of draggable sticky notes for brainstorming, organizing ideas, or collecting information. Users add notes by clicking, edit inline, and drag to rearrange. LLM can add notes at specific positions, move notes to organize them, edit text and color, or read the entire board. Positions use percentage coordinates (0-100 for both x and y). Colors: yellow, pink, blue, green, purple, orange.",
-    "grid": { "minWidth": 2, "minHeight": 2 },
+    "description": "A board of draggable sticky notes for brainstorming, organizing ideas, or collecting information. Users add notes by clicking, edit inline, and drag to rearrange. LLM can add notes at specific positions, move notes to organize them, edit text and color, or read the entire board. Positions use percentage coordinates (0-100 for both x and y). Each note is roughly 30% wide and 20% tall, so a 3-column layout uses x values around 2, 35, 68 and rows use y values spaced by ~25. Colors: yellow, pink, blue, green, purple, orange.",
+    "grid": { "minWidth": 1, "minHeight": 1 },
     "functions": [
       {
         "name": "addNote",
@@ -193,7 +193,7 @@
     let colorIndex = 0;
 
     // Notification preferences — MUP author sets defaults, LLM can adjust
-    let notifySettings = { move: false, edit: true, delete: true, add: true };
+    let notifySettings = { move: false, edit: false, delete: false, add: false };
 
     const board = document.getElementById('board');
     const hint = document.getElementById('hint');

@@ -22,9 +22,10 @@ export class HostRuntime {
 
   // Agent loop state
   private agentRunning = false;
+  private pendingRerun = false;
   private interactionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly MAX_TOOL_ROUNDS = 15;
-  private static readonly INTERACTION_DEBOUNCE_MS = 800;
+  private static readonly INTERACTION_DEBOUNCE_MS = 2000;
 
   constructor(
     chatContainer: HTMLElement,
@@ -276,11 +277,16 @@ export class HostRuntime {
   /**
    * Core agent loop: send conversation to LLM, execute any tool calls,
    * feed results back, repeat until LLM has nothing left to do.
-   * Prevents concurrent runs — if already running, the interaction
-   * will be picked up in the next LLM turn automatically (it's in the messages).
+   *
+   * If called while already running, marks a pending rerun so that when
+   * the current run finishes it immediately starts again — picking up
+   * any messages/interactions that arrived in the meantime.
    */
   private async runAgentLoop(): Promise<void> {
-    if (this.agentRunning) return;
+    if (this.agentRunning) {
+      this.pendingRerun = true;
+      return;
+    }
     this.agentRunning = true;
     this.chat.setLoading(true);
 
@@ -295,7 +301,6 @@ export class HostRuntime {
       let rounds = 0;
 
       while (rounds < HostRuntime.MAX_TOOL_ROUNDS) {
-        // Display any text the LLM produced
         if (response.text) {
           this.chat.addMessage({
             role: "assistant",
@@ -304,10 +309,8 @@ export class HostRuntime {
           });
         }
 
-        // No tool calls → agent is done
         if (!response.toolCalls || response.toolCalls.length === 0) break;
 
-        // Execute all tool calls in this round
         for (const call of response.toolCalls) {
           this.chat.addMessage({
             role: "system",
@@ -316,8 +319,6 @@ export class HostRuntime {
           });
 
           const result = await this.bridge.routeToolCall(call.toolName, call.arguments);
-
-          // Feed result back and get next response
           response = await this.llm.feedToolResult(messages, tools, call.toolName, result);
         }
 
@@ -340,6 +341,12 @@ export class HostRuntime {
     } finally {
       this.agentRunning = false;
       this.chat.setLoading(false);
+
+      // If new signals arrived while we were running, start another round
+      if (this.pendingRerun) {
+        this.pendingRerun = false;
+        this.runAgentLoop();
+      }
     }
   }
 
