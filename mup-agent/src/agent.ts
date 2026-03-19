@@ -7,6 +7,7 @@ import type {
 } from "@mariozechner/pi-agent-core";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 import { getModel, getEnvApiKey } from "@mariozechner/pi-ai";
 import type { Model, KnownProvider } from "@mariozechner/pi-ai";
 import { loadSettings, saveSettings, type AgentSettings } from "./settings.js";
@@ -272,6 +273,24 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
         case "webSearch":
           result = await webSearch(params?.query || "");
           break;
+        case "fetchUrl":
+          result = await fetchUrl(params?.url || "", params?.maxBytes);
+          break;
+        case "workspace.list":
+          result = workspaceList(params?.path);
+          break;
+        case "workspace.read":
+          result = workspaceRead(params?.path, params?.offset, params?.limit, params?.encoding);
+          break;
+        case "workspace.write":
+          result = workspaceWrite(params?.path, params?.content, params?.encoding);
+          break;
+        case "workspace.delete":
+          result = workspaceDelete(params?.path);
+          break;
+        case "workspace.info":
+          result = workspaceInfo(params?.path);
+          break;
         default:
           bridge.sendRaw({ type: "system-response", requestId, error: `Unknown system action: ${action}` });
           return;
@@ -372,6 +391,153 @@ async function webSearch(query: string): Promise<{ results: Array<{ title: strin
   }
 
   return { results };
+}
+
+// ---- Workspace (file operations in ~/.mup-agent/workspace/) ----
+
+const WORKSPACE_DIR = path.join(os.homedir(), ".mup-agent", "workspace");
+
+function ensureWorkspace() {
+  fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+}
+
+function resolveWorkspacePath(relPath?: string): string {
+  const resolved = path.resolve(WORKSPACE_DIR, relPath || ".");
+  // Prevent path traversal
+  if (!resolved.startsWith(WORKSPACE_DIR)) {
+    throw new Error("Path outside workspace");
+  }
+  return resolved;
+}
+
+function workspaceList(relPath?: string) {
+  ensureWorkspace();
+  const dir = resolveWorkspacePath(relPath);
+  if (!fs.existsSync(dir)) return { files: [], path: relPath || "." };
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = entries.map(e => {
+    const full = path.join(dir, e.name);
+    const stat = fs.statSync(full);
+    return {
+      name: e.name,
+      type: e.isDirectory() ? "folder" : "file",
+      size: stat.size,
+      modified: stat.mtimeMs,
+      extension: e.isFile() ? path.extname(e.name).slice(1) : undefined,
+    };
+  });
+  return { files, path: relPath || "." };
+}
+
+function workspaceInfo(relPath?: string) {
+  ensureWorkspace();
+  const full = resolveWorkspacePath(relPath);
+  if (!fs.existsSync(full)) return { exists: false, path: relPath };
+  const stat = fs.statSync(full);
+  const isFile = stat.isFile();
+  const result: any = {
+    exists: true,
+    path: relPath,
+    type: isFile ? "file" : "folder",
+    size: stat.size,
+    modified: stat.mtimeMs,
+  };
+  if (isFile) {
+    result.extension = path.extname(full).slice(1);
+    result.sizeKB = Math.round(stat.size / 1024 * 10) / 10;
+    // Preview: first few lines for text files
+    const ext = result.extension.toLowerCase();
+    const textExts = ["txt", "csv", "json", "md", "html", "xml", "js", "ts", "py", "yaml", "yml", "log", "tsv"];
+    if (textExts.includes(ext) && stat.size < 1_000_000) {
+      const content = fs.readFileSync(full, "utf-8");
+      const lines = content.split("\n");
+      result.totalLines = lines.length;
+      result.preview = lines.slice(0, 5).join("\n");
+      if (ext === "csv" || ext === "tsv") {
+        result.columns = lines[0]?.split(ext === "csv" ? "," : "\t").map(c => c.trim());
+      }
+    }
+  }
+  return result;
+}
+
+function workspaceRead(relPath?: string, offset?: number, limit?: number, encoding?: string) {
+  ensureWorkspace();
+  if (!relPath) throw new Error("Path required");
+  const full = resolveWorkspacePath(relPath);
+  if (!fs.existsSync(full)) throw new Error("File not found: " + relPath);
+
+  const stat = fs.statSync(full);
+  if (stat.isDirectory()) throw new Error("Cannot read a directory");
+
+  // Smart reading: offset/limit in lines for text, bytes for binary
+  const text = fs.readFileSync(full, "utf-8");
+  const lines = text.split("\n");
+  const start = offset || 0;
+  const count = limit || 100; // default: 100 lines
+  const slice = lines.slice(start, start + count);
+  return {
+    content: slice.join("\n"),
+    totalLines: lines.length,
+    offset: start,
+    limit: count,
+    hasMore: start + count < lines.length,
+    sizeBytes: stat.size,
+  };
+}
+
+function workspaceWrite(relPath?: string, content?: string, encoding?: string) {
+  ensureWorkspace();
+  if (!relPath) throw new Error("Path required");
+  if (content === undefined) throw new Error("Content required");
+  const full = resolveWorkspacePath(relPath);
+  // Create parent dirs
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  if (encoding === "base64") {
+    fs.writeFileSync(full, Buffer.from(content, "base64"));
+  } else {
+    fs.writeFileSync(full, content, "utf-8");
+  }
+  const stat = fs.statSync(full);
+  return { written: true, path: relPath, size: stat.size };
+}
+
+function workspaceDelete(relPath?: string) {
+  ensureWorkspace();
+  if (!relPath) throw new Error("Path required");
+  const full = resolveWorkspacePath(relPath);
+  if (!fs.existsSync(full)) throw new Error("Not found: " + relPath);
+  fs.rmSync(full, { recursive: true });
+  return { deleted: true, path: relPath };
+}
+
+async function fetchUrl(url: string, maxBytes?: number): Promise<any> {
+  if (!url) throw new Error("URL required");
+  const resp = await fetch(url, {
+    headers: { "User-Agent": "MUP-Agent/0.1" },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+
+  const contentType = resp.headers.get("content-type") || "";
+  const isText = contentType.includes("text") || contentType.includes("json") || contentType.includes("csv") || contentType.includes("xml");
+
+  if (isText) {
+    let text = await resp.text();
+    const max = maxBytes || 100_000;
+    const truncated = text.length > max;
+    if (truncated) text = text.slice(0, max);
+    return { content: text, contentType, size: text.length, truncated };
+  } else {
+    // Binary: save to workspace
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    const urlPath = new URL(url).pathname;
+    const fileName = path.basename(urlPath) || "download";
+    ensureWorkspace();
+    const full = path.join(WORKSPACE_DIR, fileName);
+    fs.writeFileSync(full, buffer);
+    return { saved: fileName, contentType, size: buffer.length, workspace: true };
+  }
 }
 
 // ---- Context pruning ----
