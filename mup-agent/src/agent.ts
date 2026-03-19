@@ -288,6 +288,10 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
     agent.clearAllQueues();
   });
 
+  bridge.on("user-abort", () => {
+    agent.abort();
+  });
+
   // ---- MUP activation (from browser UI) ----
 
   bridge.on("activate-mup", (mupId: string) => doActivateMup(mupId));

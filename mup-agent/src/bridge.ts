@@ -289,6 +289,10 @@ export class UiBridge extends EventEmitter {
         this.emit("user-reset");
         break;
 
+      case "user-abort":
+        this.emit("user-abort");
+        break;
+
       case "rename-session":
         this.emit("rename-session", msg.title as string);
         break;

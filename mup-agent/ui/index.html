@@ -635,6 +635,10 @@ const resetBtn = document.getElementById("resetBtn");
 const statusDot = document.getElementById("statusDot");
 const eventBadges = document.getElementById("eventBadges");
 
+const sendIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';
+const stopIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>';
+let isGenerating = false;
+
 // ---- GridStack init ----
 // Fixed-size grid: each cell is exactly CELL_SIZE x CELL_SIZE pixels
 // Gridstack margin is half the gap (applied to each side = full gap between items)
@@ -1069,7 +1073,13 @@ function handleSessionLoaded(session) {
   }
 }
 
-sendBtn.addEventListener("click", handleSend);
+sendBtn.addEventListener("click", () => {
+  if (isGenerating) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "user-abort" }));
+  } else {
+    handleSend();
+  }
+});
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
 });
@@ -1133,8 +1143,8 @@ function handleServerMessage(msg) {
       finalizeStreaming();
       break;
     case "chat-loading":
-      if (msg.loading) { finalizeStreaming(); setLoading(true); }
-      else { setLoading(false); }
+      if (msg.loading) { finalizeStreaming(); setLoading(true); isGenerating = true; sendBtn.innerHTML = stopIcon; }
+      else { setLoading(false); isGenerating = false; sendBtn.innerHTML = sendIcon; }
       break;
     case "chat-tool-call":
       // Silent — tool calls visible via loading indicator only
