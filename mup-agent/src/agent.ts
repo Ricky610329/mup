@@ -363,7 +363,7 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
   bridge.on("get-settings", () => {
     const settings = loadSettings();
     settings.provider = model.provider;
-    settings.model = model.name;
+    settings.model = model.id;
     if (apiKey) settings.apiKey = apiKey;
     bridge.sendRaw({ type: "settings", settings });
   });
