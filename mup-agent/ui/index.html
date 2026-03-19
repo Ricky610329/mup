@@ -165,19 +165,21 @@
 
     /* Settings panel */
     .settings-panel {
-      position: absolute; top: 0; left: 0; bottom: 0;
-      width: 50%;
-      background: var(--bg-mup-body); z-index: 21;
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%) scale(0.95);
+      width: 380px; max-height: 80vh;
+      background: var(--bg-mup-body); z-index: 101;
       display: flex; flex-direction: column;
-      transform: translateX(-100%);
-      transition: transform 0.25s ease;
-      border-radius: var(--radius-xl) 0 0 var(--radius-xl);
-      box-shadow: none;
+      border-radius: var(--radius-xl);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.06);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
     }
-    .settings-panel.open { transform: translateX(0); box-shadow: 4px 0 20px rgba(0,0,0,0.08); }
+    .settings-panel.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
     .settings-overlay {
-      position: absolute; top: 0; right: 0; bottom: 0; width: 50%;
-      z-index: 20; display: none; cursor: pointer;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.2);
+      z-index: 100; display: none; cursor: pointer;
     }
     .settings-panel.open ~ .settings-overlay { display: block; }
     .settings-header {
@@ -447,18 +449,16 @@
 
 <div class="disconnect-banner" id="disconnectBanner">Disconnected from agent — reconnecting...</div>
 <div id="app">
-  <!-- Chat (left, fixed) -->
-  <div class="chat-panel" id="chatPanel" style="position:relative;">
-    <!-- Settings panel (slides over chat) -->
-    <div class="settings-panel" id="settingsPanel">
-      <div class="settings-header">
-        <span class="settings-header-title">Settings</span>
-        <button class="session-close-btn" id="settingsCloseBtn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="settings-body">
-        <div class="settings-section-title">LLM</div>
+  <!-- Settings (floating modal) -->
+  <div class="settings-panel" id="settingsPanel">
+    <div class="settings-header">
+      <span class="settings-header-title">Settings</span>
+      <button class="session-close-btn" id="settingsCloseBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="settings-body">
+      <div class="settings-section-title">LLM</div>
         <div class="settings-group">
           <label>Provider</label>
           <select class="settings-input settings-select" id="settingsProvider">
@@ -498,17 +498,19 @@
           <label>Min Columns</label>
           <input class="settings-input" id="settingsMinCols" type="number" min="1" max="5">
         </div>
+        <button class="settings-save-btn" id="settingsDefaultBtn" style="background:transparent;color:var(--text-tertiary);border:none;font-size:11px;padding:4px 0;">Reset Grid to Default</button>
+        <div class="settings-divider"></div>
         <div style="display:flex;align-items:center;gap:8px;">
           <button class="settings-save-btn" id="settingsSaveBtn">Save</button>
-          <button class="settings-save-btn" id="settingsDefaultBtn" style="background:transparent;color:var(--text-secondary);border:1.5px solid var(--border);">Reset Default</button>
           <span class="settings-status" id="settingsStatus"></span>
         </div>
       </div>
     </div>
+  </div>
+  <div class="settings-overlay" id="settingsOverlay"></div>
 
-    <div class="settings-overlay" id="settingsOverlay"></div>
-
-    <!-- Session sidebar (slides over chat) -->
+  <!-- Chat (left, fixed) -->
+  <div class="chat-panel" id="chatPanel" style="position:relative;">
     <div class="session-panel" id="sessionPanel">
       <div class="session-header">
         <span class="session-header-title">Chats</span>
