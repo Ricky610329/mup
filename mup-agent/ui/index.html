@@ -474,6 +474,18 @@
           <label>System Prompt (prefix)</label>
           <textarea class="settings-input settings-textarea" id="settingsPrompt" placeholder="Optional: prepended to auto-generated prompt"></textarea>
         </div>
+        <div class="settings-group">
+          <label>Grid — Cell Size (px)</label>
+          <input class="settings-input" id="settingsCellSize" type="number" min="150" max="400" step="10">
+        </div>
+        <div class="settings-group">
+          <label>Grid — Max Columns</label>
+          <input class="settings-input" id="settingsMaxCols" type="number" min="2" max="10">
+        </div>
+        <div class="settings-group">
+          <label>Grid — Min Columns</label>
+          <input class="settings-input" id="settingsMinCols" type="number" min="1" max="5">
+        </div>
         <div style="display:flex;align-items:center;">
           <button class="settings-save-btn" id="settingsSaveBtn">Save</button>
           <span class="settings-status" id="settingsStatus"></span>
@@ -611,11 +623,11 @@ const eventBadges = document.getElementById("eventBadges");
 // ---- GridStack init ----
 // Fixed-size grid: each cell is exactly CELL_SIZE x CELL_SIZE pixels
 // Gridstack margin is half the gap (applied to each side = full gap between items)
-const CELL_SIZE = 260;
+let CELL_SIZE = parseInt(localStorage.getItem('mup-cell-size')) || 260;
 const CELL_GAP = 10;
-const GS_MARGIN = CELL_GAP / 2; // 5px each side
-const MAX_COLS = 5;
-const MIN_COLS = 2;
+let GS_MARGIN = CELL_GAP / 2;
+let MAX_COLS = parseInt(localStorage.getItem('mup-max-cols')) || 5;
+let MIN_COLS = parseInt(localStorage.getItem('mup-min-cols')) || 2;
 let grid;
 let currentCols = MAX_COLS;
 
@@ -623,7 +635,7 @@ let currentCols = MAX_COLS;
 // We want that to equal CELL_SIZE, so:
 // containerWidth/cols = CELL_SIZE + 2*margin
 // containerWidth = cols * (CELL_SIZE + 2*margin)
-const COL_SLOT = CELL_SIZE + 2 * GS_MARGIN; // 270px per column slot
+let COL_SLOT = CELL_SIZE + 2 * GS_MARGIN;
 
 function calcColumns() {
   const dashboard = document.getElementById('dashboard');
@@ -847,8 +859,14 @@ const settingsStatus = document.getElementById("settingsStatus");
 
 settingsBtn.addEventListener("click", () => {
   settingsPanel.classList.toggle("open");
-  if (settingsPanel.classList.contains("open") && ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "get-settings" }));
+  if (settingsPanel.classList.contains("open")) {
+    // Pre-populate grid settings from local state
+    document.getElementById("settingsCellSize").value = CELL_SIZE;
+    document.getElementById("settingsMaxCols").value = MAX_COLS;
+    document.getElementById("settingsMinCols").value = MIN_COLS;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "get-settings" }));
+    }
   }
 });
 settingsCloseBtn.addEventListener("click", () => settingsPanel.classList.remove("open"));
@@ -863,6 +881,25 @@ settingsSaveBtn.addEventListener("click", () => {
     systemPromptPrefix: document.getElementById("settingsPrompt").value,
   };
   ws.send(JSON.stringify({ type: "update-settings", settings }));
+
+  // Apply grid settings immediately
+  const newCellSize = parseInt(document.getElementById("settingsCellSize").value) || 260;
+  const newMaxCols = parseInt(document.getElementById("settingsMaxCols").value) || 5;
+  const newMinCols = parseInt(document.getElementById("settingsMinCols").value) || 2;
+  localStorage.setItem('mup-cell-size', newCellSize);
+  localStorage.setItem('mup-max-cols', newMaxCols);
+  localStorage.setItem('mup-min-cols', newMinCols);
+  if (newCellSize !== CELL_SIZE || newMaxCols !== MAX_COLS || newMinCols !== MIN_COLS) {
+    CELL_SIZE = newCellSize;
+    MAX_COLS = newMaxCols;
+    MIN_COLS = newMinCols;
+    COL_SLOT = CELL_SIZE + 2 * GS_MARGIN;
+    if (grid) {
+      grid.cellHeight(COL_SLOT);
+      handleResize();
+    }
+  }
+
   settingsStatus.textContent = "Saving...";
   settingsStatus.style.color = "var(--text-secondary)";
 });
@@ -872,6 +909,10 @@ function populateSettings(settings) {
   document.getElementById("settingsModel").value = settings.model || "";
   document.getElementById("settingsApiKey").value = settings.apiKey || "";
   document.getElementById("settingsPrompt").value = settings.systemPromptPrefix || "";
+  // Grid settings from localStorage
+  document.getElementById("settingsCellSize").value = CELL_SIZE;
+  document.getElementById("settingsMaxCols").value = MAX_COLS;
+  document.getElementById("settingsMinCols").value = MIN_COLS;
 }
 
 // ---- Save status indicator ----
