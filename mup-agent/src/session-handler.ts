@@ -149,9 +149,14 @@ export function setupSessionHandler(deps: SessionHandlerDeps) {
   bridge.on("delete-session", (sessionId: string) => {
     deleteSession(sessionId);
     if (currentSession.id === sessionId) {
+      // Deleting current session — treat like new-session
       currentSession = createSession();
       agent.clearMessages();
       agent.clearAllQueues();
+      for (const mup of manager.getAll()) manager.deactivate(mup.manifest.id);
+      agent.setTools([]);
+      agent.setSystemPrompt(buildSystemPrompt(manager));
+      send({ type: "session-loaded", session: currentSession });
     }
     sendSessionList();
   });
