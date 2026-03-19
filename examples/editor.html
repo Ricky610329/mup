@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Editor</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Editor",
+    "description": "A text editor where users write and select text to discuss with the LLM. When user selects text, the LLM sees the selection and can modify it. Use getSelection() to see what the user highlighted, replaceRange() to edit specific portions, or setText() to replace everything.",
+    "grid": { "minWidth": 1, "minHeight": 1 },
+    "functions": [
+      {
+        "name": "getText",
+        "description": "Get the full editor content",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setText",
+        "description": "Replace the entire editor content",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" }
+          },
+          "required": ["text"]
+        }
+      },
+      {
+        "name": "getSelection",
+        "description": "Get the currently selected/highlighted text and its position",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "replaceRange",
+        "description": "Replace text between startLine and endLine (1-based, inclusive). Use this to edit a specific portion the user highlighted.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "startLine": { "type": "number", "description": "Start line (1-based)" },
+            "endLine": { "type": "number", "description": "End line (1-based, inclusive)" },
+            "text": { "type": "string", "description": "Replacement text" }
+          },
+          "required": ["startLine", "endLine", "text"]
+        }
+      },
+      {
+        "name": "insertAt",
+        "description": "Insert text at a specific line number. Existing content shifts down.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "line": { "type": "number", "description": "Line number (1-based) to insert before" },
+            "text": { "type": "string" }
+          },
+          "required": ["line", "text"]
+        }
+      },
+      {
+        "name": "getLineCount",
+        "description": "Get total number of lines in the editor",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: transparent; height: 100vh;
+      display: flex; flex-direction: column;
+      -webkit-font-smoothing: antialiased; overflow: hidden;
+    }
+    .toolbar {
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px 8px;
+      border-bottom: 1px solid rgba(60,60,67,0.1);
+      flex-shrink: 0; font-size: 11px; color: rgba(60,60,67,0.5);
+    }
+    .toolbar-info { flex: 1; }
+    .toolbar-btn {
+      border: none; background: rgba(60,60,67,0.06); color: rgba(60,60,67,0.6);
+      border-radius: 4px; padding: 3px 8px; font-size: 10px;
+      cursor: pointer; font-family: inherit;
+    }
+    .toolbar-btn:hover { background: rgba(60,60,67,0.12); }
+    .toolbar-btn.active { background: rgba(0,122,255,0.1); color: #007aff; }
+
+    .editor-wrap {
+      flex: 1; display: flex; overflow: hidden;
+    }
+    .line-numbers {
+      padding: 10px 0;
+      background: rgba(60,60,67,0.03);
+      color: rgba(60,60,67,0.25);
+      font: 13px/1.5 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      text-align: right;
+      user-select: none;
+      overflow: hidden;
+      min-width: 36px;
+      padding-right: 8px;
+      padding-left: 8px;
+      border-right: 1px solid rgba(60,60,67,0.08);
+    }
+    .editor {
+      flex: 1; padding: 10px 12px;
+      font: 13px/1.5 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      border: none; outline: none; resize: none;
+      background: transparent; color: #1a1a1a;
+      overflow-y: auto; overflow-x: auto;
+      white-space: pre; tab-size: 2;
+    }
+
+    .selection-bar {
+      display: none; padding: 4px 8px;
+      border-top: 1px solid rgba(60,60,67,0.1);
+      background: rgba(0,122,255,0.04);
+      font-size: 10px; color: rgba(0,122,255,0.8);
+      flex-shrink: 0;
+      align-items: center; gap: 6px;
+    }
+    .selection-bar.show { display: flex; }
+    .selection-bar-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .discuss-btn {
+      border: none; background: #007aff; color: white;
+      border-radius: 4px; padding: 2px 10px; font-size: 10px;
+      cursor: pointer; font-family: inherit; font-weight: 500;
+    }
+    .discuss-btn:hover { opacity: 0.85; }
+
+    .status {
+      padding: 3px 8px; font-size: 10px;
+      color: rgba(60,60,67,0.35);
+      border-top: 1px solid rgba(60,60,67,0.06);
+      flex-shrink: 0; display: flex; gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span class="toolbar-info" id="toolbarInfo">Editor</span>
+    <button class="toolbar-btn" id="wrapBtn">Wrap</button>
+  </div>
+  <div class="editor-wrap">
+    <div class="line-numbers" id="lineNumbers">1</div>
+    <textarea class="editor" id="editor" spellcheck="false" placeholder="Start typing or ask the LLM to write something..."></textarea>
+  </div>
+  <div class="selection-bar" id="selectionBar">
+    <span class="selection-bar-text" id="selectionText"></span>
+    <button class="discuss-btn" id="discussBtn">Discuss with AI</button>
+  </div>
+  <div class="status">
+    <span id="statusLines">Lines: 1</span>
+    <span id="statusCursor">Ln 1, Col 1</span>
+  </div>
+
+  <script>
+    const editor = document.getElementById('editor');
+    const lineNumbersEl = document.getElementById('lineNumbers');
+    const selectionBar = document.getElementById('selectionBar');
+    const selectionText = document.getElementById('selectionText');
+    const discussBtn = document.getElementById('discussBtn');
+    const statusLines = document.getElementById('statusLines');
+    const statusCursor = document.getElementById('statusCursor');
+    const wrapBtn = document.getElementById('wrapBtn');
+    const toolbarInfo = document.getElementById('toolbarInfo');
+
+    let lastSelection = null;
+    let wordWrap = false;
+
+    // ---- Line numbers ----
+    function updateLineNumbers() {
+      const lines = editor.value.split('\n');
+      const count = lines.length;
+      lineNumbersEl.innerHTML = Array.from({ length: count }, (_, i) => i + 1).join('<br>');
+      statusLines.textContent = `Lines: ${count}`;
+    }
+
+    // ---- Sync scroll ----
+    editor.addEventListener('scroll', () => {
+      lineNumbersEl.scrollTop = editor.scrollTop;
+    });
+
+    // ---- Word wrap toggle ----
+    wrapBtn.addEventListener('click', () => {
+      wordWrap = !wordWrap;
+      editor.style.whiteSpace = wordWrap ? 'pre-wrap' : 'pre';
+      editor.style.overflowX = wordWrap ? 'hidden' : 'auto';
+      wrapBtn.classList.toggle('active', wordWrap);
+    });
+
+    // ---- Selection tracking ----
+    function checkSelection() {
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+
+      if (start !== end) {
+        const selectedText = editor.value.substring(start, end);
+        const textBefore = editor.value.substring(0, start);
+        const startLine = textBefore.split('\n').length;
+        const endLine = editor.value.substring(0, end).split('\n').length;
+
+        lastSelection = {
+          text: selectedText,
+          startLine,
+          endLine,
+          startOffset: start,
+          endOffset: end,
+        };
+
+        const preview = selectedText.length > 60 ? selectedText.slice(0, 60) + '...' : selectedText;
+        selectionText.textContent = `Lines ${startLine}-${endLine}: "${preview.replace(/\n/g, '↵')}"`;
+        selectionBar.classList.add('show');
+      } else {
+        selectionBar.classList.remove('show');
+        lastSelection = null;
+      }
+
+      // Cursor position
+      const cursorBefore = editor.value.substring(0, start);
+      const cursorLine = cursorBefore.split('\n').length;
+      const cursorCol = start - cursorBefore.lastIndexOf('\n');
+      statusCursor.textContent = `Ln ${cursorLine}, Col ${cursorCol}`;
+    }
+
+    editor.addEventListener('select', checkSelection);
+    editor.addEventListener('click', checkSelection);
+    editor.addEventListener('keyup', checkSelection);
+
+    // ---- Discuss button ----
+    discussBtn.addEventListener('click', () => {
+      if (!lastSelection) return;
+      mup.notifyInteraction('discuss',
+        `User wants to discuss lines ${lastSelection.startLine}-${lastSelection.endLine}: "${lastSelection.text.slice(0, 200)}"`,
+        lastSelection
+      );
+    });
+
+    // ---- Input handling ----
+    editor.addEventListener('input', () => {
+      updateLineNumbers();
+      debouncedState();
+    });
+
+    // Tab support
+    editor.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = editor.selectionStart;
+        editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(editor.selectionEnd);
+        editor.selectionStart = editor.selectionEnd = start + 2;
+        updateLineNumbers();
+      }
+    });
+
+    // ---- State ----
+    let stateTimer = null;
+    function debouncedState() {
+      clearTimeout(stateTimer);
+      stateTimer = setTimeout(() => {
+        const lines = editor.value.split('\n').length;
+        const chars = editor.value.length;
+        mup.updateState(
+          `${lines} lines, ${chars} chars`,
+          { text: editor.value, lineCount: lines, charCount: chars }
+        );
+      }, 1000);
+    }
+
+    // === MUP Functions ===
+
+    mup.registerFunction('getText', async () => {
+      const text = editor.value;
+      const lines = text.split('\n').length;
+      return {
+        content: [
+          { type: 'text', text: `Editor content (${lines} lines, ${text.length} chars):\n${text}` },
+          { type: 'data', data: { text, lineCount: lines } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('setText', async (params) => {
+      editor.value = params.text;
+      updateLineNumbers();
+      debouncedState();
+      const lines = params.text.split('\n').length;
+      return {
+        content: [{ type: 'text', text: `Editor set to ${lines} lines, ${params.text.length} chars` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('getSelection', async () => {
+      if (!lastSelection) {
+        return {
+          content: [{ type: 'text', text: 'No text selected. Ask user to highlight text they want to discuss.' }],
+          isError: false
+        };
+      }
+      return {
+        content: [
+          { type: 'text', text: `Selected lines ${lastSelection.startLine}-${lastSelection.endLine}:\n${lastSelection.text}` },
+          { type: 'data', data: lastSelection }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('replaceRange', async (params) => {
+      const lines = editor.value.split('\n');
+      const start = Math.max(1, params.startLine) - 1;
+      const end = Math.min(lines.length, params.endLine);
+      const newLines = params.text.split('\n');
+
+      lines.splice(start, end - start, ...newLines);
+      editor.value = lines.join('\n');
+      updateLineNumbers();
+      debouncedState();
+
+      return {
+        content: [{ type: 'text', text: `Replaced lines ${params.startLine}-${params.endLine} with ${newLines.length} new lines` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('insertAt', async (params) => {
+      const lines = editor.value.split('\n');
+      const idx = Math.max(0, Math.min(lines.length, params.line - 1));
+      const newLines = params.text.split('\n');
+      lines.splice(idx, 0, ...newLines);
+      editor.value = lines.join('\n');
+      updateLineNumbers();
+      debouncedState();
+
+      return {
+        content: [{ type: 'text', text: `Inserted ${newLines.length} lines at line ${params.line}` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('getLineCount', async () => {
+      const count = editor.value.split('\n').length;
+      return {
+        content: [{ type: 'text', text: `${count} lines` }, { type: 'data', data: { lineCount: count } }],
+        isError: false
+      };
+    });
+
+    mup.onReady((params) => {
+      if (params.savedState && params.savedState.text) {
+        editor.value = params.savedState.text;
+      }
+      updateLineNumbers();
+      debouncedState();
+    });
+  </script>
+</body>
+</html>
