@@ -91,7 +91,7 @@ export function buildSystemPrompt(manager: MupManager): string {
     prompt += `\nNo panels available. User can load MUPs from the Manager card.\n`;
   }
 
-  prompt += `\nProactively suggest and activate relevant panels for the user's task. React to user interactions naturally.`;
+  prompt += `\nIMPORTANT: Always use tools to perform actions. Do NOT describe what you would do — actually do it by calling the functions. For example, if the user asks for a presentation, call activateMup then createPresentation with the actual slide data. Never output slide content as text.`;
   return prompt;
 }
 
