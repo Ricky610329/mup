@@ -77,7 +77,7 @@ MUP changes this. It puts clickable, visual UI right inside the chat — so anyo
 
 ## Key Ideas
 
-- **One function, two entry points.** Every function can be called by the LLM (as a tool) or triggered by the user (via UI). Same code, same result.
+- **Shared functions.** A function can be called by the LLM (as a tool) or triggered by the user (via UI). Both sides operate on the same state through the same code.
 - **LLM as orchestrator.** MUPs don't talk to each other. The LLM reads outputs and decides what to do next.
 - **Just HTML.** Write a manifest, register your functions, done. Ship a single file.
 

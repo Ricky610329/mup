@@ -32,7 +32,7 @@ A tiny HTML file can reference external libraries to build a complex interface. 
 
 A MUP is one `.html` file. Drop it into a host and it works. The manifest, UI, and logic all live in the same file. This is the lowest possible barrier to creating and sharing a MUP.
 
-### One function, two entry points
+### Shared functions
 
 A function declared in the manifest can be called by the LLM (as a tool) or triggered by the user (via UI). Not every function needs a corresponding button, and not every UI action needs a corresponding function — but when they overlap, the implementation is shared. This is what makes MUP bidirectional: the protocol supports both callers through the same mechanism.
 

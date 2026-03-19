@@ -24,7 +24,7 @@ The simplest MUP is a single `.html` file. No build step, no framework, no SDK i
 
 **Key ideas:**
 
-- **One function, two entry points.** A function declared in the manifest can be called by the LLM (as a tool) and triggered by the user (via UI). Same implementation, same result.
+- **Shared functions.** A function declared in the manifest can be called by the LLM (as a tool) or triggered by the user (via UI). Not every function needs a button, and not every button needs a function — but when they overlap, the implementation is shared.
 - **LLM as orchestrator.** MUPs don't talk to each other. The LLM mediates: MUP A's output goes to the LLM, which decides to call MUP B.
 - **Host-agnostic.** This spec defines the MUP format and communication protocol. How the host renders, isolates, or manages MUPs is the host's business.
 
