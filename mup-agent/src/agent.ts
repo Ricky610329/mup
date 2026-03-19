@@ -263,6 +263,25 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
     }
   });
 
+  // ---- System requests from MUPs ----
+
+  bridge.on("system-request", async (mupId: string, requestId: string, action: string, params: any) => {
+    try {
+      let result: unknown;
+      switch (action) {
+        case "webSearch":
+          result = await webSearch(params?.query || "");
+          break;
+        default:
+          bridge.sendRaw({ type: "system-response", requestId, error: `Unknown system action: ${action}` });
+          return;
+      }
+      bridge.sendRaw({ type: "system-response", requestId, result });
+    } catch (err) {
+      bridge.sendRaw({ type: "system-response", requestId, error: (err as Error).message });
+    }
+  });
+
   // ---- Folder scanning ----
 
   bridge.on("scan-folder", (folderPath: string) => {
@@ -316,6 +335,43 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
   });
 
   return agent;
+}
+
+// ---- Web search (DuckDuckGo HTML scrape, no API key) ----
+
+async function webSearch(query: string): Promise<{ results: Array<{ title: string; url: string; description: string }> }> {
+  if (!query.trim()) return { results: [] };
+
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  const resp = await fetch(url, {
+    headers: { "User-Agent": "MUP-Agent/0.1" },
+  });
+  const html = await resp.text();
+
+  const results: Array<{ title: string; url: string; description: string }> = [];
+  // Parse DuckDuckGo HTML results
+  const resultBlocks = html.split('class="result__body"');
+  for (let i = 1; i < resultBlocks.length && results.length < 8; i++) {
+    const block = resultBlocks[i];
+    const titleMatch = block.match(/class="result__a"[^>]*>([^<]+)</);
+    const urlMatch = block.match(/class="result__url"[^>]*href="([^"]*)"/) || block.match(/class="result__a"[^>]*href="([^"]*)"/);
+    const descMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\//);
+
+    if (titleMatch) {
+      let href = urlMatch?.[1] || "";
+      // DuckDuckGo wraps URLs in redirect
+      const uddg = href.match(/uddg=([^&]+)/);
+      if (uddg) href = decodeURIComponent(uddg[1]);
+
+      results.push({
+        title: titleMatch[1].trim(),
+        url: href,
+        description: (descMatch?.[1] || "").replace(/<[^>]+>/g, "").trim(),
+      });
+    }
+  }
+
+  return { results };
 }
 
 // ---- Context pruning ----

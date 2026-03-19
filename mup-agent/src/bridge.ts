@@ -250,6 +250,10 @@ export class UiBridge extends EventEmitter {
         this.emit("scan-folder", msg.path as string);
         break;
 
+      case "system-request":
+        this.emit("system-request", msg.mupId as string, msg.requestId as string, msg.action as string, msg.params);
+        break;
+
       case "list-sessions":
         this.emit("list-sessions");
         break;

@@ -7,22 +7,34 @@
   <script type="application/mup-manifest">
   {
     "name": "Search",
-    "description": "A search and display panel. Users can type queries and the LLM can show search results or any structured information. Use showResults to display findings, or the user types a query which is sent as an interaction for the LLM to handle.",
+    "description": "A web search panel. The LLM can search the web and display results with clickable links. Users can also type queries directly. Use search() to perform a web search, or showResults() to display custom results.",
     "grid": { "minWidth": 1, "minHeight": 1 },
     "functions": [
       {
-        "name": "showResults",
-        "description": "Display search results or information. Each result has a title and optional description.",
+        "name": "search",
+        "description": "Search the web for a query. Returns real web results with titles, URLs, and descriptions.",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "query": { "type": "string", "description": "The query or topic these results are for" },
+            "query": { "type": "string", "description": "The search query" }
+          },
+          "required": ["query"]
+        }
+      },
+      {
+        "name": "showResults",
+        "description": "Display custom results (not web search). Each result has a title, optional url, and optional description.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string" },
             "results": {
               "type": "array",
               "items": {
                 "type": "object",
                 "properties": {
                   "title": { "type": "string" },
+                  "url": { "type": "string" },
                   "description": { "type": "string" }
                 },
                 "required": ["title"]
@@ -35,11 +47,6 @@
       {
         "name": "clear",
         "description": "Clear all displayed results",
-        "inputSchema": { "type": "object", "properties": {} }
-      },
-      {
-        "name": "getQuery",
-        "description": "Get the current query text in the search box",
         "inputSchema": { "type": "object", "properties": {} }
       }
     ]
@@ -65,7 +72,6 @@
       border-bottom: 1px solid rgba(60,60,67,0.1);
       flex-shrink: 0;
     }
-
     .search-input {
       flex: 1;
       border: 1px solid rgba(60,60,67,0.15);
@@ -77,7 +83,6 @@
       background: rgba(255,255,255,0.6);
     }
     .search-input:focus { border-color: rgba(0,122,255,0.5); }
-
     .search-btn {
       border: none;
       background: rgba(0,122,255,0.1);
@@ -89,6 +94,7 @@
       font-family: inherit;
     }
     .search-btn:hover { background: rgba(0,122,255,0.2); }
+    .search-btn:disabled { opacity: 0.4; cursor: default; }
 
     .results {
       flex: 1;
@@ -102,21 +108,29 @@
       margin-bottom: 4px;
       background: rgba(60,60,67,0.04);
       transition: background 0.15s;
+      cursor: pointer;
     }
     .result-item:hover { background: rgba(60,60,67,0.08); }
 
     .result-title {
       font-size: 12px;
       font-weight: 600;
-      color: rgba(0,0,0,0.8);
+      color: #1a0dab;
       line-height: 1.3;
     }
-
+    .result-url {
+      font-size: 10px;
+      color: #006621;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .result-desc {
       font-size: 11px;
-      color: rgba(60,60,67,0.5);
+      color: rgba(60,60,67,0.6);
       line-height: 1.3;
-      margin-top: 2px;
+      margin-top: 1px;
     }
 
     .empty {
@@ -127,22 +141,27 @@
       color: rgba(60,60,67,0.3);
       font-size: 12px;
     }
-
     .query-label {
       font-size: 10px;
       color: rgba(60,60,67,0.4);
       padding: 4px 6px 2px;
       font-weight: 500;
     }
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: rgba(60,60,67,0.4);
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
   <div class="search-bar">
-    <input class="search-input" id="input" type="text" placeholder="Search..." />
+    <input class="search-input" id="input" type="text" placeholder="Search the web..." />
     <button class="search-btn" id="btn">Go</button>
   </div>
   <div class="results" id="results">
-    <div class="empty" id="empty">Type a query or ask the LLM</div>
+    <div class="empty" id="empty">Search the web or ask the LLM</div>
   </div>
 
   <script>
@@ -154,17 +173,41 @@
     let currentQuery = '';
     let currentResults = [];
 
-    function doSearch() {
-      const query = input.value.trim();
+    async function doSearch(query) {
+      query = query || input.value.trim();
       if (!query) return;
       currentQuery = query;
-      mup.notifyInteraction('search', `User searched: "${query}"`, { query });
-      mup.updateState(`Searching: "${query.slice(0, 30)}"`, { query });
+      input.value = query;
+      btn.disabled = true;
+      resultsEl.innerHTML = '<div class="loading">Searching...</div>';
+      mup.updateState(`Searching: "${query.slice(0, 30)}"`, { query, searching: true });
+
+      try {
+        const response = await mup.system("webSearch", { query });
+        const results = response?.results || [];
+        renderResults(query, results);
+        btn.disabled = false;
+        return results;
+      } catch (err) {
+        resultsEl.innerHTML = '';
+        emptyEl.style.display = '';
+        emptyEl.textContent = 'Search failed: ' + err.message;
+        resultsEl.appendChild(emptyEl);
+        btn.disabled = false;
+        mup.updateState('Search failed', { query, error: err.message });
+        return [];
+      }
     }
 
-    btn.addEventListener('click', doSearch);
+    btn.addEventListener('click', () => {
+      doSearch();
+      mup.notifyInteraction('search', `User searched: "${input.value.trim()}"`, { query: input.value.trim() });
+    });
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') doSearch();
+      if (e.key === 'Enter') {
+        doSearch();
+        mup.notifyInteraction('search', `User searched: "${input.value.trim()}"`, { query: input.value.trim() });
+      }
     });
 
     function renderResults(query, results) {
@@ -175,14 +218,15 @@
       if (query) {
         const label = document.createElement('div');
         label.className = 'query-label';
-        label.textContent = query;
+        label.textContent = `"${query}" — ${results.length} result(s)`;
         resultsEl.appendChild(label);
       }
 
       if (results.length === 0) {
         emptyEl.style.display = '';
-        emptyEl.textContent = 'No results';
+        emptyEl.textContent = 'No results found';
         resultsEl.appendChild(emptyEl);
+        mup.updateState('No results', { query, resultCount: 0 });
         return;
       }
 
@@ -197,6 +241,13 @@
         title.textContent = r.title;
         item.appendChild(title);
 
+        if (r.url) {
+          const url = document.createElement('div');
+          url.className = 'result-url';
+          url.textContent = r.url;
+          item.appendChild(url);
+        }
+
         if (r.description) {
           const desc = document.createElement('div');
           desc.className = 'result-desc';
@@ -205,21 +256,37 @@
         }
 
         item.addEventListener('click', () => {
-          mup.notifyInteraction('click', `User clicked: "${r.title}"`, { title: r.title, description: r.description });
+          if (r.url) window.open(r.url, '_blank');
+          mup.notifyInteraction('click', `User clicked: "${r.title}"`, { title: r.title, url: r.url });
         });
 
         resultsEl.appendChild(item);
       }
+
+      mup.updateState(
+        `${results.length} result(s) for "${(query || '').slice(0, 20)}"`,
+        { query, resultCount: results.length, results: results.map(r => ({ title: r.title, url: r.url })) }
+      );
     }
 
     // === MUP Functions ===
 
-    mup.registerFunction('showResults', async (params) => {
-      const results = params.results || [];
-      renderResults(params.query || '', results);
-      mup.updateState(`${results.length} result(s)${params.query ? ': "' + params.query.slice(0, 20) + '"' : ''}`, { query: params.query, resultCount: results.length });
+    mup.registerFunction('search', async (params) => {
+      const results = await doSearch(params.query);
+      const summaries = (results || []).map((r, i) => `${i + 1}. ${r.title}${r.url ? ' — ' + r.url : ''}`).join('\n');
       return {
-        content: [{ type: 'text', text: `Showing ${results.length} result(s)` }],
+        content: [
+          { type: 'text', text: results.length > 0 ? `Found ${results.length} results for "${params.query}":\n${summaries}` : `No results for "${params.query}"` },
+          { type: 'data', data: { query: params.query, results } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('showResults', async (params) => {
+      renderResults(params.query || '', params.results || []);
+      return {
+        content: [{ type: 'text', text: `Showing ${(params.results || []).length} result(s)` }],
         isError: false
       };
     });
@@ -229,24 +296,18 @@
       currentQuery = '';
       resultsEl.innerHTML = '';
       emptyEl.style.display = '';
-      emptyEl.textContent = 'Type a query or ask the LLM';
+      emptyEl.textContent = 'Search the web or ask the LLM';
       resultsEl.appendChild(emptyEl);
       mup.updateState('Empty', { query: '', resultCount: 0 });
       return { content: [{ type: 'text', text: 'Results cleared' }], isError: false };
     });
 
-    mup.registerFunction('getQuery', async () => {
-      return {
-        content: [
-          { type: 'text', text: currentQuery || 'No query' },
-          { type: 'data', data: { query: currentQuery } }
-        ],
-        isError: false
-      };
-    });
-
-    mup.onReady(() => {
-      mup.updateState('Empty', { query: '', resultCount: 0 });
+    mup.onReady((params) => {
+      if (params.savedState && params.savedState.results) {
+        renderResults(params.savedState.query, params.savedState.results);
+      } else {
+        mup.updateState('Empty', { query: '', resultCount: 0 });
+      }
     });
   </script>
 </body>

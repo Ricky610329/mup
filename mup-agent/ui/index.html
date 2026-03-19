@@ -1236,9 +1236,37 @@ function handleMupMessage(mupId, mupName, data) {
     return;
   }
 
+  // Request from MUP (e.g. system/request) → forward to agent
   if ("id" in data && "method" in data) {
-    const mup = mups.get(mupId);
-    if (mup) mup.port.postMessage({ jsonrpc: "2.0", id: data.id, error: { code: -32601, message: "Method not found: " + data.method } });
+    if (data.method === "system/request" && ws && ws.readyState === WebSocket.OPEN) {
+      const sysCallId = 'sys' + (++nextMsgId);
+      callMap.set(data.id, sysCallId); // reuse callMap for tracking
+      ws.send(JSON.stringify({ type: "system-request", mupId, requestId: sysCallId, action: data.params?.action, params: data.params?.params }));
+      // Response comes back via "system-response" message
+      const mup = mups.get(mupId);
+      if (mup) {
+        const origId = data.id;
+        const handler = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === "system-response" && msg.requestId === sysCallId) {
+              ws.removeEventListener("message", handler);
+              if (msg.error) {
+                mup.port.postMessage({ jsonrpc: "2.0", id: origId, error: { code: -32603, message: msg.error } });
+              } else {
+                mup.port.postMessage({ jsonrpc: "2.0", id: origId, result: msg.result });
+              }
+            }
+          } catch {}
+        };
+        ws.addEventListener("message", handler);
+        // Timeout after 30s
+        setTimeout(() => { ws.removeEventListener("message", handler); }, 30000);
+      }
+    } else {
+      const mup = mups.get(mupId);
+      if (mup) mup.port.postMessage({ jsonrpc: "2.0", id: data.id, error: { code: -32601, message: "Method not found: " + data.method } });
+    }
   }
 }
 
