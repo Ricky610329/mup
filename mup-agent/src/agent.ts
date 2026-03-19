@@ -293,7 +293,12 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
   bridge.on("register-and-activate", (mupId: string, html: string, fileName: string) => {
     try {
       manager.loadFromHtml(html, fileName);
-      doActivateMup(mupId);
+      // loadFromHtml already activates it, so send load-mup directly
+      const loaded = manager.get(mupId);
+      if (loaded) {
+        bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
+        refreshAgentTools();
+      }
     } catch (err) {
       console.error(`[mup-agent] Failed to register: ${(err as Error).message}`);
     }
