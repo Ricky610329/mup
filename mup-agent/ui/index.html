@@ -1135,7 +1135,7 @@ function loadMup(mupId, html, manifest, savedState) {
   const widget = grid.addWidget(el);
 
   const iframe = widget.querySelector('iframe');
-  setupMupIframe(mupId, manifest, iframe, html, w, h, savedState);
+  setupMupIframe(mupId, manifest, iframe, html, 1, 1, savedState);
 }
 
 function setupMupIframe(mupId, manifest, iframe, html, w, h, savedState) {
