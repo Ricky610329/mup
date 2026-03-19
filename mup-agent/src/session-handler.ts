@@ -102,6 +102,7 @@ export function setupSessionHandler(deps: SessionHandlerDeps) {
   bridge.on("list-sessions", () => sendSessionList());
 
   bridge.on("new-session", () => {
+    agent.abort();
     if (currentSession.messages.length > 0) autoSave();
     currentSession = createSession();
     agent.clearMessages();
@@ -114,6 +115,7 @@ export function setupSessionHandler(deps: SessionHandlerDeps) {
   });
 
   bridge.on("load-session", (sessionId: string) => {
+    agent.abort();
     autoSave();
     const data = loadSession(sessionId);
     if (!data) return;
@@ -149,6 +151,7 @@ export function setupSessionHandler(deps: SessionHandlerDeps) {
   bridge.on("delete-session", (sessionId: string) => {
     deleteSession(sessionId);
     if (currentSession.id === sessionId) {
+      agent.abort();
       // Deleting current session — treat like new-session
       currentSession = createSession();
       agent.clearMessages();
