@@ -1202,7 +1202,8 @@ function loadMup(mupId, html, manifest, savedState) {
   el.querySelector('.mup-close-btn').addEventListener('click', () => removeMup(mupId));
 
   // Add to gridstack
-  const widget = grid.addWidget(el);
+  document.getElementById('grid').appendChild(el);
+  const widget = grid.makeWidget(el);
 
   const iframe = widget.querySelector('iframe');
   setupMupIframe(mupId, manifest, iframe, html, 1, 1, savedState);
@@ -1491,7 +1492,8 @@ function renderManagerCard() {
         ${folderBar}
         <div class="manager-list" id="managerList">${listHtml}</div>
       </div>`;
-    managerWidget = grid.addWidget(el);
+    document.getElementById('grid').appendChild(el);
+    managerWidget = grid.makeWidget(el);
   } else {
     const listEl = managerWidget.querySelector('#managerList');
     if (listEl) listEl.innerHTML = listHtml;
