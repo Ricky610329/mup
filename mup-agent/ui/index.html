@@ -206,6 +206,13 @@
       resize: vertical; min-height: 60px; max-height: 150px;
       line-height: 1.4;
     }
+    .settings-section-title {
+      font-size: 11px; font-weight: 700; color: var(--text-primary);
+      letter-spacing: 0.3px; text-transform: uppercase;
+    }
+    .settings-divider {
+      height: 1px; background: var(--border); margin: 4px 0;
+    }
     .settings-save-btn {
       padding: 10px 20px; border-radius: var(--radius-full);
       background: var(--text-primary); color: white; border: none;
@@ -451,6 +458,7 @@
         </button>
       </div>
       <div class="settings-body">
+        <div class="settings-section-title">LLM</div>
         <div class="settings-group">
           <label>Provider</label>
           <select class="settings-input settings-select" id="settingsProvider">
@@ -470,24 +478,29 @@
           <label>API Key</label>
           <input class="settings-input" id="settingsApiKey" type="password" placeholder="sk-...">
         </div>
+        <div class="settings-divider"></div>
+        <div class="settings-section-title">Agent</div>
         <div class="settings-group">
           <label>System Prompt (prefix)</label>
           <textarea class="settings-input settings-textarea" id="settingsPrompt" placeholder="Optional: prepended to auto-generated prompt"></textarea>
         </div>
+        <div class="settings-divider"></div>
+        <div class="settings-section-title">Grid Layout</div>
         <div class="settings-group">
-          <label>Grid — Cell Size (px)</label>
+          <label>Cell Size (px)</label>
           <input class="settings-input" id="settingsCellSize" type="number" min="150" max="400" step="10">
         </div>
         <div class="settings-group">
-          <label>Grid — Max Columns</label>
+          <label>Max Columns</label>
           <input class="settings-input" id="settingsMaxCols" type="number" min="2" max="10">
         </div>
         <div class="settings-group">
-          <label>Grid — Min Columns</label>
+          <label>Min Columns</label>
           <input class="settings-input" id="settingsMinCols" type="number" min="1" max="5">
         </div>
-        <div style="display:flex;align-items:center;">
+        <div style="display:flex;align-items:center;gap:8px;">
           <button class="settings-save-btn" id="settingsSaveBtn">Save</button>
+          <button class="settings-save-btn" id="settingsDefaultBtn" style="background:transparent;color:var(--text-secondary);border:1.5px solid var(--border);">Reset Default</button>
           <span class="settings-status" id="settingsStatus"></span>
         </div>
       </div>
@@ -871,6 +884,15 @@ settingsBtn.addEventListener("click", () => {
 });
 settingsCloseBtn.addEventListener("click", () => settingsPanel.classList.remove("open"));
 document.getElementById("settingsOverlay").addEventListener("click", () => settingsPanel.classList.remove("open"));
+
+document.getElementById("settingsDefaultBtn").addEventListener("click", () => {
+  document.getElementById("settingsCellSize").value = 260;
+  document.getElementById("settingsMaxCols").value = 5;
+  document.getElementById("settingsMinCols").value = 2;
+  document.getElementById("settingsPrompt").value = "";
+  settingsStatus.textContent = "Defaults restored — click Save to apply";
+  settingsStatus.style.color = "var(--text-secondary)";
+});
 
 settingsSaveBtn.addEventListener("click", () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
