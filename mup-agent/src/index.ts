@@ -127,12 +127,12 @@ Examples:
 
   // Start UI bridge
   const bridge = new UiBridge(manager, port);
-  if (mupFiles.length > 0) {
+  // Set initial folder for Manager card — use examples/ root to show categories
+  const examplesDir = path.resolve(__dirname, "..", "..", "examples");
+  if (fs.existsSync(examplesDir)) {
+    bridge.initialFolder = examplesDir;
+  } else if (mupFiles.length > 0) {
     bridge.initialFolder = path.dirname(mupFiles[0]);
-  } else {
-    // Point Manager card to examples/ so user sees categories
-    const defaultDir = path.resolve(__dirname, "..", "..", "examples");
-    if (fs.existsSync(defaultDir)) bridge.initialFolder = defaultDir;
   }
   await bridge.start();
 

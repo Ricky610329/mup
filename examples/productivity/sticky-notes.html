@@ -322,7 +322,7 @@
 
     function sendNoteState() {
       const label = notes.length === 0 ? 'Board empty' : `${notes.length} note(s)`;
-      mup.updateState(label, { noteCount: notes.length, notes: notes.map(n => ({ id: n.id, text: n.text, color: n.color })) });
+      mup.updateState(label, { noteCount: notes.length, notes: notes.map(n => ({ id: n.id, text: n.text, color: n.color, x: Math.round(n.xPct), y: Math.round(n.yPct) })) });
     }
 
     function escapeHtml(s) {
@@ -421,7 +421,7 @@
     mup.onReady((params) => {
       if (params.savedState && params.savedState.notes) {
         for (const n of params.savedState.notes) {
-          createNote(n.text, n.color);
+          createNote(n.text, n.color, n.x, n.y);
         }
       }
       sendNoteState();
