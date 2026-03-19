@@ -185,7 +185,7 @@
           updateStatus();
           render();
           sendState();
-          mup.notifyInteraction('move', `Player moved ${moveStr}`, { move: moveStr });
+          mup.notifyInteraction('discuss', `Player moved ${moveStr}. Your turn — reply with makeMove().`, { move: moveStr });
         } else {
           // Select new piece
           if (pieceColor(piece) === playerColor) {
