@@ -81,17 +81,24 @@ export function buildSystemPrompt(manager: MupManager): string {
   }
 
   if (inactive.length > 0) {
-    const list = inactive.map(e =>
-      `- ${e.manifest.name} [id: ${e.manifest.id}]: ${e.manifest.description}`
-    ).join("\n");
-    prompt += `\nAvailable (call activateMup to open):\n${list}\n`;
+    // Only show name + short purpose, NOT function details (those come after activation)
+    const list = inactive.map(e => {
+      // Take first sentence of description only
+      const short = e.manifest.description.split(/[.!。]/)[0].trim();
+      return `- ${e.manifest.name} [id: ${e.manifest.id}]: ${short}`;
+    }).join("\n");
+    prompt += `\nAvailable panels (call activateMup to open, then their tools become available):\n${list}\n`;
   }
 
   if (active.length === 0 && inactive.length === 0) {
     prompt += `\nNo panels available. User can load MUPs from the Manager card.\n`;
   }
 
-  prompt += `\nIMPORTANT: Always use tools to perform actions. Do NOT describe what you would do — actually do it by calling the functions. For example, if the user asks for a presentation, call activateMup then createPresentation with the actual slide data. Never output slide content as text.`;
+  prompt += `\nRULES:
+1. ALWAYS use tool calls to perform actions. NEVER write function calls as text.
+2. To use a panel: first call activateMup, then its functions become available as tools.
+3. After activateMup returns, call the panel's functions directly as tool calls.
+4. Keep text responses short. Let the panels show the content visually.`;
   return prompt;
 }
 
