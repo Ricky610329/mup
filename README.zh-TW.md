@@ -9,49 +9,11 @@
 
 ## 示範
 
-<table>
-<tr>
-<td width="50%" align="center">
-
-![畫圖 & 分析](docs/demos/demo-tree.gif)
-
-**[畫圖 & 分析](https://youtu.be/14-4sgN2hSk)** — Pixel Art + Chart
-
-</td>
-<td width="50%" align="center">
-
-![打節拍](docs/demos/demo-beat.gif)
-
-**[打節拍](https://youtu.be/vp6W5ZiFfuM)** — Drum Machine
-
-</td>
-</tr>
-<tr>
-<td align="center">
-
-![看到什麼畫什麼](docs/demos/demo-see-draw.gif)
-
-**[看到什麼畫什麼](https://youtu.be/jk7Hlzcy4ko)** — Camera + Pixel Art
-
-</td>
-<td align="center">
-
-![智慧便利貼](docs/demos/demo-notes.gif)
-
-**[智慧便利貼](https://youtu.be/9EG0XhwVn1c)** — Sticky Notes
-
-</td>
-</tr>
-<tr>
-<td colspan="2" align="center">
-
-![檔案報表](docs/demos/demo-file-report.gif)
-
-**[檔案報表](https://youtu.be/wcM7zEUrIHY)** — File Organizer + Chart
-
-</td>
-</tr>
-</table>
+- **[畫圖 & 分析](https://youtu.be/14-4sgN2hSk)** — Pixel Art + Chart
+- **[打節拍](https://youtu.be/vp6W5ZiFfuM)** — Drum Machine
+- **[看到什麼畫什麼](https://youtu.be/jk7Hlzcy4ko)** — Camera + Pixel Art
+- **[智慧便利貼](https://youtu.be/9EG0XhwVn1c)** — Sticky Notes
+- **[檔案報表](https://youtu.be/wcM7zEUrIHY)** — File Organizer + Chart
 
 ---
 

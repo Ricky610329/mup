@@ -3,10 +3,9 @@ dist/
 .DS_Store
 *.local
 .env
-sample-mess/
-image.png
 .claude/
 
-# Native host generated files
-mup-native-host/host.bat
-mup-native-host/com.mup.native.json
+# MUP Agent build output and user data
+mup-agent/dist/
+mup-agent/node_modules/
+.mup-agent/

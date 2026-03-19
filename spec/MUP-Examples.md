@@ -1,6 +1,6 @@
 # MUP Examples
 
-This document describes the example MUPs included in `poc/examples/`. Each demonstrates a different protocol capability.
+This document describes the example MUPs included in `examples/`. Each demonstrates a different protocol capability.
 
 ---
 
