@@ -234,18 +234,29 @@
         }
 
         // Add task button
+        // Inline add: input field instead of prompt()
+        const addWrap = document.createElement('div');
+        addWrap.style.cssText = 'display:flex;gap:3px;';
+        const addInput = document.createElement('input');
+        addInput.style.cssText = 'flex:1;border:1px solid rgba(60,60,67,0.12);border-radius:5px;padding:4px 6px;font-size:11px;font-family:inherit;outline:none;background:white;';
+        addInput.placeholder = 'New task...';
         const addBtn = document.createElement('button');
         addBtn.className = 'add-btn';
-        addBtn.textContent = '+ Add';
-        addBtn.addEventListener('click', () => {
-          const title = prompt('Task title:');
+        addBtn.textContent = '+';
+        addBtn.style.cssText = 'padding:4px 8px;font-size:14px;font-weight:600;';
+        const doAdd = () => {
+          const title = addInput.value.trim();
           if (!title) return;
           tasks.push({ id: generateId(), title, description: '', column: col.id });
           render();
           sendState();
           mup.notifyInteraction('add', `Added "${title}" to ${col.title}`, { title, column: col.id });
-        });
-        cardsEl.appendChild(addBtn);
+        };
+        addBtn.addEventListener('click', doAdd);
+        addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+        addWrap.appendChild(addInput);
+        addWrap.appendChild(addBtn);
+        cardsEl.appendChild(addWrap);
 
         colEl.appendChild(cardsEl);
         board.appendChild(colEl);
