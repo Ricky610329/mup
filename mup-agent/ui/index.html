@@ -1148,6 +1148,15 @@ function handleServerMessage(msg) {
     case "session-title":
       chatTitle.textContent = msg.title;
       break;
+    case "no-api-key":
+      // Auto-open settings and show hint
+      settingsPanel.classList.add("open");
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "get-settings" }));
+      }
+      settingsStatus.textContent = "Enter your API key to get started";
+      settingsStatus.style.color = "var(--accent)";
+      break;
     case "settings":
       populateSettings(msg.settings);
       break;

@@ -43,6 +43,7 @@ export class UiBridge extends EventEmitter {
   private mupsInitialized = false;
   private connectionWaiters: Array<() => void> = [];
   public initialFolder: string | null = null;
+  public noApiKey = false;
 
   constructor(manager: MupManager, port: number) {
     super();
@@ -97,6 +98,11 @@ export class UiBridge extends EventEmitter {
         grid: e.manifest.grid,
       }));
       ws.send(JSON.stringify({ type: "mup-catalog", catalog }));
+
+      // Notify browser if no API key is configured
+      if (this.noApiKey) {
+        ws.send(JSON.stringify({ type: "no-api-key" }));
+      }
 
       // Send already-active MUPs for loading
       for (const mup of this.manager.getAll()) {

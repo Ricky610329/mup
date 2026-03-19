@@ -13,7 +13,7 @@
 - **[Beat Making](https://youtu.be/vp6W5ZiFfuM)** — Drum Machine
 - **[See & Draw](https://youtu.be/jk7Hlzcy4ko)** — Camera + Pixel Art
 - **[Smart Notes](https://youtu.be/9EG0XhwVn1c)** — Sticky Notes
-- **[File Report](https://youtu.be/wcM7zEUrIHY)** — File Organizer + Chart
+- **[File Report](https://youtu.be/wcM7zEUrIHY)** — Workspace + Chart
 
 ---
 
@@ -47,7 +47,7 @@ MUP changes this. It puts clickable, visual UI right inside the chat — so anyo
 
 - **[Spec](spec/MUP-Spec.md)** — Protocol definition: manifest, functions, lifecycle, error handling
 - **[Design Philosophy](spec/MUP-Philosophy.md)** — Why MUP is designed this way, and what we intentionally left out
-- **[Examples](spec/MUP-Examples.md)** — 9 example MUPs with walkthroughs
+- **[Examples](spec/MUP-Examples.md)** — 16 example MUPs with walkthroughs
 
 ## Quick Example
 
@@ -79,45 +79,59 @@ Drop this into a MUP-compatible host, and it works.
 git clone https://github.com/Ricky610329/mup.git
 cd mup/mup-agent
 npm install
-npm run build
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+npm start
 ```
 
-Set your API key and run:
+A browser window opens automatically. The 16 built-in example MUPs are pre-loaded — activate them from the Manager card, chat with the agent, and the LLM calls MUP functions as tools.
+
+> **No API key yet?** Just skip the `echo` step — `npm start` will open the Settings panel in the browser where you can enter it.
+
+### Other providers
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-... node dist/index.js --mups-dir ../examples
-```
+# OpenAI
+echo "OPENAI_API_KEY=sk-..." > .env
+npm start -- --provider openai --model gpt-4o
 
-A browser window opens automatically with the chat panel and MUP grid. Load MUPs from the manager card, chat with the agent, and the LLM calls MUP functions as tools.
+# Google
+echo "GOOGLE_API_KEY=..." > .env
+npm start -- --provider google --model gemini-2.5-flash
+```
 
 ### Options
 
 ```
-mup-agent [options] [file1.html file2.html ...]
-
---mups-dir <dir>     Load all .html MUP files from a directory
 --provider <name>    LLM provider: anthropic, openai, google, groq, xai (default: anthropic)
 --model <id>         Model ID (default: claude-sonnet-4-6)
---api-key <key>      API key (or set ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+--api-key <key>      API key (alternative to .env)
+--mups-dir <dir>     Load MUPs from a directory (default: examples/)
 --port <port>        UI panel port (default: 3100)
 --no-open            Don't auto-open the browser
 ```
 
 ### Built-in Examples
 
-9 ready-to-use MUPs in `examples/`:
+16 ready-to-use MUPs in `examples/`:
 
-| MUP | Size | Description |
-|-----|------|-------------|
-| Counter | 1×1 | Click +/−, LLM sets value |
-| Dice | 1×1 | Roll with animation, history |
-| Timer | 1×1 | Countdown timer |
-| Chart | 2×2 | Bar, line, pie charts |
-| Camera | 2×2 | Live camera feed + snapshot |
-| Drum Machine | 2×2 | 4-track step sequencer |
-| Pixel Art | 2×2 | 16×16 pixel canvas |
-| Sticky Notes | 2×2 | Draggable notes board |
-| File Organizer | 2×2 | Browse and organize local files |
+| Category | MUP | Description |
+|----------|-----|-------------|
+| basic | Counter | Click +/−, LLM sets value |
+| basic | Dice | Roll with animation, history |
+| basic | Timer | Countdown with progress ring |
+| basic | Chess | Play chess against the LLM |
+| creative | Pixel Art | 16×16 pixel canvas |
+| creative | Markdown | Markdown renderer, loads files |
+| creative | Editor | Text editor with selection-aware LLM |
+| creative | Slides | Presentation builder |
+| data | Chart | Bar, line, pie charts |
+| data | Search | Web search via host |
+| data | Workspace | Browse, read, write local files |
+| media | Camera | Live camera + snapshot |
+| media | Voice | Speech-to-text + text-to-speech |
+| media | Drum Machine | 4-track step sequencer |
+| productivity | Sticky Notes | Draggable notes board |
+| productivity | Kanban | Task board with drag-and-drop |
 
 ## Architecture
 

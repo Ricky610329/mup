@@ -11,6 +11,34 @@ import { UiBridge } from "./bridge.js";
 import { createMupAgent } from "./agent.js";
 import { loadSettings } from "./settings.js";
 
+/** Load .env file (key=value lines) into process.env */
+function loadDotEnv(): void {
+  // Search: CWD, then project root (mup-agent/../)
+  const candidates = [
+    path.resolve(".env"),
+    path.resolve(__dirname, "..", "..", ".env"),
+  ];
+  for (const envPath of candidates) {
+    if (!fs.existsSync(envPath)) continue;
+    const lines = fs.readFileSync(envPath, "utf-8").split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq < 1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      // Strip surrounding quotes
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (!process.env[key]) process.env[key] = val;
+    }
+    console.error(`[mup-agent] Loaded .env from ${envPath}`);
+    return;
+  }
+}
+
 function openBrowser(url: string): void {
   const cmd =
     process.platform === "win32"
@@ -22,6 +50,9 @@ function openBrowser(url: string): void {
 }
 
 async function main() {
+  // Load .env before anything else
+  loadDotEnv();
+
   const args = process.argv.slice(2);
 
   let mupFiles: string[] = [];
@@ -143,10 +174,21 @@ Examples:
   const finalKey = apiKey || saved.apiKey || undefined;
 
   // Create agent
+  const hasKey = !!(finalKey || process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GROQ_API_KEY || process.env.XAI_API_KEY);
   const agent = createMupAgent({ manager, bridge, provider: finalProvider, modelId: finalModel, apiKey: finalKey });
-  console.error(
-    `[mup-agent] Agent ready (${provider}/${modelId}, ${manager.getCatalog().length} MUPs in catalog)`
-  );
+
+  console.error("");
+  console.error(`  MUP Agent running → http://localhost:${port}`);
+  console.error(`  Model: ${finalProvider}/${finalModel}`);
+  console.error(`  MUPs:  ${manager.getCatalog().length} loaded`);
+  if (!hasKey) {
+    console.error("");
+    console.error(`  ⚠ No API key found. Set one of:`);
+    console.error(`    1. Create .env file:  echo "ANTHROPIC_API_KEY=sk-ant-..." > .env`);
+    console.error(`    2. Click ⚙ Settings in the browser UI`);
+    bridge.noApiKey = true;
+  }
+  console.error("");
 
   // Auto-open browser
   if (!noOpen) {
