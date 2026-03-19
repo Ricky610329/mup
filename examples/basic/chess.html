@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chess</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Chess",
+    "description": "A chess board. User plays by clicking pieces, LLM responds with moves. Simple coordinate-based moves like e2e4.",
+    "grid": { "minWidth": 1, "minHeight": 1 },
+    "functions": [
+      {
+        "name": "makeMove",
+        "description": "Make a chess move using coordinate notation like 'e2e4' (from-square to-square). Use this to play your turn.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "move": { "type": "string", "description": "Move in coordinate notation, e.g. 'e2e4', 'g1f3', 'e1g1' (castling)" }
+          },
+          "required": ["move"]
+        }
+      },
+      {
+        "name": "getBoard",
+        "description": "Get the current board state and move history",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "resetGame",
+        "description": "Reset the board to starting position",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: transparent; height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center;
+      -webkit-font-smoothing: antialiased; overflow: hidden;
+    }
+    .board-wrap { position: relative; }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      border: 2px solid #555;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .cell {
+      width: 100%; aspect-ratio: 1;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px; cursor: pointer;
+      user-select: none; position: relative;
+    }
+    .cell.light { background: #f0d9b5; }
+    .cell.dark { background: #b58863; }
+    .cell.selected { box-shadow: inset 0 0 0 3px rgba(0,122,255,0.7); }
+    .cell.hint::after {
+      content: ''; position: absolute;
+      width: 30%; height: 30%; border-radius: 50%;
+      background: rgba(0,0,0,0.15);
+    }
+    .cell.last-from, .cell.last-to { background: rgba(255,255,0,0.3); }
+    .status {
+      padding: 6px; font-size: 11px; color: #666;
+      text-align: center;
+    }
+    .controls {
+      display: flex; gap: 6px; padding: 4px;
+    }
+    .ctrl-btn {
+      border: none; background: rgba(60,60,67,0.08);
+      color: rgba(60,60,67,0.6); border-radius: 4px;
+      padding: 3px 10px; font-size: 10px;
+      cursor: pointer; font-family: inherit;
+    }
+    .ctrl-btn:hover { background: rgba(60,60,67,0.15); }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">Your turn (White)</div>
+  <div class="board-wrap">
+    <div class="board" id="board"></div>
+  </div>
+  <div class="controls">
+    <button class="ctrl-btn" id="resetBtn">New Game</button>
+    <button class="ctrl-btn" id="flipBtn">Flip</button>
+  </div>
+
+  <script>
+    // Pieces: K Q R B N P (uppercase=white, lowercase=black)
+    const PIECES = { K:'♔', Q:'♕', R:'♖', B:'♗', N:'♘', P:'♙', k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' };
+    const FILES = 'abcdefgh';
+
+    let board = [];
+    let turn = 'white'; // 'white' or 'black'
+    let selected = null; // {r, c}
+    let moveHistory = [];
+    let lastMove = null; // {from, to}
+    let flipped = false;
+    let playerColor = 'white';
+
+    function initBoard() {
+      board = [
+        ['r','n','b','q','k','b','n','r'],
+        ['p','p','p','p','p','p','p','p'],
+        [' ',' ',' ',' ',' ',' ',' ',' '],
+        [' ',' ',' ',' ',' ',' ',' ',' '],
+        [' ',' ',' ',' ',' ',' ',' ',' '],
+        [' ',' ',' ',' ',' ',' ',' ',' '],
+        ['P','P','P','P','P','P','P','P'],
+        ['R','N','B','Q','K','B','N','R'],
+      ];
+      turn = 'white';
+      selected = null;
+      moveHistory = [];
+      lastMove = null;
+    }
+
+    function isWhite(p) { return p >= 'A' && p <= 'Z'; }
+    function isBlack(p) { return p >= 'a' && p <= 'z'; }
+    function pieceColor(p) { return isWhite(p) ? 'white' : isBlack(p) ? 'black' : null; }
+
+    function toNotation(r, c) { return FILES[c] + (8 - r); }
+    function fromNotation(s) { return { r: 8 - parseInt(s[1]), c: FILES.indexOf(s[0]) }; }
+
+    function render() {
+      const boardEl = document.getElementById('board');
+      // Size board to fit
+      const size = Math.min(document.body.clientWidth, document.body.clientHeight) - 60;
+      const cellSize = Math.floor(size / 8);
+      boardEl.style.width = cellSize * 8 + 'px';
+      boardEl.style.height = cellSize * 8 + 'px';
+
+      boardEl.innerHTML = '';
+      for (let ri = 0; ri < 8; ri++) {
+        for (let ci = 0; ci < 8; ci++) {
+          const r = flipped ? 7 - ri : ri;
+          const c = flipped ? 7 - ci : ci;
+          const cell = document.createElement('div');
+          const isLight = (r + c) % 2 === 0;
+          cell.className = 'cell ' + (isLight ? 'light' : 'dark');
+          cell.style.fontSize = (cellSize * 0.6) + 'px';
+
+          if (selected && selected.r === r && selected.c === c) cell.classList.add('selected');
+          if (lastMove) {
+            if (lastMove.from.r === r && lastMove.from.c === c) cell.classList.add('last-from');
+            if (lastMove.to.r === r && lastMove.to.c === c) cell.classList.add('last-to');
+          }
+
+          const piece = board[r][c];
+          if (piece !== ' ') cell.textContent = PIECES[piece] || piece;
+
+          cell.addEventListener('click', () => onCellClick(r, c));
+          boardEl.appendChild(cell);
+        }
+      }
+    }
+
+    function onCellClick(r, c) {
+      if (turn !== playerColor) return; // Not your turn
+      const piece = board[r][c];
+
+      if (selected) {
+        // Try to move
+        if (selected.r === r && selected.c === c) {
+          selected = null;
+          render();
+          return;
+        }
+        const from = selected;
+        if (tryMove(from.r, from.c, r, c)) {
+          selected = null;
+          render();
+          const moveStr = toNotation(from.r, from.c) + toNotation(r, c);
+          moveHistory.push(moveStr);
+          lastMove = { from, to: { r, c } };
+          turn = turn === 'white' ? 'black' : 'white';
+          updateStatus();
+          render();
+          sendState();
+          mup.notifyInteraction('move', `Player moved ${moveStr}`, { move: moveStr });
+        } else {
+          // Select new piece
+          if (pieceColor(piece) === playerColor) {
+            selected = { r, c };
+          } else {
+            selected = null;
+          }
+          render();
+        }
+      } else {
+        if (pieceColor(piece) === playerColor) {
+          selected = { r, c };
+          render();
+        }
+      }
+    }
+
+    function tryMove(fr, fc, tr, tc) {
+      const piece = board[fr][fc];
+      const target = board[tr][tc];
+      // Can't capture own piece
+      if (pieceColor(target) === pieceColor(piece)) return false;
+      // Basic move validation (simplified — no full chess rules)
+      board[tr][tc] = piece;
+      board[fr][fc] = ' ';
+      // Handle pawn promotion (auto-queen)
+      if (piece === 'P' && tr === 0) board[tr][tc] = 'Q';
+      if (piece === 'p' && tr === 7) board[tr][tc] = 'q';
+      return true;
+    }
+
+    function applyMove(moveStr) {
+      if (moveStr.length < 4) return false;
+      const from = fromNotation(moveStr.substring(0, 2));
+      const to = fromNotation(moveStr.substring(2, 4));
+      const piece = board[from.r][from.c];
+      if (piece === ' ') return false;
+
+      // Handle castling
+      if ((piece === 'K' || piece === 'k') && Math.abs(to.c - from.c) === 2) {
+        board[to.r][to.c] = piece;
+        board[from.r][from.c] = ' ';
+        if (to.c > from.c) { // kingside
+          board[to.r][to.c - 1] = board[to.r][7];
+          board[to.r][7] = ' ';
+        } else { // queenside
+          board[to.r][to.c + 1] = board[to.r][0];
+          board[to.r][0] = ' ';
+        }
+      } else {
+        board[to.r][to.c] = piece;
+        board[from.r][from.c] = ' ';
+      }
+
+      // Pawn promotion
+      if (piece === 'P' && to.r === 0) board[to.r][to.c] = moveStr.length > 4 ? moveStr[4].toUpperCase() : 'Q';
+      if (piece === 'p' && to.r === 7) board[to.r][to.c] = moveStr.length > 4 ? moveStr[4].toLowerCase() : 'q';
+
+      moveHistory.push(moveStr);
+      lastMove = { from, to };
+      turn = turn === 'white' ? 'black' : 'white';
+      return true;
+    }
+
+    function updateStatus() {
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = turn === playerColor ? `Your turn (${playerColor})` : `AI thinking...`;
+    }
+
+    function boardToFEN() {
+      let fen = '';
+      for (let r = 0; r < 8; r++) {
+        let empty = 0;
+        for (let c = 0; c < 8; c++) {
+          if (board[r][c] === ' ') { empty++; }
+          else { if (empty > 0) { fen += empty; empty = 0; } fen += board[r][c]; }
+        }
+        if (empty > 0) fen += empty;
+        if (r < 7) fen += '/';
+      }
+      fen += ' ' + (turn === 'white' ? 'w' : 'b') + ' - - 0 ' + Math.floor(moveHistory.length / 2 + 1);
+      return fen;
+    }
+
+    function sendState() {
+      const fen = boardToFEN();
+      mup.updateState(
+        `${turn}'s turn, ${moveHistory.length} moves`,
+        { fen, turn, moveHistory, board: board.map(r => r.join('')) }
+      );
+    }
+
+    // Resize
+    new ResizeObserver(() => render()).observe(document.body);
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      initBoard();
+      render();
+      updateStatus();
+      sendState();
+    });
+
+    document.getElementById('flipBtn').addEventListener('click', () => {
+      flipped = !flipped;
+      render();
+    });
+
+    // === MUP Functions ===
+
+    mup.registerFunction('makeMove', async (params) => {
+      const move = params.move?.toLowerCase().trim();
+      if (!move || move.length < 4) {
+        return { content: [{ type: 'text', text: 'Invalid move format. Use e.g. "e2e4"' }], isError: true };
+      }
+      if (turn === playerColor) {
+        return { content: [{ type: 'text', text: `It's the player's turn, not yours.` }], isError: true };
+      }
+      if (!applyMove(move)) {
+        return { content: [{ type: 'text', text: `Could not apply move: ${move}` }], isError: true };
+      }
+      render();
+      updateStatus();
+      sendState();
+      const fen = boardToFEN();
+      return {
+        content: [
+          { type: 'text', text: `Moved ${move}. Board FEN: ${fen}` },
+          { type: 'data', data: { move, fen, turn } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('getBoard', async () => {
+      const fen = boardToFEN();
+      const hist = moveHistory.length > 0 ? moveHistory.join(', ') : 'none';
+      return {
+        content: [
+          { type: 'text', text: `FEN: ${fen}\nTurn: ${turn}\nMoves: ${hist}` },
+          { type: 'data', data: { fen, turn, moveHistory } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('resetGame', async () => {
+      initBoard();
+      render();
+      updateStatus();
+      sendState();
+      return { content: [{ type: 'text', text: 'Game reset. White to move.' }], isError: false };
+    });
+
+    // Init
+    initBoard();
+
+    mup.onReady((params) => {
+      if (params.savedState && params.savedState.board) {
+        // Restore board from saved rows
+        for (let r = 0; r < 8; r++) {
+          board[r] = params.savedState.board[r].split('');
+        }
+        turn = params.savedState.turn || 'white';
+        moveHistory = params.savedState.moveHistory || [];
+      }
+      render();
+      updateStatus();
+      sendState();
+    });
+  </script>
+</body>
+</html>
