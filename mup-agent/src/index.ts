@@ -96,11 +96,22 @@ Examples:
     }
   }
 
-  // Default to ../examples if no MUPs specified
+  // Default to ../examples if no MUPs specified (recursive scan)
   if (mupFiles.length === 0) {
     const defaultDir = path.resolve(__dirname, "..", "..", "examples");
     if (fs.existsSync(defaultDir)) {
-      const files = fs.readdirSync(defaultDir).filter(f => f.endsWith(".html")).map(f => path.join(defaultDir, f));
+      function scanRecursive(dir: string): string[] {
+        const results: string[] = [];
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (entry.isDirectory() && !entry.name.startsWith(".")) {
+            results.push(...scanRecursive(path.join(dir, entry.name)));
+          } else if (entry.isFile() && entry.name.endsWith(".html")) {
+            results.push(path.join(dir, entry.name));
+          }
+        }
+        return results;
+      }
+      const files = scanRecursive(defaultDir);
       for (const file of files) {
         try {
           const manifest = manager.scanFile(file);
@@ -108,7 +119,7 @@ Examples:
         } catch {}
       }
       mupFiles = files;
-      console.error(`[mup-agent] Loaded default examples from ${defaultDir}`);
+      console.error(`[mup-agent] Loaded ${files.length} MUPs from ${defaultDir}`);
     } else {
       console.error("[mup-agent] No MUPs specified — starting in chat-only mode.");
     }

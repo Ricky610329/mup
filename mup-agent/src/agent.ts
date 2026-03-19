@@ -66,27 +66,33 @@ export function buildMupTools(
 // ---- System prompt ----
 
 export function buildSystemPrompt(manager: MupManager): string {
-  const mups = manager.getAll();
-  if (mups.length === 0) {
-    return `You are an AI assistant. No UI panels are currently loaded.`;
+  const active = manager.getAll();
+  const catalog = manager.getCatalog();
+  const inactive = catalog.filter(e => !e.active);
+
+  let prompt = `You are an AI assistant with interactive UI panels (MUPs).\n`;
+
+  if (active.length > 0) {
+    const list = active.map(m => {
+      const state = m.stateSummary ? ` — ${m.stateSummary}` : "";
+      return `- ${m.manifest.name}${state}`;
+    }).join("\n");
+    prompt += `\nActive panels:\n${list}\n`;
   }
 
-  const mupList = mups
-    .map(m => {
-      const fnCount = m.manifest.functions.length;
-      const fns = fnCount > 0 ? ` (${fnCount} function${fnCount !== 1 ? "s" : ""})` : " (display-only)";
-      const state = m.stateSummary ? ` — ${m.stateSummary}` : "";
-      return `- ${m.manifest.name}: ${m.manifest.description}${fns}${state}`;
-    })
-    .join("\n");
+  if (inactive.length > 0) {
+    const list = inactive.map(e =>
+      `- ${e.manifest.name} [id: ${e.manifest.id}]: ${e.manifest.description}`
+    ).join("\n");
+    prompt += `\nAvailable (call activateMup to open):\n${list}\n`;
+  }
 
-  return `You are an AI assistant with access to interactive UI panels (MUPs).
+  if (active.length === 0 && inactive.length === 0) {
+    prompt += `\nNo panels available. User can load MUPs from the Manager card.\n`;
+  }
 
-Active panels:
-${mupList}
-
-When a user interacts with a panel, you'll see their action. React naturally.
-Call functions to update panels based on conversation context.`;
+  prompt += `\nProactively suggest and activate relevant panels for the user's task. React to user interactions naturally.`;
+  return prompt;
 }
 
 // ---- Model resolution ----
@@ -120,8 +126,36 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
   const model = resolveModel(provider, modelId, apiKey);
   const tools = buildMupTools(manager, bridge);
 
+  // Built-in tool: let LLM activate MUPs
+  const activateMupTool: AgentTool<TSchema, unknown> = {
+    name: "activateMup",
+    label: "Activate MUP",
+    description: "Open a MUP panel by its ID. Use this to activate panels the user needs for their task.",
+    parameters: Type.Object({
+      mupId: Type.String({ description: "The MUP ID to activate (from the Available list in system prompt)" }),
+    }) as TSchema,
+    async execute(_id: string, params: unknown): Promise<AgentToolResult<unknown>> {
+      const { mupId } = params as { mupId: string };
+      if (manager.isActive(mupId)) {
+        return { content: [{ type: "text", text: `${mupId} is already active.` }], details: null };
+      }
+      const loaded = manager.activate(mupId);
+      if (!loaded) {
+        return { content: [{ type: "text", text: `MUP not found: ${mupId}` }], details: null };
+      }
+      bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
+      // Rebuild tools to include the new MUP's functions
+      const newTools = [...buildMupTools(manager, bridge), activateMupTool];
+      agent.setTools(newTools);
+      agent.setSystemPrompt(buildSystemPrompt(manager));
+      return { content: [{ type: "text", text: `Activated ${loaded.manifest.name}. Its functions are now available.` }], details: null };
+    },
+  };
+
+  const allTools = [...tools, activateMupTool];
+
   const agent = new Agent({
-    initialState: { systemPrompt: buildSystemPrompt(manager), model, tools },
+    initialState: { systemPrompt: buildSystemPrompt(manager), model, tools: allTools },
     transformContext: async (messages: AgentMessage[]) => {
       // 1. Refresh system prompt with latest MUP states
       agent.setSystemPrompt(buildSystemPrompt(manager));
@@ -238,14 +272,14 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
     if (!loaded) return;
     console.error(`[mup-agent] Activating: ${loaded.manifest.name}`);
     bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
-    agent.setTools(buildMupTools(manager, bridge));
+    agent.setTools([...buildMupTools(manager, bridge), activateMupTool]);
     agent.setSystemPrompt(buildSystemPrompt(manager));
   });
 
   bridge.on("deactivate-mup", (mupId: string) => {
     console.error(`[mup-agent] Deactivating: ${manager.get(mupId)?.manifest.name ?? mupId}`);
     manager.deactivate(mupId);
-    agent.setTools(buildMupTools(manager, bridge));
+    agent.setTools([...buildMupTools(manager, bridge), activateMupTool]);
     agent.setSystemPrompt(buildSystemPrompt(manager));
   });
 
@@ -255,7 +289,7 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
       const loaded = manager.get(mupId);
       if (loaded) {
         bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
-        agent.setTools(buildMupTools(manager, bridge));
+        agent.setTools([...buildMupTools(manager, bridge), activateMupTool]);
         agent.setSystemPrompt(buildSystemPrompt(manager));
       }
     } catch (err) {
