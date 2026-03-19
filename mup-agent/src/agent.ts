@@ -130,7 +130,7 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
   const { manager, bridge, provider, modelId } = opts;
   let apiKey = opts.apiKey;
 
-  const model = resolveModel(provider, modelId, apiKey);
+  let model = resolveModel(provider, modelId, apiKey);
   const tools = buildMupTools(manager, bridge);
 
   // Built-in tool: let LLM activate MUPs
@@ -374,6 +374,7 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
     try {
       const newModel = resolveModel(settings.provider, settings.model, settings.apiKey);
       agent.setModel(newModel);
+      model = newModel;
       if (settings.apiKey) apiKey = settings.apiKey;
       console.error(`[mup-agent] Settings updated: ${settings.provider}/${settings.model}`);
       bridge.sendRaw({ type: "settings-saved", success: true });
