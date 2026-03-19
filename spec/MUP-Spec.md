@@ -331,6 +331,19 @@ mup.notifyInteraction('paint', 'User painted 12 pixels in red', { color: '#ff000
 - `summary`: LLM-readable description of what the user did
 - `data`: optional structured data
 
+### `mup.system(action, params)` (optional)
+
+Request a host-provided service. Returns a promise that resolves with the host's response. Not all hosts support this — handle errors gracefully.
+
+```javascript
+const results = await mup.system('webSearch', { query: 'MUP protocol' });
+```
+
+- `action`: the service to invoke (host-defined, e.g., `"webSearch"`, `"fetchUrl"`)
+- `params`: action-specific parameters
+
+This sends a `system/request` JSON-RPC call to the host. If the host does not support the action, it returns a `-32601` error. MUPs should catch this and fall back gracefully.
+
 ---
 
 ## 9. Writing Good Descriptions
@@ -445,6 +458,7 @@ All host↔MUP communication uses JSON-RPC 2.0 over a `MessageChannel` (or equiv
 | `notifications/state/update` | Notification | MUP state changed. Params: `summary`, `data?`. |
 | `notifications/interaction` | Notification | User interacted with MUP UI. Params: `action`, `summary`, `data?`. |
 | `notifications/shutdown/complete` | Notification | MUP acknowledges shutdown. No params. |
+| `system/request` | Request (optional) | Request a host service. Params: `action`, `params`. Host returns result or `-32601` if unsupported. |
 
 ## Appendix B: Comparison with MCP
 

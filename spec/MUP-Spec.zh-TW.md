@@ -331,6 +331,19 @@ mup.notifyInteraction('paint', 'User painted 12 pixels in red', { color: '#ff000
 - `summary`：LLM 可讀的使用者行為描述
 - `data`：選填的結構化資料
 
+### `mup.system(action, params)`（選用）
+
+請求 host 提供的服務。回傳一個 promise，resolve 為 host 的回應。並非所有 host 都支援 — 請妥善處理錯誤。
+
+```javascript
+const results = await mup.system('webSearch', { query: 'MUP protocol' });
+```
+
+- `action`：要呼叫的服務（由 host 定義，如 `"webSearch"`、`"fetchUrl"`）
+- `params`：action 專屬的參數
+
+這會發送一個 `system/request` JSON-RPC 呼叫給 host。如果 host 不支援該 action，會回傳 `-32601` 錯誤。MUP 應捕捉此錯誤並優雅降級。
+
 ---
 
 ## 9. 寫好 Description
@@ -445,6 +458,7 @@ MUP 應該零外部依賴就能運作。內嵌你的 CSS、打包你的 JS、嵌
 | `notifications/state/update` | Notification | MUP 狀態變更。參數：`summary`、`data?`。 |
 | `notifications/interaction` | Notification | 使用者與 MUP UI 互動。參數：`action`、`summary`、`data?`。 |
 | `notifications/shutdown/complete` | Notification | MUP 確認收到關閉通知。無參數。 |
+| `system/request` | Request（選用） | 請求 host 服務。參數：`action`、`params`。Host 回傳結果，或在不支援時回傳 `-32601`。 |
 
 ## 附錄 B：與 MCP 的比較
 
