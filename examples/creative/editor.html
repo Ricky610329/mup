@@ -60,6 +60,26 @@
         "name": "getLineCount",
         "description": "Get total number of lines in the editor",
         "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "saveToFile",
+        "description": "Save editor content to a file. Uses browser file picker or workspace path.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "Workspace path to save to. If omitted, uses browser Save dialog." }
+          }
+        }
+      },
+      {
+        "name": "loadFromFile",
+        "description": "Load a text file into the editor. Uses browser file picker or workspace path.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "Workspace path to load from. If omitted, uses browser Open dialog." }
+          }
+        }
       }
     ]
   }
@@ -141,6 +161,8 @@
 <body>
   <div class="toolbar">
     <span class="toolbar-info" id="toolbarInfo">Editor</span>
+    <button class="toolbar-btn" id="openBtn">Open</button>
+    <button class="toolbar-btn" id="saveBtn">Save</button>
     <button class="toolbar-btn" id="wrapBtn">Wrap</button>
   </div>
   <div class="editor-wrap">
@@ -262,10 +284,8 @@
       stateTimer = setTimeout(() => {
         const lines = editor.value.split('\n').length;
         const chars = editor.value.length;
-        mup.updateState(
-          `${lines} lines, ${chars} chars`,
-          { text: editor.value, lineCount: lines, charCount: chars }
-        );
+        const label = currentFile ? `${currentFile}: ${lines}L` : `${lines} lines, ${chars} chars`;
+        mup.updateState(label, { text: editor.value, lineCount: lines, charCount: chars, fileName: currentFile });
       }, 1000);
     }
 
@@ -350,9 +370,91 @@
       };
     });
 
+    mup.registerFunction('saveToFile', async (params) => {
+      try {
+        if (params.path) {
+          // Save to workspace
+          await mup.system('workspace.write', { path: params.path, content: editor.value });
+          currentFile = params.path;
+          toolbarInfo.textContent = params.path;
+          return { content: [{ type: 'text', text: `Saved to workspace: ${params.path}` }], isError: false };
+        } else {
+          return await browserSave();
+        }
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Save failed: ${err.message}` }], isError: true };
+      }
+    });
+
+    mup.registerFunction('loadFromFile', async (params) => {
+      try {
+        if (params.path) {
+          // Load from workspace
+          const result = await mup.system('workspace.read', { path: params.path, limit: 50000 });
+          editor.value = result.content;
+          currentFile = params.path;
+          toolbarInfo.textContent = params.path;
+          updateLineNumbers();
+          debouncedState();
+          return { content: [{ type: 'text', text: `Loaded ${params.path} (${result.totalLines} lines)` }], isError: false };
+        } else {
+          return await browserOpen();
+        }
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Load failed: ${err.message}` }], isError: true };
+      }
+    });
+
+    // ---- File I/O helpers ----
+    let currentFile = null;
+    let fileHandle = null;
+
+    async function browserSave() {
+      try {
+        const handle = fileHandle || await window.showSaveFilePicker({
+          types: [{ description: 'Text', accept: { 'text/plain': ['.txt', '.md', '.csv', '.json'] } }],
+        });
+        fileHandle = handle;
+        const writable = await handle.createWritable();
+        await writable.write(editor.value);
+        await writable.close();
+        currentFile = handle.name;
+        toolbarInfo.textContent = handle.name;
+        return { content: [{ type: 'text', text: `Saved as ${handle.name}` }], isError: false };
+      } catch (e) {
+        return { content: [{ type: 'text', text: 'Save cancelled' }], isError: false };
+      }
+    }
+
+    async function browserOpen() {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [{ description: 'Text', accept: { 'text/plain': ['.txt', '.md', '.csv', '.json', '.html', '.js', '.ts', '.py'] } }],
+        });
+        fileHandle = handle;
+        const file = await handle.getFile();
+        editor.value = await file.text();
+        currentFile = file.name;
+        toolbarInfo.textContent = file.name;
+        updateLineNumbers();
+        debouncedState();
+        return { content: [{ type: 'text', text: `Loaded ${file.name} (${editor.value.split('\n').length} lines)` }], isError: false };
+      } catch (e) {
+        return { content: [{ type: 'text', text: 'Open cancelled' }], isError: false };
+      }
+    }
+
+    // Toolbar buttons
+    document.getElementById('openBtn').addEventListener('click', () => browserOpen());
+    document.getElementById('saveBtn').addEventListener('click', () => browserSave());
+
     mup.onReady((params) => {
       if (params.savedState && params.savedState.text) {
         editor.value = params.savedState.text;
+        if (params.savedState.fileName) {
+          currentFile = params.savedState.fileName;
+          toolbarInfo.textContent = params.savedState.fileName;
+        }
       }
       updateLineNumbers();
       debouncedState();
