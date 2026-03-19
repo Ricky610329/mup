@@ -1041,7 +1041,12 @@ let currentFolder = '';
 
 function handleServerMessage(msg) {
   switch (msg.type) {
-    case "initial-folder": currentFolder = msg.path; break;
+    case "initial-folder":
+      currentFolder = msg.path;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "scan-folder", path: msg.path }));
+      }
+      break;
     case "mup-catalog": catalog = msg.catalog; renderManagerCard(); break;
     case "folder-contents":
       currentFolder = msg.path;

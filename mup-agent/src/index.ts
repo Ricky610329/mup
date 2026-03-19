@@ -118,6 +118,10 @@ Examples:
   const bridge = new UiBridge(manager, port);
   if (mupFiles.length > 0) {
     bridge.initialFolder = path.dirname(mupFiles[0]);
+  } else {
+    // Point Manager card to examples/ so user sees categories
+    const defaultDir = path.resolve(__dirname, "..", "..", "examples");
+    if (fs.existsSync(defaultDir)) bridge.initialFolder = defaultDir;
   }
   await bridge.start();
 
