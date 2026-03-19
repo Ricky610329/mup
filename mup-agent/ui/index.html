@@ -948,7 +948,9 @@ function renderSessionList(sessions, currentId) {
       e.stopPropagation();
       const id = btn.dataset.id;
       if (id && ws && ws.readyState === WebSocket.OPEN) {
+        const isDeletingCurrent = id === currentSessionId;
         ws.send(JSON.stringify({ type: "delete-session", sessionId: id }));
+        if (isDeletingCurrent) sessionPanel.classList.remove("open");
       }
     });
   });
