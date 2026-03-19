@@ -301,6 +301,10 @@ Host 完成初始化後呼叫一次。用來設定初始狀態。
 ```javascript
 mup.onReady((params) => {
   // params.gridAllocation = { width, height } — 你被分配到的 grid 大小
+  // params.savedState = { ... } — 選用，host 提供的前次狀態（見「狀態持久化」）
+  if (params.savedState) {
+    restoreFrom(params.savedState);
+  }
   mup.updateState('Ready', { initialized: true });
 });
 ```
@@ -366,6 +370,49 @@ Host 可能在上一個呼叫還在執行時再次呼叫你的函式。兩種策
 
 避免依賴呼叫順序，或假設同一時間只有一個呼叫在執行。
 
+### 狀態持久化（選用）
+
+Host 可以在不同 session 之間保存 MUP 的狀態，並在重新載入時恢復。這是一個合作機制 — 需要 host 和 MUP 雙方配合。
+
+**運作方式：**
+
+1. **MUP 回報狀態** — 呼叫 `updateState(summary, data)`，其中 `data` 包含恢復所需的所有狀態。這和你平常用來通知 LLM 的呼叫是同一個。
+
+2. **Host 保存 `data`** — host 將最近一次 `updateState` 的 `data` 作為 session 儲存的一部分持久化。
+
+3. **Host 在重新載入時傳回 `savedState`** — 當 host 重新初始化 MUP 時，在 `initialize` 參數中包含 `savedState` 欄位：
+
+```json
+{
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "mup/2026-03-17",
+    "hostInfo": { "name": "MUP Agent", "version": "0.1.0" },
+    "gridAllocation": { "width": 2, "height": 2 },
+    "savedState": { "count": 42 }
+  }
+}
+```
+
+4. **MUP 恢復** — 在 `onReady` 中檢查 `params.savedState` 並恢復：
+
+```javascript
+mup.onReady((params) => {
+  if (params.savedState) {
+    count = params.savedState.count;
+    updateDisplay();
+  }
+  mup.updateState('Counter: ' + count, { count });
+});
+```
+
+**規則：**
+
+- `savedState` 在 `initialize` 參數中是**選用的**。MUP 不得假設它一定存在。
+- 不支援持久化的 MUP 直接忽略 `savedState`。不需要修改任何程式碼。
+- `updateState` 的 `data` 參數應該是**可 JSON 序列化的**，並包含恢復 MUP 視覺和邏輯狀態所需的一切。
+- Host 不被要求實作狀態持久化。這是 host 的能力，不是協議要求。
+
 ### 保持 MUP 自包含
 
 MUP 應該零外部依賴就能運作。內嵌你的 CSS、打包你的 JS、嵌入你的素材。Host 會原封不動載入你的 HTML — 不保證有模組解析或 CDN 存取。
@@ -386,7 +433,7 @@ MUP 應該零外部依賴就能運作。內嵌你的 CSS、打包你的 JS、嵌
 
 | 方法 | 類型 | 說明 |
 |------|------|------|
-| `initialize` | Request | 載入後的第一個訊息。MUP 回覆協議版本和資訊。觸發 `onReady`。 |
+| `initialize` | Request | 載入後的第一個訊息。參數：`protocolVersion`、`hostInfo`、`gridAllocation`、`savedState?`（選用，用於狀態持久化）。MUP 回覆協議版本和資訊。觸發 `onReady`。 |
 | `functions/call` | Request | 呼叫已註冊的函式。參數：`name`、`arguments`、`source`（`"llm"` 或 `"user"`）。 |
 | `notifications/grid/resize` | Notification | Host 調整了 MUP 的分配空間。參數：`width`、`height`。 |
 | `notifications/shutdown` | Notification | Host 即將銷毀容器。參數：`reason`、`gracePeriodMs`。 |

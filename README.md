@@ -113,58 +113,37 @@ Drop this into a MUP-compatible host, and it works.
 
 ## Getting Started
 
-There are three ways to use MUP, depending on your setup:
-
-### Option A: Chrome Extension (recommended)
-
-Use MUP panels alongside **ChatGPT, Gemini, or Claude** — right in your browser.
-
 ```bash
 git clone https://github.com/Ricky610329/mup.git
-```
-
-1. Open `chrome://extensions` → Enable "Developer mode" → "Load unpacked" → select `mup-extension/`
-2. Open ChatGPT or Gemini → click the MUP extension icon to open the side panel
-3. Drag `.html` MUP files from `poc/examples/` into the panel
-4. Chat normally — the LLM automatically uses your MUP panels
-
-**For full OS access (file system, camera):**
-
-```bash
-cd mup-native-host
-node install.js
-```
-
-This registers a native messaging host that lets MUPs access your file system, open folder pickers, and capture photos. Run once, works forever.
-
-### Option B: Standalone PoC
-
-A self-contained MUP host with its own chat interface. No external LLM account needed (demo mode included).
-
-```bash
-cd poc
-npm install
-npm run dev
-```
-
-Opens at `http://localhost:5173`. Supports OpenAI, Anthropic, Gemini, and Ollama — configure via `.env` or the interactive setup screen.
-
-### Option C: MCP Bridge
-
-Use MUP panels in **Claude Desktop, Cursor**, or any MCP-compatible client.
-
-```bash
-cd mup-mcp-server
+cd mup/mup-agent
 npm install
 npm run build
-node dist/index.js --mups-dir ../poc/examples
 ```
 
-Registers all MUP functions as MCP tools. A browser panel opens automatically for the MUP UI.
+Set your API key and run:
 
-### Built-in examples
+```bash
+ANTHROPIC_API_KEY=sk-ant-... node dist/index.js --mups-dir ../examples
+```
 
-9 ready-to-use MUPs in `poc/examples/`:
+A browser window opens automatically with the chat panel and MUP grid. Load MUPs from the manager card, chat with the agent, and the LLM calls MUP functions as tools.
+
+### Options
+
+```
+mup-agent [options] [file1.html file2.html ...]
+
+--mups-dir <dir>     Load all .html MUP files from a directory
+--provider <name>    LLM provider: anthropic, openai, google, groq, xai (default: anthropic)
+--model <id>         Model ID (default: claude-sonnet-4-6)
+--api-key <key>      API key (or set ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+--port <port>        UI panel port (default: 3100)
+--no-open            Don't auto-open the browser
+```
+
+### Built-in Examples
+
+9 ready-to-use MUPs in `examples/`:
 
 | MUP | Size | Description |
 |-----|------|-------------|
@@ -181,24 +160,34 @@ Registers all MUP functions as MCP tools. A browser panel opens automatically fo
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                    MUP (.html file)                   │
-│  manifest + UI + functions                           │
-└──────────────┬───────────────────────────────────────┘
-               │ loaded by
-    ┌──────────┴──────────┬─────────────────┐
-    ▼                     ▼                 ▼
-┌─────────┐     ┌──────────────┐   ┌─────────────┐
-│   PoC   │     │  Extension   │   │ MCP Bridge  │
-│ (Vite)  │     │ (Side Panel) │   │  (stdio)    │
-└─────────┘     └──────┬───────┘   └─────────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  Native Host    │
-              │ (file system,   │
-              │  camera, OS)    │
-              └─────────────────┘
+┌──────────────────────────────────────────┐
+│             MUP (.html file)             │
+│        manifest + UI + functions         │
+└──────────────────┬───────────────────────┘
+                   │ loaded by
+                   ▼
+┌──────────────────────────────────────────┐
+│           mup-agent (Node.js)            │
+│                                          │
+│  ┌─────────────┐    ┌─────────────────┐  │
+│  │ Agent       │    │ MUP Manager     │  │
+│  │ (pi-agent-  │    │ (load, parse,   │  │
+│  │  core)      │    │  route calls)   │  │
+│  └──────┬──────┘    └────────┬────────┘  │
+│         │  LLM API          │            │
+│         ▼                   │            │
+│  ┌─────────────┐            │            │
+│  │ LLM Provider│            │            │
+│  │ (Anthropic, │            │            │
+│  │  OpenAI...) │            │            │
+│  └─────────────┘            │            │
+└─────────────────────────────┼────────────┘
+                              │ WebSocket
+                              ▼
+                   ┌─────────────────────┐
+                   │   Browser Panel     │
+                   │  (chat + MUP grid)  │
+                   └─────────────────────┘
 ```
 
 ## Star History

@@ -1,0 +1,24 @@
+{
+  "name": "mup-agent",
+  "version": "0.1.0",
+  "description": "MUP Agent — AI agent powered by pi-agent-core with interactive MUP UI panels",
+  "type": "module",
+  "bin": {
+    "mup-agent": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-ai": "*",
+    "@sinclair/typebox": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,385 @@
+import { Agent } from "@mariozechner/pi-agent-core";
+import type {
+  AgentTool,
+  AgentToolResult,
+  AgentEvent,
+  AgentMessage,
+} from "@mariozechner/pi-agent-core";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { getModel, getEnvApiKey } from "@mariozechner/pi-ai";
+import type { Model, KnownProvider } from "@mariozechner/pi-ai";
+import { loadSettings, saveSettings, type AgentSettings } from "./settings.js";
+import { Type, type TSchema } from "@sinclair/typebox";
+import type { MupManager } from "./manager.js";
+import type { UiBridge } from "./bridge.js";
+import type { TreeNode } from "./types.js";
+import { setupSessionHandler } from "./session-handler.js";
+
+// ---- Tool building ----
+
+/** Build AgentTools from loaded MUPs, routing execution through the browser bridge */
+export function buildMupTools(
+  manager: MupManager,
+  bridge: UiBridge
+): AgentTool<TSchema, unknown>[] {
+  return manager.getToolDefinitions().map((def): AgentTool<TSchema, unknown> => ({
+    name: def.name,
+    label: def.description.split("]")[0].slice(1) || def.name,
+    description: def.description,
+    parameters: Type.Unsafe(def.inputSchema) as TSchema,
+    async execute(
+      _toolCallId: string,
+      params: unknown,
+      _signal?: AbortSignal,
+    ): Promise<AgentToolResult<unknown>> {
+      const args = (params ?? {}) as Record<string, unknown>;
+      const parsed = manager.parseToolName(def.name);
+      if (!parsed) {
+        return { content: [{ type: "text", text: `Unknown tool: ${def.name}` }], details: null };
+      }
+
+      const result = await bridge.callFunction(parsed.mupId, parsed.functionName, args);
+
+      const content = result.content.map(
+        (c: { type: string; text?: string; data?: unknown }) => {
+          if (c.type === "text") return { type: "text" as const, text: c.text || "" };
+          if (c.type === "data") return { type: "text" as const, text: JSON.stringify(c.data) };
+          return { type: "text" as const, text: String(c) };
+        }
+      );
+
+      // Append pending user interactions
+      const events = manager.drainEvents();
+      if (events.length > 0) {
+        content.push({
+          type: "text" as const,
+          text: `\n--- Recent user interactions ---\n${events.map(e => `[${e.mupName}] ${e.summary}`).join("\n")}`,
+        });
+      }
+
+      return { content, details: result };
+    },
+  }));
+}
+
+// ---- System prompt ----
+
+export function buildSystemPrompt(manager: MupManager): string {
+  const mups = manager.getAll();
+  if (mups.length === 0) {
+    return `You are an AI assistant. No UI panels are currently loaded.`;
+  }
+
+  const mupList = mups
+    .map(m => {
+      const fnCount = m.manifest.functions.length;
+      const fns = fnCount > 0 ? ` (${fnCount} function${fnCount !== 1 ? "s" : ""})` : " (display-only)";
+      const state = m.stateSummary ? ` — ${m.stateSummary}` : "";
+      return `- ${m.manifest.name}: ${m.manifest.description}${fns}${state}`;
+    })
+    .join("\n");
+
+  return `You are an AI assistant with access to interactive UI panels (MUPs).
+
+Active panels:
+${mupList}
+
+When a user interacts with a panel, you'll see their action. React naturally.
+Call functions to update panels based on conversation context.`;
+}
+
+// ---- Model resolution ----
+
+export function resolveModel(provider: string, modelId: string, apiKey?: string): Model<any> {
+  if (apiKey) {
+    const envMap: Record<string, string> = {
+      anthropic: "ANTHROPIC_API_KEY", openai: "OPENAI_API_KEY",
+      google: "GOOGLE_API_KEY", groq: "GROQ_API_KEY", xai: "XAI_API_KEY",
+    };
+    const envVar = envMap[provider];
+    if (envVar) process.env[envVar] = apiKey;
+  }
+  return getModel(provider as any, modelId as any);
+}
+
+// ---- Agent creation ----
+
+export interface MupAgentOptions {
+  manager: MupManager;
+  bridge: UiBridge;
+  provider: string;
+  modelId: string;
+  apiKey?: string;
+}
+
+export function createMupAgent(opts: MupAgentOptions): Agent {
+  const { manager, bridge, provider, modelId } = opts;
+  let apiKey = opts.apiKey;
+
+  const model = resolveModel(provider, modelId, apiKey);
+  const tools = buildMupTools(manager, bridge);
+
+  const agent = new Agent({
+    initialState: { systemPrompt: buildSystemPrompt(manager), model, tools },
+    transformContext: async (messages: AgentMessage[]) => {
+      // 1. Refresh system prompt with latest MUP states
+      agent.setSystemPrompt(buildSystemPrompt(manager));
+
+      // 2. Strip thinking blocks — o4-mini returns them but they break subsequent turns
+      let result = messages.map((m) => {
+        const msg = m as any;
+        if (msg.role === "assistant" && Array.isArray(msg.content)) {
+          return { ...msg, content: msg.content.filter((c: any) => c.type !== "thinking") };
+        }
+        return m;
+      });
+
+      // 3. Prune if context is too large (rough estimate: chars/4 ≈ tokens)
+      result = pruneContext(result, MAX_CONTEXT_TOKENS);
+
+      return result;
+    },
+    getApiKey: (p: string) => apiKey || getEnvApiKey(p as KnownProvider),
+    steeringMode: "all",
+    toolExecution: "sequential",
+    afterToolCall: async () => {
+      toolCallCount++;
+      if (toolCallCount > MAX_TOOL_CALLS) {
+        console.error(`[mup-agent] Max tool calls (${MAX_TOOL_CALLS}) reached`);
+        return { content: [{ type: "text" as const, text: "Maximum tool call limit reached." }], isError: true };
+      }
+      return undefined;
+    },
+  });
+
+  const MAX_TOOL_CALLS = 20;
+  let toolCallCount = 0;
+  let wasStreaming = false;
+
+  // ---- Event forwarding to browser ----
+
+  agent.subscribe((event: AgentEvent) => {
+    if (event.type === "agent_start") toolCallCount = 0;
+    if (event.type === "message_start") wasStreaming = false;
+  });
+
+  agent.subscribe((event: AgentEvent) => {
+    switch (event.type) {
+      case "agent_start":
+        bridge.sendChat({ type: "chat-loading", loading: true });
+        break;
+      case "agent_end":
+        bridge.sendChat({ type: "chat-loading", loading: false });
+        break;
+      case "message_update": {
+        const aEvent = event.assistantMessageEvent;
+        if (aEvent.type === "text_delta") {
+          wasStreaming = true;
+          bridge.sendChat({ type: "chat-delta", delta: aEvent.delta });
+        }
+        break;
+      }
+      case "message_end": {
+        const msg = event.message as any;
+        if (msg.role === "assistant" && msg.content) {
+          const arr = Array.isArray(msg.content) ? msg.content : [msg.content];
+          const text = arr.filter((c: any) => typeof c === "string" || c.type === "text")
+            .map((c: any) => typeof c === "string" ? c : c.text).join("");
+          if (text && !wasStreaming) {
+            bridge.sendChat({ type: "chat-message", role: "assistant", content: text });
+          }
+          if (wasStreaming) {
+            bridge.sendChat({ type: "chat-stream-end" });
+            wasStreaming = false;
+          }
+        }
+        break;
+      }
+      case "tool_execution_start":
+        bridge.sendChat({ type: "chat-tool-call", toolName: event.toolName, status: "start" });
+        break;
+      case "tool_execution_end":
+        bridge.sendChat({ type: "chat-tool-call", toolName: event.toolName, status: "end" });
+        break;
+    }
+  });
+
+  // ---- MUP interaction → steer ----
+
+  bridge.on("interaction", (_mupId: string, _action: string, summary: string) => {
+    const mup = manager.get(_mupId);
+    const name = mup?.manifest.name ?? _mupId;
+    agent.steer({ role: "user", content: `[${name}] User: ${summary}`, timestamp: Date.now() } as AgentMessage);
+  });
+
+  // ---- Chat ----
+
+  bridge.on("user-message", async (text: string) => {
+    if (!text.trim()) return;
+    try {
+      await agent.prompt(text);
+    } catch (err) {
+      console.error(`[mup-agent] Prompt error:`, err);
+      bridge.sendChat({ type: "chat-message", role: "system", content: `Error: ${(err as Error).message}` });
+    }
+  });
+
+  bridge.on("user-reset", () => {
+    agent.clearMessages();
+    agent.clearAllQueues();
+  });
+
+  // ---- MUP activation ----
+
+  bridge.on("activate-mup", (mupId: string) => {
+    if (manager.isActive(mupId)) return;
+    const loaded = manager.activate(mupId);
+    if (!loaded) return;
+    console.error(`[mup-agent] Activating: ${loaded.manifest.name}`);
+    bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
+    agent.setTools(buildMupTools(manager, bridge));
+    agent.setSystemPrompt(buildSystemPrompt(manager));
+  });
+
+  bridge.on("deactivate-mup", (mupId: string) => {
+    console.error(`[mup-agent] Deactivating: ${manager.get(mupId)?.manifest.name ?? mupId}`);
+    manager.deactivate(mupId);
+    agent.setTools(buildMupTools(manager, bridge));
+    agent.setSystemPrompt(buildSystemPrompt(manager));
+  });
+
+  bridge.on("register-and-activate", (mupId: string, html: string, fileName: string) => {
+    try {
+      manager.loadFromHtml(html, fileName);
+      const loaded = manager.get(mupId);
+      if (loaded) {
+        bridge.sendRaw({ type: "load-mup", mupId: loaded.manifest.id, html: loaded.html, manifest: loaded.manifest });
+        agent.setTools(buildMupTools(manager, bridge));
+        agent.setSystemPrompt(buildSystemPrompt(manager));
+      }
+    } catch (err) {
+      console.error(`[mup-agent] Failed to register: ${(err as Error).message}`);
+    }
+  });
+
+  // ---- Folder scanning ----
+
+  bridge.on("scan-folder", (folderPath: string) => {
+    try {
+      const resolved = path.resolve(folderPath);
+      if (!fs.existsSync(resolved)) {
+        bridge.sendRaw({ type: "folder-contents", path: resolved, tree: [], error: "Folder not found" });
+        return;
+      }
+      const tree = scanDir(resolved, manager);
+      const catalog = manager.getCatalog().map(e => ({
+        id: e.manifest.id, name: e.manifest.name, description: e.manifest.description,
+        functions: e.manifest.functions.length, active: e.active, grid: e.manifest.grid,
+      }));
+      bridge.sendRaw({ type: "folder-contents", path: resolved, tree });
+      bridge.sendRaw({ type: "mup-catalog", catalog });
+    } catch (err) {
+      bridge.sendRaw({ type: "folder-contents", path: folderPath, tree: [], error: (err as Error).message });
+    }
+  });
+
+  // ---- Settings ----
+
+  bridge.on("get-settings", () => {
+    const settings = loadSettings();
+    settings.provider = model.provider;
+    settings.model = model.name;
+    if (apiKey) settings.apiKey = apiKey;
+    bridge.sendRaw({ type: "settings", settings });
+  });
+
+  bridge.on("update-settings", (newSettings: any) => {
+    const settings = newSettings as AgentSettings;
+    saveSettings(settings);
+    try {
+      const newModel = resolveModel(settings.provider, settings.model, settings.apiKey);
+      agent.setModel(newModel);
+      if (settings.apiKey) apiKey = settings.apiKey;
+      console.error(`[mup-agent] Settings updated: ${settings.provider}/${settings.model}`);
+      bridge.sendRaw({ type: "settings-saved", success: true });
+    } catch (err) {
+      bridge.sendRaw({ type: "settings-saved", success: false, error: (err as Error).message });
+    }
+  });
+
+  // ---- Session management (delegated) ----
+
+  setupSessionHandler({
+    agent, manager, bridge, model,
+    getApiKey: () => apiKey || getEnvApiKey(model.provider as KnownProvider),
+  });
+
+  return agent;
+}
+
+// ---- Context pruning ----
+
+const MAX_CONTEXT_TOKENS = 80_000; // conservative limit for most models
+const KEEP_RECENT_MESSAGES = 10; // always keep the last N messages
+
+function estimateTokens(messages: AgentMessage[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    const msg = m as any;
+    if (typeof msg.content === "string") {
+      chars += msg.content.length;
+    } else if (Array.isArray(msg.content)) {
+      for (const c of msg.content) {
+        if (c.text) chars += c.text.length;
+        if (c.arguments) chars += JSON.stringify(c.arguments).length;
+      }
+    }
+  }
+  return Math.ceil(chars / 4); // rough token estimate
+}
+
+function pruneContext(messages: AgentMessage[], maxTokens: number): AgentMessage[] {
+  const tokens = estimateTokens(messages);
+  if (tokens <= maxTokens) return messages;
+
+  // Keep the last KEEP_RECENT_MESSAGES, drop from the front
+  if (messages.length <= KEEP_RECENT_MESSAGES) return messages;
+
+  // Binary search: find how many messages from the end fit within budget
+  let keep = KEEP_RECENT_MESSAGES;
+  while (keep < messages.length) {
+    const tail = messages.slice(-keep);
+    if (estimateTokens(tail) > maxTokens) break;
+    keep++;
+  }
+  keep = Math.max(KEEP_RECENT_MESSAGES, keep - 1);
+
+  const pruned = messages.slice(-keep);
+  console.error(`[mup-agent] Context pruned: ${messages.length} → ${pruned.length} messages (est. ${estimateTokens(pruned)} tokens)`);
+  return pruned;
+}
+
+// ---- Helpers ----
+
+function scanDir(dir: string, manager: MupManager): TreeNode[] {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const items: TreeNode[] = [];
+  for (const e of entries) {
+    if (e.isDirectory() && !e.name.startsWith(".")) {
+      const children = scanDir(path.join(dir, e.name), manager);
+      if (children.length > 0) items.push({ type: "folder", name: e.name, children });
+    }
+  }
+  for (const e of entries) {
+    if (e.isFile() && e.name.endsWith(".html")) {
+      try {
+        const manifest = manager.scanFile(path.join(dir, e.name));
+        items.push({ type: "file", name: e.name, id: manifest.id, valid: true, manifestName: manifest.name, functions: manifest.functions.length, active: manager.isActive(manifest.id) });
+      } catch (err) {
+        items.push({ type: "file", name: e.name, id: null, valid: false, error: (err as Error).message });
+      }
+    }
+  }
+  return items;
+}

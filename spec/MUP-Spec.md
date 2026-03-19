@@ -301,6 +301,10 @@ Called once after the host completes initialization. Use this to set up initial 
 ```javascript
 mup.onReady((params) => {
   // params.gridAllocation = { width, height } — your allocated grid size
+  // params.savedState = { ... } — optional, previous state from host (see State Persistence)
+  if (params.savedState) {
+    restoreFrom(params.savedState);
+  }
   mup.updateState('Ready', { initialized: true });
 });
 ```
@@ -366,6 +370,49 @@ The host may call your function while a previous call is still executing. Two st
 
 Avoid relying on call order or assuming only one call runs at a time.
 
+### State Persistence (Optional)
+
+A host MAY save a MUP's state between sessions and restore it on reload. This is a cooperative mechanism — it requires both the host and the MUP to participate.
+
+**How it works:**
+
+1. **MUP reports state** — call `updateState(summary, data)` where `data` contains all state needed for restoration. This is the same call you're already making to keep the LLM informed.
+
+2. **Host saves `data`** — the host persists the `data` from the most recent `updateState` call as part of its session storage.
+
+3. **Host passes `savedState` on reload** — when the host re-initializes a MUP, it includes a `savedState` field in the `initialize` params:
+
+```json
+{
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "mup/2026-03-17",
+    "hostInfo": { "name": "MUP Agent", "version": "0.1.0" },
+    "gridAllocation": { "width": 2, "height": 2 },
+    "savedState": { "count": 42 }
+  }
+}
+```
+
+4. **MUP restores** — in `onReady`, check for `params.savedState` and restore:
+
+```javascript
+mup.onReady((params) => {
+  if (params.savedState) {
+    count = params.savedState.count;
+    updateDisplay();
+  }
+  mup.updateState('Counter: ' + count, { count });
+});
+```
+
+**Rules:**
+
+- `savedState` is **optional** in `initialize` params. MUPs MUST NOT assume it exists.
+- MUPs that don't support persistence simply ignore `savedState`. No code changes needed.
+- The `data` argument to `updateState` should be **JSON-serializable** and contain everything needed to restore the MUP's visual and logical state.
+- Hosts are NOT required to implement state persistence. This is a host capability, not a protocol requirement.
+
 ### Keep your MUP self-contained
 
 A MUP should work with zero external dependencies. Inline your CSS, bundle your JS, embed your assets. The host loads your HTML as-is — there's no module resolution or CDN access guaranteed.
@@ -386,7 +433,7 @@ All host↔MUP communication uses JSON-RPC 2.0 over a `MessageChannel` (or equiv
 
 | Method | Type | Description |
 |--------|------|-------------|
-| `initialize` | Request | First message after load. MUP responds with protocol version and info. Triggers `onReady`. |
+| `initialize` | Request | First message after load. Params: `protocolVersion`, `hostInfo`, `gridAllocation`, `savedState?` (optional, for state persistence). MUP responds with protocol version and info. Triggers `onReady`. |
 | `functions/call` | Request | Call a registered function. Params: `name`, `arguments`, `source` (`"llm"` or `"user"`). |
 | `notifications/grid/resize` | Notification | Host resized the MUP's allocation. Params: `width`, `height`. |
 | `notifications/shutdown` | Notification | Host is destroying the container. Params: `reason`, `gracePeriodMs`. |
