@@ -261,7 +261,7 @@ function restoreWorkspace(
     id: e.manifest.id, name: e.manifest.name, description: e.manifest.description,
     functions: e.manifest.functions.length, active: e.active, grid: e.manifest.grid,
   }));
-  bridge.sendRaw({ type: "workspace-loaded", name, customNames, gridLayout: data.gridLayout });
+  bridge.sendRaw({ type: "workspace-loaded", name, customNames, gridLayout: data.gridLayout, description: data.description });
   bridge.sendRaw({ type: "mup-catalog", catalog });
   for (const mup of manager.getAll()) sendLoadMup(mup.manifest.id, mup);
 

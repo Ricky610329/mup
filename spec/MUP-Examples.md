@@ -20,8 +20,6 @@ This document describes the example MUPs included in `examples/`. Each demonstra
 | MUP | Grid | Functions | Demonstrates |
 |-----|------|-----------|-------------|
 | [Pixel Art](#pixel-art) | 1×1 | `setPixels`, `fillRect`, `clear`, `getGrid` | LLM-driven pixel display |
-| [Markdown](#markdown) | 1×1 | `render`, `loadFile`, `getContent`, `clear` | Markdown rendering + `mup.system()` file access |
-| [Editor](#editor) | 1×1 | `getText`, `setText`, `getSelection`, `replaceRange`, `insertAt`, `getLineCount`, `saveToFile`, `loadFromFile` | Text editing + selection-aware LLM interaction |
 | [Slides](#slides) | 2×2 | `createPresentation`, `addSlide`, `updateSlide`, `removeSlide`, `getSlides`, `setTheme` | Presentation builder with layouts |
 
 ### data/
@@ -29,8 +27,6 @@ This document describes the example MUPs included in `examples/`. Each demonstra
 | MUP | Grid | Functions | Demonstrates |
 |-----|------|-----------|-------------|
 | [Chart](#chart) | 1×1 | `renderChart`, `clear`, `getData`, `setType` | LLM → visual data pipeline |
-| [Search](#search) | 1×1 | `search`, `showResults`, `clear` | Web search via `mup.system()` |
-| [Workspace](#workspace) | 1×1 | `list`, `info`, `read`, `write`, `download`, `createFolder`, `delete` | File System Access API |
 
 ### media/
 
@@ -315,13 +311,13 @@ A task board with columns (To Do, In Progress, Done). LLM can manage tasks, user
 
 | Feature | Example MUPs |
 |---------|-------------|
-| `registerFunction` | All 16 |
-| `onReady` | All 16 |
-| `updateState` | All 16 |
-| `notifyInteraction` | Counter, Timer, Dice, Chess, Markdown, Editor, Chart, Search, Camera, Voice, Drum Machine, Sticky Notes, Kanban |
-| `mup.system()` | Search, Workspace, Markdown, Editor |
-| `permissions` | Camera, Voice, Workspace |
-| `text` content | All 16 |
+| `registerFunction` | All 12 |
+| `onReady` | All 12 |
+| `updateState` | All 12 |
+| `notifyInteraction` | Counter, Timer, Dice, Chess, Chart, Camera, Voice, Drum Machine, Sticky Notes, Kanban |
+| `mup.system()` | — (none currently) |
+| `permissions` | Camera, Voice |
+| `text` content | All 12 |
 | `data` content | All except Camera |
 | `image` content | Camera |
 | Headless MUP (0×0) | — (none currently) |

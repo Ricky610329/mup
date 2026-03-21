@@ -20,8 +20,6 @@
 | MUP | Grid | 函式 | 展示能力 |
 |-----|------|------|---------|
 | [Pixel Art](#pixel-art像素畫布) | 1×1 | `setPixels`, `fillRect`, `clear`, `getGrid` | LLM 驅動的像素顯示 |
-| [Markdown](#markdown) | 1×1 | `render`, `loadFile`, `getContent`, `clear` | Markdown 渲染 + `mup.system()` 檔案存取 |
-| [Editor](#editor編輯器) | 1×1 | `getText`, `setText`, `getSelection`, `replaceRange`, `insertAt`, `getLineCount`, `saveToFile`, `loadFromFile` | 文字編輯 + 選取感知的 LLM 互動 |
 | [Slides](#slides簡報) | 2×2 | `createPresentation`, `addSlide`, `updateSlide`, `removeSlide`, `getSlides`, `setTheme` | 簡報製作器，多種版面配置 |
 
 ### data/
@@ -29,8 +27,6 @@
 | MUP | Grid | 函式 | 展示能力 |
 |-----|------|------|---------|
 | [Chart](#chart圖表) | 1×1 | `renderChart`, `clear`, `getData`, `setType` | LLM → 視覺化資料管線 |
-| [Search](#search搜尋) | 1×1 | `search`, `showResults`, `clear` | 透過 `mup.system()` 進行網頁搜尋 |
-| [Workspace](#workspace工作區) | 1×1 | `list`, `info`, `read`, `write`, `download`, `createFolder`, `delete` | File System Access API |
 
 ### media/
 
@@ -315,13 +311,13 @@ Markdown 渲染器。可渲染 LLM 生成的內容，或從工作區載入 `.md`
 
 | 功能 | 使用的範例 MUP |
 |------|--------------|
-| `registerFunction` | 全部 16 個 |
-| `onReady` | 全部 16 個 |
-| `updateState` | 全部 16 個 |
-| `notifyInteraction` | Counter、Timer、Dice、Chess、Markdown、Editor、Chart、Search、Camera、Voice、Drum Machine、Sticky Notes、Kanban |
-| `mup.system()` | Search、Workspace、Markdown、Editor |
-| `permissions` | Camera、Voice、Workspace |
-| `text` 內容 | 全部 16 個 |
+| `registerFunction` | 全部 12 個 |
+| `onReady` | 全部 12 個 |
+| `updateState` | 全部 12 個 |
+| `notifyInteraction` | Counter、Timer、Dice、Chess、Chart、Camera、Voice、Drum Machine、Sticky Notes、Kanban |
+| `mup.system()` | —（目前無） |
+| `permissions` | Camera、Voice |
+| `text` 內容 | 全部 12 個 |
 | `data` 內容 | 除 Camera 外全部 |
 | `image` 內容 | Camera |
 | Headless MUP (0×0) | —（目前無） |
