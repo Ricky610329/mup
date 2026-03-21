@@ -24,6 +24,7 @@ export interface MupManifest {
   };
   functions: MupFunction[];
   permissions?: string[];
+  multiInstance?: boolean;
 }
 
 export interface LoadedMup {
@@ -80,14 +81,52 @@ export class MupManager {
     return loaded;
   }
 
+  /** Create a new instance of a multi-instance MUP */
+  activateInstance(baseMupId: string): LoadedMup | null {
+    const entry = this.catalog.get(baseMupId);
+    if (!entry || !entry.manifest.multiInstance) return null;
+
+    // Find next available instance number
+    let n = 2;
+    while (this.mups.has(`${baseMupId}_${n}`)) n++;
+    const instanceId = `${baseMupId}_${n}`;
+
+    // Create instance with cloned manifest + unique ID
+    const manifest = { ...entry.manifest, id: instanceId, name: `${entry.manifest.name} #${n}` };
+    const loaded: LoadedMup = {
+      manifest,
+      html: entry.html,
+      filePath: entry.filePath,
+      stateSummary: "",
+      stateData: undefined,
+      pendingEvents: [],
+    };
+    this.mups.set(instanceId, loaded);
+    return loaded;
+  }
+
   deactivate(mupId: string): void {
     this.mups.delete(mupId);
-    const entry = this.catalog.get(mupId);
-    if (entry) entry.active = false;
+    // Only mark catalog entry inactive if no instances remain
+    const baseId = mupId.replace(/_\d+$/, "");
+    const hasInstances = Array.from(this.mups.keys()).some(
+      (k) => k === baseId || k.startsWith(baseId + "_")
+    );
+    if (!hasInstances) {
+      const entry = this.catalog.get(baseId);
+      if (entry) entry.active = false;
+    }
   }
 
   isActive(mupId: string): boolean {
     return this.mups.has(mupId);
+  }
+
+  /** Check if a MUP supports multiple instances */
+  isMultiInstance(mupId: string): boolean {
+    const baseId = mupId.replace(/_\d+$/, "");
+    const entry = this.catalog.get(baseId);
+    return entry?.manifest.multiInstance ?? false;
   }
 
   loadFromHtml(html: string, filePath: string): MupManifest {
@@ -129,6 +168,7 @@ export class MupManager {
         },
       })),
       permissions: raw.permissions,
+      multiInstance: raw.multiInstance ?? false,
     };
   }
 

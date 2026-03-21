@@ -82,6 +82,7 @@ export class UiBridge extends EventEmitter {
         functions: e.manifest.functions.length,
         active: e.active,
         grid: e.manifest.grid,
+        multiInstance: e.manifest.multiInstance || false,
       }));
       ws.send(JSON.stringify({ type: "mup-catalog", catalog }));
       if (this.folderTree.length > 0) {
@@ -216,6 +217,10 @@ export class UiBridge extends EventEmitter {
 
       case "register-and-activate":
         this.emit("register-and-activate", msg.mupId as string, msg.html as string, msg.fileName as string);
+        break;
+
+      case "new-instance":
+        this.emit("new-instance", msg.mupId as string);
         break;
 
       case "list-workspaces":

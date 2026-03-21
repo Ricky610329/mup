@@ -724,9 +724,13 @@ function renderCurrentView() {
     if (item.type === 'folder') {
       html += `<div class="manager-file is-folder" data-folder="${escapeHtml(item.name)}">${FOLDER_ICON}<span class="manager-file-name">${escapeHtml(item.name)}</span></div>`;
     } else {
-      const isActive = item.active || catalog.some(c => c.id === item.id && c.active);
+      const catEntry = catalog.find(c => c.id === item.id);
+      const isActive = item.active || (catEntry && catEntry.active);
+      const multi = catEntry?.multiInstance || item.multiInstance || false;
       const cls = isActive ? 'manager-file active' : 'manager-file';
-      html += `<div class="${cls}" data-id="${item.id}" title="${escapeHtml(item.description || item.name)}">${FILE_ICON}<span class="manager-file-name">${escapeHtml(item.name)}</span></div>`;
+      const multiAttr = multi ? ' data-multi="true"' : '';
+      const multiLabel = isActive && multi ? ' <span style="font-size:9px;color:var(--text-tertiary);">+</span>' : '';
+      html += `<div class="${cls}" data-id="${item.id}"${multiAttr} title="${escapeHtml(item.description || item.name)}">${FILE_ICON}<span class="manager-file-name">${escapeHtml(item.name)}${multiLabel}</span></div>`;
     }
   }
   return html;
@@ -837,11 +841,21 @@ function bindManagerEvents() {
     };
   });
 
-  // Double-click file to activate
-  managerWidget.querySelectorAll('.manager-file:not(.active):not(.is-folder)').forEach(el => {
+  // Double-click file to activate (or create new instance if multiInstance)
+  managerWidget.querySelectorAll('.manager-file:not(.is-folder)').forEach(el => {
     el.ondblclick = () => {
       const id = el.dataset.id;
       if (!id) return;
+      const isActive = el.classList.contains('active');
+      const multi = el.dataset.multi === 'true';
+
+      if (isActive && !multi) return; // single instance, already active
+
+      if (isActive && multi && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "new-instance", mupId: id }));
+        return;
+      }
+
       const cached = browserMupCache.get(id);
       if (cached && ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "register-and-activate", mupId: id, html: cached.html, fileName: cached.name }));

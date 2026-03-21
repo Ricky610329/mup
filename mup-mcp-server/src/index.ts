@@ -35,6 +35,7 @@ interface FolderTreeNode {
   id?: string;
   description?: string;
   active?: boolean;
+  multiInstance?: boolean;
 }
 
 function buildFolderTree(dir: string, manager: MupManager): FolderTreeNode[] {
@@ -60,6 +61,7 @@ function buildFolderTree(dir: string, manager: MupManager): FolderTreeNode[] {
           id: manifest.id,
           description: manifest.description,
           active: catalogEntry?.active || false,
+          multiInstance: manifest.multiInstance || false,
         });
       } catch {}
     }
@@ -425,6 +427,15 @@ Options:
     manager.deactivate(mupId);
     autoSave(manager);
     console.error(`[mup-mcp] Deactivated: ${mupId}`);
+  });
+
+  bridge.on("new-instance", (baseMupId: string) => {
+    const mup = manager.activateInstance(baseMupId);
+    if (mup) {
+      sendLoadMup(mup.manifest.id, mup);
+      autoSave(manager);
+      console.error(`[mup-mcp] New instance: ${mup.manifest.name} (${mup.manifest.id})`);
+    }
   });
 
   bridge.on("register-and-activate", (mupId: string, html: string, fileName: string) => {
