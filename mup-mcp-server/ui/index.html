@@ -852,7 +852,9 @@ function bindManagerEvents() {
       if (isActive && !multi) return; // single instance, already active
 
       if (isActive && multi && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "new-instance", mupId: id }));
+        const name = prompt('Name this panel:', '');
+        if (name === null) return; // cancelled
+        ws.send(JSON.stringify({ type: "new-instance", mupId: id, customName: name || undefined }));
         return;
       }
 

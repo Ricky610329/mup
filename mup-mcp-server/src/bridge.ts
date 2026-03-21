@@ -220,7 +220,7 @@ export class UiBridge extends EventEmitter {
         break;
 
       case "new-instance":
-        this.emit("new-instance", msg.mupId as string);
+        this.emit("new-instance", msg.mupId as string, msg.customName as string | undefined);
         break;
 
       case "list-workspaces":

@@ -429,9 +429,13 @@ Options:
     console.error(`[mup-mcp] Deactivated: ${mupId}`);
   });
 
-  bridge.on("new-instance", (baseMupId: string) => {
+  bridge.on("new-instance", (baseMupId: string, customName?: string) => {
     const mup = manager.activateInstance(baseMupId);
     if (mup) {
+      if (customName) {
+        mup.manifest.name = customName;
+        customNames[mup.manifest.id] = customName;
+      }
       sendLoadMup(mup.manifest.id, mup);
       autoSave(manager);
       console.error(`[mup-mcp] New instance: ${mup.manifest.name} (${mup.manifest.id})`);
