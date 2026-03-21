@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Markdown</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Markdown",
+    "description": "A markdown editor with Write and Display modes. User can select text in write mode to mark a section, then ask the LLM to modify it. Use getContent to read the full document when needed, replaceSelection to edit the marked part.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "multiInstance": true,
+    "functions": [
+      {
+        "name": "setContent",
+        "description": "Replace the entire document with new markdown content.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "Full markdown content" }
+          },
+          "required": ["markdown"]
+        }
+      },
+      {
+        "name": "getContent",
+        "description": "Get the full document content and current selection info. Call this when you need to read the document or understand context around a selection.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "replaceSelection",
+        "description": "Replace the user's currently marked/selected text with new content. Only works when the user has an active selection. The selection range is tracked internally — you only need to provide the replacement text.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "New markdown to replace the selected text" }
+          },
+          "required": ["markdown"]
+        }
+      }
+    ]
+  }
+  </script>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.min.css">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-bottom: 1px solid #e0e0e0;
+      background: #f8f9fa;
+      flex-shrink: 0;
+    }
+
+    .mode-toggle {
+      display: flex;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid #d0d0d0;
+    }
+
+    .mode-btn {
+      padding: 4px 16px;
+      font-size: 13px;
+      border: none;
+      cursor: pointer;
+      background: #fff;
+      color: #555;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+
+    .mode-btn.active {
+      background: #0066cc;
+      color: #fff;
+    }
+
+    .selection-info {
+      margin-left: auto;
+      font-size: 12px;
+      color: #999;
+      max-width: 50%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .selection-info.active {
+      color: #0066cc;
+      font-weight: 500;
+    }
+
+    .content {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #editor {
+      width: 100%;
+      height: 100%;
+      resize: none;
+      border: none;
+      outline: none;
+      padding: 16px 20px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #333;
+      background: #fff;
+      tab-size: 2;
+    }
+
+    #preview {
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      padding: 16px 20px;
+      display: none;
+    }
+
+    /* Override github-markdown-css background */
+    .markdown-body {
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="mode-toggle">
+      <button class="mode-btn active" data-mode="write">Write</button>
+      <button class="mode-btn" data-mode="display">Display</button>
+    </div>
+    <span class="selection-info" id="selInfo"></span>
+  </div>
+
+  <div class="content">
+    <textarea id="editor" placeholder="Write markdown here..."></textarea>
+    <div id="preview" class="markdown-body"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    const editor = document.getElementById('editor');
+    const preview = document.getElementById('preview');
+    const selInfo = document.getElementById('selInfo');
+    const modeButtons = document.querySelectorAll('.mode-btn');
+
+    let mode = 'write';
+    let selection = null; // { text, start, end }
+    let stateTimer = null;
+
+    // --- Mode switching ---
+
+    modeButtons.forEach(btn => {
+      btn.addEventListener('click', () => switchMode(btn.dataset.mode));
+    });
+
+    function switchMode(newMode) {
+      mode = newMode;
+      modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+
+      if (mode === 'write') {
+        editor.style.display = '';
+        preview.style.display = 'none';
+        editor.focus();
+      } else {
+        editor.style.display = 'none';
+        preview.style.display = '';
+        preview.innerHTML = marked.parse(editor.value);
+      }
+      broadcastState();
+    }
+
+    // --- Selection tracking ---
+
+    editor.addEventListener('mouseup', onSelectionChange);
+    editor.addEventListener('keyup', onSelectionChange);
+
+    function onSelectionChange() {
+      const s = editor.selectionStart;
+      const e = editor.selectionEnd;
+
+      if (s !== e) {
+        const text = editor.value.substring(s, e);
+        selection = { text, start: s, end: e };
+        selInfo.textContent = `Selected: "${truncate(text, 60)}"`;
+        selInfo.classList.add('active');
+
+        mup.notifyInteraction(
+          'textSelected',
+          `User marked text for editing: "${truncate(text, 300)}"`,
+          { selectedText: text, start: s, end: e }
+        );
+      } else if (selection) {
+        // Keep selection stored — only clear on edit
+      }
+    }
+
+    // --- Content editing ---
+
+    editor.addEventListener('input', () => {
+      clearSelection();
+      debouncedBroadcast();
+    });
+
+    function clearSelection() {
+      selection = null;
+      selInfo.textContent = '';
+      selInfo.classList.remove('active');
+    }
+
+    // --- State broadcasting (debounced) ---
+
+    function debouncedBroadcast() {
+      clearTimeout(stateTimer);
+      stateTimer = setTimeout(broadcastState, 500);
+    }
+
+    function broadcastState() {
+      const content = editor.value;
+      const lines = content.split('\n').length;
+      const chars = content.length;
+
+      let summary = `Markdown editor (${mode} mode). ${lines} lines, ${chars} chars.`;
+      if (selection) {
+        summary += ` Marked: "${truncate(selection.text, 120)}"`;
+      }
+
+      // Data includes full content for persistence, but summary stays small for LLM context
+      mup.updateState(summary, { markdown: content, mode, selection });
+    }
+
+    function truncate(str, max) {
+      return str.length > max ? str.substring(0, max) + '…' : str;
+    }
+
+    // --- MUP functions ---
+
+    mup.registerFunction('setContent', ({ markdown }) => {
+      editor.value = markdown;
+      clearSelection();
+      if (mode === 'display') {
+        preview.innerHTML = marked.parse(markdown);
+      }
+      broadcastState();
+      return {
+        content: [{ type: 'text', text: `Document set (${markdown.length} chars, ${markdown.split('\n').length} lines).` }]
+      };
+    });
+
+    mup.registerFunction('getContent', () => {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: selection
+              ? `Document (${mode} mode). Marked text: "${truncate(selection.text, 150)}"`
+              : `Document (${mode} mode). No selection.`
+          },
+          {
+            type: 'data',
+            data: {
+              markdown: editor.value,
+              mode,
+              selection: selection
+                ? { text: selection.text, start: selection.start, end: selection.end }
+                : null
+            }
+          }
+        ]
+      };
+    });
+
+    mup.registerFunction('replaceSelection', ({ markdown }) => {
+      if (!selection) {
+        return {
+          content: [{ type: 'text', text: 'No active selection. Ask the user to select text first.' }],
+          isError: true
+        };
+      }
+
+      const original = selection.text;
+      const before = editor.value.substring(0, selection.start);
+      const after = editor.value.substring(selection.end);
+      editor.value = before + markdown + after;
+
+      clearSelection();
+      if (mode === 'display') {
+        preview.innerHTML = marked.parse(editor.value);
+      }
+      broadcastState();
+
+      return {
+        content: [{ type: 'text', text: `Replaced "${truncate(original, 60)}" → ${markdown.length} chars.` }]
+      };
+    });
+
+    // --- Init ---
+
+    mup.onReady((params) => {
+      if (params?.savedState?.markdown) {
+        editor.value = params.savedState.markdown;
+        if (params.savedState.mode === 'display') {
+          switchMode('display');
+        }
+      }
+      broadcastState();
+    });
+  </script>
+</body>
+</html>

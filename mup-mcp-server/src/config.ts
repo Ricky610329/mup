@@ -1,0 +1,28 @@
+// ---- Centralized Configuration ----
+
+export const CONFIG = {
+  /** Default HTTP/WebSocket port */
+  defaultPort: 3200,
+  /** Number of ports to scan when default is taken */
+  portScanRange: 20,
+  /** Auto-save debounce interval (ms) */
+  autoSaveDebounceMs: 2000,
+  /** Periodic auto-save interval (ms) */
+  autoSaveIntervalMs: 30_000,
+  /** Max time to wait for a function call response (ms) */
+  functionCallTimeoutMs: 30_000,
+  /** Max length of a tool response text before truncation */
+  maxResponseLength: 2000,
+  /** Delay before auto-opening browser (ms) */
+  browserOpenDelayMs: 3000,
+  /** Wait for MUP initialization before first call (ms) */
+  mupInitWaitMs: 500,
+  /** Max pending interaction events per MUP */
+  maxPendingEvents: 50,
+  /** Max call history entries per MUP */
+  maxCallHistory: 30,
+  /** Number of recent history entries shown in detail */
+  recentHistoryCount: 5,
+  /** Max result string length stored in call history */
+  maxHistoryResultLength: 200,
+} as const;

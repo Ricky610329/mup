@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { CONFIG } from "./config.js";
 
 export interface MupFunction {
   name: string;
@@ -200,7 +201,7 @@ export class MupManager {
     const mup = this.mups.get(mupId);
     if (mup) {
       mup.pendingEvents.push({ action, summary, data, timestamp: Date.now() });
-      if (mup.pendingEvents.length > 50) mup.pendingEvents.shift();
+      if (mup.pendingEvents.length > CONFIG.maxPendingEvents) mup.pendingEvents.shift();
     }
   }
 

@@ -118,6 +118,12 @@
     .status-dot {
       width: 8px; height: 8px; border-radius: 50%;
     }
+    .save-indicator {
+      font-size: 10px; color: var(--text-tertiary);
+      opacity: 0; transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .save-indicator.show { opacity: 1; }
 
     /* Workspace panel */
     .ws-overlay {
@@ -291,6 +297,7 @@
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>
     Workspaces
   </button>
+  <span class="save-indicator" id="saveIndicator">saved</span>
   <div class="status-dot connecting" id="statusDot"></div>
 </div>
 
@@ -443,8 +450,14 @@ function initGrid() {
   grid.on('dragstart resizestart', () => document.body.classList.add('grid-stack-dragging'));
   grid.on('dragstop resizestop', () => {
     document.body.classList.remove('grid-stack-dragging');
-    saveGridLayout();
+    debouncedSaveGrid();
   });
+}
+
+let _gridSaveTimer = null;
+function debouncedSaveGrid() {
+  clearTimeout(_gridSaveTimer);
+  _gridSaveTimer = setTimeout(saveGridLayout, 500);
 }
 
 function saveGridLayout() {
@@ -464,6 +477,19 @@ function saveGridLayout() {
   }
   ws.send(JSON.stringify({ type: "save-grid-layout", layout }));
 }
+
+// Save state before tab close
+window.addEventListener('beforeunload', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    saveGridLayout();
+    // Send all custom names
+    for (const [mupId, mup] of mups) {
+      if (mup.customName) {
+        ws.send(JSON.stringify({ type: "rename-mup", mupId, customName: mup.customName }));
+      }
+    }
+  }
+});
 
 window.addEventListener('resize', () => {
   if (!grid) return;
@@ -497,17 +523,31 @@ function addEventBadge(mupName, summary) {
   setTimeout(() => badge.remove(), isError ? 5000 : 3000);
 }
 
-// ---- WebSocket ----
+// ---- Save Indicator ----
+let _saveTimer = null;
+function showSaveIndicator() {
+  const el = document.getElementById('saveIndicator');
+  el.classList.add('show');
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => el.classList.remove('show'), 1500);
+}
+
+// ---- WebSocket (with exponential backoff) ----
+let _reconnectDelay = 1000;
+const _maxReconnectDelay = 30000;
+
 function connect() {
   const wsUrl = `ws://${location.hostname}:__WS_PORT__`;
   ws = new WebSocket(wsUrl);
   ws.onopen = () => {
     statusDot.className = "status-dot connected";
+    _reconnectDelay = 1000; // reset on success
     ws.send(JSON.stringify({ type: "ready" }));
   };
   ws.onclose = () => {
     statusDot.className = "status-dot disconnected";
-    setTimeout(connect, 3000);
+    setTimeout(connect, _reconnectDelay);
+    _reconnectDelay = Math.min(_reconnectDelay * 2, _maxReconnectDelay);
   };
   ws.onerror = () => { statusDot.className = "status-dot disconnected"; };
   ws.onmessage = (e) => {
@@ -548,6 +588,7 @@ function handleServerMessage(msg) {
       loadingBar.classList.add('active');
       callMupFunction(msg.callId, msg.mupId, msg.fn, msg.args);
       break;
+    case "auto-saved": showSaveIndicator(); break;
     case "workspace-list": renderWorkspaceList(msg.workspaces); break;
     case "workspace-saved": addEventBadge("Workspace", `"${msg.name}" saved`); break;
     case "workspace-cleared":
@@ -601,7 +642,12 @@ function loadMup(mupId, html, manifest, savedState) {
       </div>
     </div>`;
 
-  el.querySelector('.mup-close-btn').addEventListener('click', () => removeMup(mupId));
+  const closeBtn = el.querySelector('.mup-close-btn');
+  closeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    removeMup(mupId, el);
+  });
 
   // Click-to-rename
   const nameEl = el.querySelector('.mup-name');
@@ -612,6 +658,10 @@ function loadMup(mupId, html, manifest, savedState) {
       nameEl.textContent = newName;
       const mup = mups.get(mupId);
       if (mup) mup.customName = newName;
+      // Persist rename to server immediately
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "rename-mup", mupId, customName: newName }));
+      }
     }
   });
 
@@ -721,12 +771,16 @@ function callMupFunction(callId, mupId, fn, args) {
   mup.port.postMessage({ jsonrpc: "2.0", id: msgId, method: "functions/call", params: { name: fn, arguments: args || {}, source: "llm" } });
 }
 
-function removeMup(mupId) {
-  const items = grid.getGridItems();
-  for (const item of items) {
-    if (item.getAttribute('gs-id') === mupId) {
-      grid.removeWidget(item);
-      break;
+function removeMup(mupId, widgetEl) {
+  // Use the direct element reference if available, fallback to gs-id search
+  if (widgetEl) {
+    try { grid.removeWidget(widgetEl); } catch {}
+  } else {
+    for (const item of grid.getGridItems()) {
+      if (item.getAttribute('gs-id') === mupId) {
+        grid.removeWidget(item);
+        break;
+      }
     }
   }
   mups.delete(mupId);
@@ -1007,9 +1061,11 @@ document.getElementById('wsNewBtn').addEventListener('click', () => {
   mups.clear();
   for (const c of catalog) c.active = false;
   window._pendingCustomNames = null;
+  currentWorkspaceName = null;
+  currentWorkspaceDesc = '';
+  updateHeaderWsName();
   renderManagerCard();
   closeWorkspacePanel();
-  addEventBadge("Workspace", "New workspace started");
 });
 
 function renderWorkspaceList(workspaces) {
@@ -1021,16 +1077,14 @@ function renderWorkspaceList(workspaces) {
     const time = new Date(w.savedAt).toLocaleString();
     const mupList = w.activeMups.join(', ');
     const label = w.displayName || w.name;
-    const isLast = w.name === '_last';
     const desc = w.description ? `<div class="ws-item-desc">${escapeHtml(w.description)}</div>` : '';
-    const style = isLast ? ' style="border-bottom: 2px solid var(--border);"' : '';
-    return `<div class="ws-item" data-name="${escapeHtml(w.name)}"${style}>
+    return `<div class="ws-item" data-name="${escapeHtml(w.name)}">
       <div class="ws-item-info">
-        <div class="ws-item-name">${escapeHtml(label)}${isLast ? ' <span style="font-size:10px;color:var(--text-tertiary);">(auto)</span>' : ''}</div>
+        <div class="ws-item-name">${escapeHtml(label)}</div>
         ${desc}
         <div class="ws-item-meta">${time} &middot; ${mupList || 'no MUPs'}</div>
       </div>
-      ${isLast ? '' : `<button class="ws-item-del" data-name="${escapeHtml(w.name)}" title="Delete">&times;</button>`}
+      <button class="ws-item-del" data-name="${escapeHtml(w.name)}" title="Delete">&times;</button>
     </div>`;
   }).join('');
 

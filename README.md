@@ -99,7 +99,7 @@ Supports Anthropic, OpenAI, Google, Groq, xAI. Opens at `http://localhost:3100`.
 
 ## Built-in Examples
 
-12 ready-to-use MUPs in `examples/`:
+20 ready-to-use MUPs in `examples/`:
 
 | Category | MUP | Description |
 |----------|-----|-------------|
@@ -113,8 +113,16 @@ Supports Anthropic, OpenAI, Google, Groq, xAI. Opens at `http://localhost:3100`.
 | media | Camera | Live camera + snapshot |
 | media | Voice | Speech-to-text + text-to-speech |
 | media | Drum Machine | 4-track step sequencer |
+| music | Keys | Piano roll step sequencer (2 octaves, polyphonic) |
+| music | Bass | Bass step sequencer (C2–B2, monophonic) |
+| music | Chords | Chord progression sequencer (8 slots, strumming) |
+| music | Strings | String pad sequencer (lush detuned oscillators) |
+| music | Synth | Lead synth sequencer (waveform, filter, ADSR) |
+| music | Mixer | Multi-track mixing console (volume, mute, solo) |
+| music | Arranger | Song structure arranger (sections, full arrangement) |
 | productivity | Sticky Notes | Draggable notes board |
 | productivity | Kanban | Task board with drag-and-drop |
+| productivity | Markdown | Live Markdown editor with preview |
 
 ## Quick Example
 

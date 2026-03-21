@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chords</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Chords",
+    "description": "A chord progression sequencer. 8 slots for chord changes. Each slot has chord selection and duration (beats). Adjustable strum speed, tone. Use getPattern to export to the Mixer.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "functions": [
+      { "name": "setProgression", "description": "Set the chord progression. Each slot: {chord, beats}.", "inputSchema": { "type": "object", "properties": { "slots": { "type": "array", "items": { "type": "object", "properties": { "chord": { "type": "string" }, "beats": { "type": "integer" } } } } }, "required": ["slots"] } },
+      { "name": "setParams", "description": "Adjust sound parameters.", "inputSchema": { "type": "object", "properties": { "strumSpeed": { "type": "number" }, "brightness": { "type": "number" }, "decay": { "type": "number" } } } },
+      { "name": "setBPM", "description": "Set tempo.", "inputSchema": { "type": "object", "properties": { "bpm": { "type": "integer" } }, "required": ["bpm"] } },
+      { "name": "play", "description": "Start playback.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "stop", "description": "Stop playback.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "getPattern", "description": "Get progression, params, and BPM for export to Mixer.", "inputSchema": { "type": "object", "properties": {} } }
+    ]
+  }
+  </script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,sans-serif;background:#1c1410;color:#c4a080;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+    .bar{display:flex;align-items:center;gap:4px;padding:4px 8px;background:#18100a;border-bottom:1px solid#2a1e14;flex-shrink:0}
+    .bar button{width:28px;height:24px;border:1px solid#3a2a1a;border-radius:4px;background:#2a1e14;color:#c4a080;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;font-family:inherit}
+    .bar button:hover{background:#3a2e1e} .bar button.on{background:#5a3a1a;border-color:#8a6a3a;color:#ffe0b0}
+    .bar input[type=number]{width:40px;padding:2px 4px;border:1px solid#3a2a1a;border-radius:3px;background:#2a1e14;color:#c4a080;font-size:11px;font-family:inherit;text-align:center}
+    .bar .sep{width:1px;height:16px;background:#2a1e14} .bar .spacer{flex:1} .bar .lbl{font-size:9px;color:#776}
+    .params{display:none;padding:5px 8px;background:#1a120a;border-bottom:1px solid#2a1e14;flex-shrink:0;gap:8px;flex-wrap:wrap;align-items:center}
+    .params.open{display:flex}
+    .params label{font-size:9px;color:#776} .params input[type=range]{width:50px;accent-color:#aa7744;height:18px}
+    .slots{flex:1;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:1fr 1fr;gap:3px;padding:6px;overflow:hidden}
+    .slot{border:1px solid#2a1e14;border-radius:5px;background:#221810;padding:6px;display:flex;flex-direction:column;gap:4px;transition:all .2s;overflow:hidden}
+    .slot.on{border-color:#886633;background:#2a2010;box-shadow:0 0 10px rgba(136,102,51,.12)}
+    .slot select{width:100%;padding:3px;border:1px solid#3a2a1a;border-radius:3px;background:#1c1208;color:#d4b896;font-size:13px;font-weight:600;font-family:inherit;text-align:center}
+    .slot .bt{display:flex;align-items:center;gap:3px;font-size:10px;color:#887}
+    .slot .bt input{width:32px;text-align:center;padding:1px;border:1px solid#3a2a1a;border-radius:2px;background:#1c1208;color:#d4b896;font-size:11px;font-family:inherit}
+    .slot .sv{flex:1;display:flex;flex-direction:column;justify-content:center;gap:2px}
+    .slot .str{height:1px;border-radius:1px;transition:opacity .2s}
+    .slot .str.vib{animation:vib .07s ease-in-out 5}
+    @keyframes vib{0%,100%{transform:translateY(0)}50%{transform:translateY(1.5px)}}
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <button id="playBtn">&#9654;</button><button id="stopBtn">&#9632;</button><div class="sep"></div>
+    <span class="lbl">BPM</span><input type="number" id="bpm" value="100" min="40" max="240"><div class="spacer"></div><button id="paramBtn">&#9881;</button>
+  </div>
+  <div class="params" id="params">
+    <label>Strum</label><input type="range" id="strum" min="10" max="80" value="30">
+    <label>Bright</label><input type="range" id="bright" min="500" max="5000" value="2000">
+    <label>Decay</label><input type="range" id="decayP" min="0.3" max="3" step="0.1" value="1.2">
+  </div>
+  <div class="slots" id="slots"></div>
+
+  <script>
+    const CHORDS={'':[],'C':[48,52,55,60,64],'Cm':[48,51,55,60,63],'D':[50,54,57,62],'Dm':[50,53,57,62],'E':[40,47,52,56,59,64],'Em':[40,47,52,55,59,64],'F':[41,48,53,57,60],'G':[43,47,50,55,59,67],'A':[45,52,57,61,64],'Am':[45,52,57,60,64],'B':[47,54,59,63,66],'Bm':[47,54,59,62,66],'C7':[48,52,55,58,64],'D7':[50,54,57,60],'E7':[40,47,50,56,59,64],'G7':[43,47,50,55,59,65],'A7':[45,52,55,61,64]};
+    const COLORS=['#e8c878','#d4b060','#c0a050','#a89048','#907840','#786838'];
+    const NUM=8,ctx=new AudioContext(),slotsEl=document.getElementById('slots');
+    let slots=Array.from({length:NUM},()=>({chord:'',beats:4})),params={strumSpeed:30,brightness:2000,decay:1.2};
+    let bpm=100,playing=false,cur=-1,timer=null;
+    const slotEls=[],freq=m=>440*Math.pow(2,(m-69)/12);
+
+    for(let i=0;i<NUM;i++){
+      const el=document.createElement('div');el.className='slot';
+      const opts=Object.keys(CHORDS).map(c=>`<option value="${c}">${c||'—'}</option>`).join('');
+      el.innerHTML=`<select>${opts}</select><div class="bt"><span>beats</span><input type="number" value="4" min="1" max="8"></div><div class="sv">${COLORS.map((c,j)=>`<div class="str" style="background:${c};height:${1+j*.3}px"></div>`).join('')}</div>`;
+      el.querySelector('select').addEventListener('change',e=>{slots[i].chord=e.target.value;broadcastState()});
+      el.querySelector('.bt input').addEventListener('change',e=>{slots[i].beats=+e.target.value;broadcastState()});
+      slotsEl.appendChild(el);slotEls.push(el);
+    }
+
+    document.getElementById('paramBtn').addEventListener('click',()=>{document.getElementById('params').classList.toggle('open');document.getElementById('paramBtn').classList.toggle('on')});
+
+    function renderSlots(){slotEls.forEach((el,i)=>{el.querySelector('select').value=slots[i].chord;el.querySelector('.bt input').value=slots[i].beats})}
+
+    function strum(notes,dur){
+      if(!notes.length)return;const now=ctx.currentTime;
+      notes.forEach((midi,j)=>{const delay=j*params.strumSpeed/1000;const o=ctx.createOscillator(),f=ctx.createBiquadFilter(),g=ctx.createGain();o.type='triangle';o.frequency.value=freq(midi);f.type='lowpass';f.frequency.value=params.brightness;f.Q.value=1;o.connect(f);f.connect(g);g.connect(ctx.destination);const t=now+delay;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.12,t+.005);g.gain.exponentialRampToValueAtTime(.04,t+.15);g.gain.exponentialRampToValueAtTime(.001,t+dur);o.start(t);o.stop(t+dur)});
+    }
+    function vibStrings(i){slotEls[i].querySelectorAll('.str').forEach(s=>{s.classList.remove('vib');void s.offsetWidth;s.classList.add('vib')})}
+
+    function startPlay(){if(playing)return;ctx.resume();playing=true;cur=-1;document.getElementById('playBtn').classList.add('on');tickSlot()}
+    function stopPlay(){playing=false;clearTimeout(timer);document.getElementById('playBtn').classList.remove('on');slotEls.forEach(el=>el.classList.remove('on'));cur=-1}
+    function tickSlot(){
+      if(!playing)return;slotEls.forEach(el=>el.classList.remove('on'));cur=(cur+1)%NUM;
+      const s=slots[cur];if(!s.chord&&cur>0){stopPlay();return}
+      slotEls[cur].classList.add('on');const notes=CHORDS[s.chord]||[];const dur=60/bpm*s.beats;
+      if(notes.length){strum(notes,dur*.9);vibStrings(cur)}
+      timer=setTimeout(tickSlot,dur*1000);
+    }
+
+    document.getElementById('playBtn').addEventListener('click',startPlay);
+    document.getElementById('stopBtn').addEventListener('click',stopPlay);
+    document.getElementById('bpm').addEventListener('change',e=>{bpm=+e.target.value;broadcastState()});
+    document.getElementById('strum').addEventListener('input',e=>{params.strumSpeed=+e.target.value});
+    document.getElementById('bright').addEventListener('input',e=>{params.brightness=+e.target.value});
+    document.getElementById('decayP').addEventListener('input',e=>{params.decay=+e.target.value});
+
+    function broadcastState(){const f=slots.filter(s=>s.chord).length;mup.updateState(`Chords: ${f}/${NUM} slots, ${bpm} BPM${playing?', playing':''}`,{slots,params,bpm,playing})}
+
+    mup.registerFunction('setProgression',({slots:sl})=>{for(let i=0;i<NUM;i++)slots[i]=sl[i]?{chord:sl[i].chord||'',beats:sl[i].beats||4}:{chord:'',beats:4};renderSlots();broadcastState();return{content:[{type:'text',text:`Progression: ${slots.filter(s=>s.chord).map(s=>s.chord).join(' → ')}`}]}});
+    mup.registerFunction('setParams',(p)=>{const c=[];if(p.strumSpeed!==undefined){params.strumSpeed=p.strumSpeed;document.getElementById('strum').value=p.strumSpeed;c.push('strum:'+p.strumSpeed)}if(p.brightness!==undefined){params.brightness=p.brightness;document.getElementById('bright').value=p.brightness;c.push('bright:'+p.brightness)}if(p.decay!==undefined){params.decay=p.decay;document.getElementById('decayP').value=p.decay;c.push('decay:'+p.decay)}return{content:[{type:'text',text:`Params: ${c.join(', ')}`}]}});
+    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}]}});
+    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}]}});
+    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}]}});
+    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Chords: ${slots.filter(s=>s.chord).map(s=>s.chord).join(' → ')}`},{type:'data',data:{track:'chords',slots,params,bpm}}]}));
+
+    mup.onReady(p=>{if(p?.savedState){const s=p.savedState;if(s.slots){slots=s.slots;renderSlots()}if(s.params)Object.assign(params,s.params);if(s.bpm){bpm=s.bpm;document.getElementById('bpm').value=bpm}}broadcastState()});
+  </script>
+</body>
+</html>

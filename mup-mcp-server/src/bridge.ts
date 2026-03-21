@@ -5,24 +5,27 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import { EventEmitter } from "node:events";
 import type { MupManager } from "./manager.js";
+import { CONFIG } from "./config.js";
+import type {
+  FunctionResult,
+  BrowserMessage,
+  ServerMessage,
+  BridgeEvents,
+  CatalogSummary,
+  FolderTreeNode,
+} from "./types.js";
+
+// Re-export for backwards compatibility
+export type { FunctionResult };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface PendingCall {
-  resolve: (result: unknown) => void;
-  reject: (error: Error) => void;
+  resolve: (result: FunctionResult) => void;
   timer: ReturnType<typeof setTimeout>;
 }
 
-interface FunctionResult {
-  content: Array<{
-    type: string;
-    text?: string;
-    data?: unknown;
-    mimeType?: string;
-  }>;
-  isError: boolean;
-}
+// ---- Typed Event Emitter ----
 
 export class UiBridge extends EventEmitter {
   private httpServer: http.Server;
@@ -32,7 +35,7 @@ export class UiBridge extends EventEmitter {
   private callIdCounter = 0;
   private port: number;
   private manager: MupManager;
-  public folderTree: unknown[] = [];
+  public folderTree: FolderTreeNode[] = [];
   public folderPath: string = "";
 
   constructor(manager: MupManager, port: number) {
@@ -40,9 +43,7 @@ export class UiBridge extends EventEmitter {
     this.manager = manager;
     this.port = port;
 
-    this.httpServer = http.createServer((req, res) =>
-      this.handleHttp(req, res)
-    );
+    this.httpServer = http.createServer((req, res) => this.handleHttp(req, res));
     this.wss = new WebSocketServer({ server: this.httpServer });
 
     this.wss.on("connection", (ws) => {
@@ -53,11 +54,11 @@ export class UiBridge extends EventEmitter {
 
       this.ws = ws;
       console.error("[mup-mcp] Browser panel connected");
-      this.emit("browser-connected");
+      this.typedEmit("browser-connected");
 
       ws.on("message", (data) => {
         try {
-          const msg = JSON.parse(data.toString());
+          const msg = JSON.parse(data.toString()) as BrowserMessage;
           this.handleBrowserMessage(msg);
         } catch (e) {
           console.error("[mup-mcp] Invalid message from browser:", e);
@@ -69,40 +70,46 @@ export class UiBridge extends EventEmitter {
         this.ws = null;
         for (const [id, pending] of this.pendingCalls) {
           clearTimeout(pending.timer);
-          pending.reject(new Error("Browser disconnected"));
+          pending.resolve({ content: [{ type: "text", text: "Browser disconnected" }], isError: true });
           this.pendingCalls.delete(id);
         }
+        this.typedEmit("browser-disconnected");
       });
 
       // Send catalog + folder tree on connect
-      const catalog = this.manager.getCatalog().map((e) => ({
-        id: e.manifest.id,
-        name: e.manifest.name,
-        description: e.manifest.description,
-        functions: e.manifest.functions.length,
-        active: e.active,
-        grid: e.manifest.grid,
-        multiInstance: e.manifest.multiInstance || false,
-      }));
-      ws.send(JSON.stringify({ type: "mup-catalog", catalog }));
+      this.sendRaw({ type: "mup-catalog", catalog: this.buildCatalogSummary() });
       if (this.folderTree.length > 0) {
-        ws.send(JSON.stringify({ type: "folder-tree", tree: this.folderTree, path: this.folderPath }));
+        this.sendRaw({ type: "folder-tree", tree: this.folderTree, path: this.folderPath });
       }
 
       // Send already-active MUPs with saved state
       for (const mup of this.manager.getAll()) {
-        ws.send(
-          JSON.stringify({
-            type: "load-mup",
-            mupId: mup.manifest.id,
-            html: mup.html,
-            manifest: mup.manifest,
-            savedState: mup.stateData,
-          })
-        );
+        this.sendRaw({
+          type: "load-mup",
+          mupId: mup.manifest.id,
+          html: mup.html,
+          manifest: mup.manifest,
+          savedState: mup.stateData,
+        });
       }
     });
   }
+
+  // ---- Typed Event Helpers ----
+
+  typedOn<K extends keyof BridgeEvents>(event: K, listener: BridgeEvents[K]): this {
+    return super.on(event, listener as (...args: unknown[]) => void);
+  }
+
+  typedOnce<K extends keyof BridgeEvents>(event: K, listener: BridgeEvents[K]): this {
+    return super.once(event, listener as (...args: unknown[]) => void);
+  }
+
+  typedEmit<K extends keyof BridgeEvents>(event: K, ...args: Parameters<BridgeEvents[K]>): boolean {
+    return super.emit(event, ...args);
+  }
+
+  // ---- Lifecycle ----
 
   async start(): Promise<void> {
     return new Promise((resolve) => {
@@ -117,21 +124,18 @@ export class UiBridge extends EventEmitter {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
-  sendRaw(msg: Record<string, unknown>): void {
+  // ---- Communication ----
+
+  sendRaw(msg: ServerMessage): void {
     if (this.isConnected()) {
       this.ws!.send(JSON.stringify(msg));
     }
   }
 
-  async callFunction(
-    mupId: string,
-    functionName: string,
-    args: Record<string, unknown>
-  ): Promise<FunctionResult> {
+  async callFunction(mupId: string, functionName: string, args: Record<string, unknown>): Promise<FunctionResult> {
     if (!this.isConnected()) {
-      const msg = `MUP UI panel is not connected. Ask the user to open http://localhost:${this.port} in their browser.`;
       return {
-        content: [{ type: "text", text: msg }],
+        content: [{ type: "text", text: `MUP UI panel is not connected. Ask the user to open http://localhost:${this.port} in their browser.` }],
         isError: true,
       };
     }
@@ -142,25 +146,11 @@ export class UiBridge extends EventEmitter {
       const timer = setTimeout(() => {
         this.pendingCalls.delete(callId);
         this.sendRaw({ type: "error", message: `${functionName} timed out (30s) on ${mupId}` });
-        resolve({
-          content: [{ type: "text", text: "Function call timed out (30s)" }],
-          isError: true,
-        });
-      }, 30_000);
+        resolve({ content: [{ type: "text", text: "Function call timed out (30s)" }], isError: true });
+      }, CONFIG.functionCallTimeoutMs);
 
-      this.pendingCalls.set(callId, {
-        resolve: (result) => resolve(result as FunctionResult),
-        reject: () =>
-          resolve({
-            content: [{ type: "text", text: "Call failed" }],
-            isError: true,
-          }),
-        timer,
-      });
-
-      this.ws!.send(
-        JSON.stringify({ type: "call", callId, mupId, fn: functionName, args })
-      );
+      this.pendingCalls.set(callId, { resolve, timer });
+      this.sendRaw({ type: "call", callId, mupId, fn: functionName, args });
     });
   }
 
@@ -168,7 +158,23 @@ export class UiBridge extends EventEmitter {
     return this.port;
   }
 
-  private handleBrowserMessage(msg: Record<string, unknown>): void {
+  // ---- Helpers ----
+
+  buildCatalogSummary(): CatalogSummary[] {
+    return this.manager.getCatalog().map((e) => ({
+      id: e.manifest.id,
+      name: e.manifest.name,
+      description: e.manifest.description,
+      functions: e.manifest.functions.length,
+      active: e.active,
+      grid: e.manifest.grid,
+      multiInstance: e.manifest.multiInstance || false,
+    }));
+  }
+
+  // ---- Message Dispatch ----
+
+  private handleBrowserMessage(msg: BrowserMessage): void {
     switch (msg.type) {
       case "ready":
         console.error("[mup-mcp] Browser panel ready");
@@ -179,71 +185,68 @@ export class UiBridge extends EventEmitter {
         break;
 
       case "result": {
-        const pending = this.pendingCalls.get(msg.callId as string);
+        const pending = this.pendingCalls.get(msg.callId);
         if (pending) {
           clearTimeout(pending.timer);
-          this.pendingCalls.delete(msg.callId as string);
+          this.pendingCalls.delete(msg.callId);
           pending.resolve(msg.result);
         }
         break;
       }
 
       case "state":
-        this.manager.updateState(
-          msg.mupId as string,
-          msg.summary as string,
-          msg.data
-        );
-        this.emit("state-update", msg.mupId, msg.summary, msg.data);
+        this.manager.updateState(msg.mupId, msg.summary, msg.data);
+        this.typedEmit("state-update", msg.mupId, msg.summary, msg.data);
         break;
 
       case "interaction":
-        this.manager.addEvent(
-          msg.mupId as string,
-          msg.action as string,
-          msg.summary as string,
-          msg.data
-        );
-        this.emit("interaction", msg.mupId, msg.action, msg.summary);
+        this.manager.addEvent(msg.mupId, msg.action, msg.summary, msg.data);
+        this.typedEmit("interaction", msg.mupId, msg.action, msg.summary);
         break;
 
       case "activate-mup":
-        this.emit("activate-mup", msg.mupId as string);
+        this.typedEmit("activate-mup", msg.mupId);
         break;
 
       case "deactivate-mup":
-        this.emit("deactivate-mup", msg.mupId as string);
+        this.typedEmit("deactivate-mup", msg.mupId);
         break;
 
       case "register-and-activate":
-        this.emit("register-and-activate", msg.mupId as string, msg.html as string, msg.fileName as string);
+        this.typedEmit("register-and-activate", msg.mupId, msg.html, msg.fileName);
         break;
 
       case "new-instance":
-        this.emit("new-instance", msg.mupId as string, msg.customName as string | undefined);
+        this.typedEmit("new-instance", msg.mupId, msg.customName);
         break;
 
       case "list-workspaces":
-        this.emit("list-workspaces");
+        this.typedEmit("list-workspaces");
         break;
 
       case "save-workspace":
-        this.emit("save-workspace", msg.name as string, msg.description as string | undefined);
+        this.typedEmit("save-workspace", msg.name, msg.description);
         break;
 
       case "load-workspace":
-        this.emit("load-workspace", msg.name as string);
+        this.typedEmit("load-workspace", msg.name);
         break;
 
       case "delete-workspace":
-        this.emit("delete-workspace", msg.name as string, msg.isCurrent as boolean);
+        this.typedEmit("delete-workspace", msg.name, msg.isCurrent);
         break;
 
       case "save-grid-layout":
-        this.emit("save-grid-layout", msg.layout);
+        this.typedEmit("save-grid-layout", msg.layout);
+        break;
+
+      case "rename-mup":
+        this.typedEmit("rename-mup", msg.mupId, msg.customName);
         break;
     }
   }
+
+  // ---- HTTP ----
 
   private handleHttp(req: http.IncomingMessage, res: http.ServerResponse): void {
     if (req.url === "/" || req.url === "/index.html") {
@@ -251,10 +254,7 @@ export class UiBridge extends EventEmitter {
       try {
         let content = fs.readFileSync(uiPath, "utf-8");
         content = content.replace(/__WS_PORT__/g, String(this.port));
-        res.writeHead(200, {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-cache",
-        });
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
         res.end(content);
       } catch (err) {
         console.error("[mup-mcp] UI file not found:", uiPath, err);

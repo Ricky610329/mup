@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bass</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Bass",
+    "description": "A bass step sequencer. 16-step piano roll for bass notes (C2–B2). Click cells to place notes, one note per step. Adjustable waveform, filter cutoff, resonance, decay. Use getPattern to export to the Mixer.",
+    "grid": { "minWidth": 3, "minHeight": 2 },
+    "functions": [
+      { "name": "setPattern", "description": "Set the bass pattern. Each step is a note name ('C2'–'B2') or null for rest.", "inputSchema": { "type": "object", "properties": { "steps": { "type": "array", "items": { "type": ["string","null"] } } }, "required": ["steps"] } },
+      { "name": "setParams", "description": "Adjust sound parameters.", "inputSchema": { "type": "object", "properties": { "waveform": { "type": "string" }, "filterFreq": { "type": "number" }, "filterQ": { "type": "number" }, "decay": { "type": "number" } } } },
+      { "name": "setBPM", "description": "Set tempo.", "inputSchema": { "type": "object", "properties": { "bpm": { "type": "integer" } }, "required": ["bpm"] } },
+      { "name": "play", "description": "Start playback.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "stop", "description": "Stop playback.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "clear", "description": "Clear all steps.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "getPattern", "description": "Get pattern, params, and BPM for export to Mixer.", "inputSchema": { "type": "object", "properties": {} } }
+    ]
+  }
+  </script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,sans-serif;background:#1a0e0e;color:#c4a0a0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+    .bar{display:flex;align-items:center;gap:4px;padding:4px 8px;background:#140a0a;border-bottom:1px solid#2a1616;flex-shrink:0}
+    .bar button{width:28px;height:24px;border:1px solid#3a2020;border-radius:4px;background:#221414;color:#c4a0a0;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;font-family:inherit}
+    .bar button:hover{background:#2e1a1a}
+    .bar button.on{background:#662222;border-color:#884444;color:#fcc}
+    .bar input[type=number]{width:40px;padding:2px 4px;border:1px solid#3a2020;border-radius:3px;background:#221414;color:#c4a0a0;font-size:11px;font-family:inherit;text-align:center}
+    .bar .sep{width:1px;height:16px;background:#2a1616} .bar .spacer{flex:1} .bar .lbl{font-size:9px;color:#665}
+    .params{display:none;padding:6px 8px;background:#160c0c;border-bottom:1px solid#2a1616;flex-shrink:0;gap:8px;flex-wrap:wrap;align-items:center}
+    .params.open{display:flex}
+    .params label{font-size:9px;color:#665} .params select{padding:1px 4px;border:1px solid#3a2020;border-radius:3px;background:#221414;color:#c4a0a0;font-size:10px}
+    .params input[type=range]{width:48px;accent-color:#aa3333;height:18px}
+    .roll{flex:1;overflow:hidden;display:flex;flex-direction:column}
+    .grid{display:grid;grid-template-columns:22px repeat(16,1fr);grid-template-rows:repeat(12,1fr);flex:1}
+    .lbl-cell{display:flex;align-items:center;justify-content:flex-end;padding-right:2px;font-size:8px;color:#554}
+    .cell{border-bottom:1px solid#1e1010;cursor:pointer;background:#1e1212;transition:background .05s}
+    .cell.bt{border-left:1px solid#2a1616}
+    .cell.on{background:#aa3333}
+    .cell.pl{box-shadow:inset 0 0 0 1px #ff6644}
+    .cell:hover{filter:brightness(1.2)}
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <button id="playBtn">&#9654;</button><button id="stopBtn">&#9632;</button><div class="sep"></div>
+    <span class="lbl">BPM</span><input type="number" id="bpm" value="120" min="40" max="240"><div class="sep"></div>
+    <button id="clearBtn">&#10005;</button><div class="spacer"></div><button id="paramBtn">&#9881;</button>
+  </div>
+  <div class="params" id="params">
+    <label>Wave</label><select id="wave"><option value="sawtooth">Saw</option><option value="square">Sq</option><option value="sine">Sin</option><option value="triangle">Tri</option></select>
+    <label>Cutoff</label><input type="range" id="cutoff" min="80" max="2000" value="400">
+    <label>Reso</label><input type="range" id="reso" min="0.5" max="15" step="0.5" value="4">
+    <label>Decay</label><input type="range" id="decayP" min="0.1" max="1" step="0.05" value="0.3">
+  </div>
+  <div class="roll"><div class="grid" id="grid"></div></div>
+
+  <script>
+    const N=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const ROWS=[];for(let n=11;n>=0;n--)ROWS.push({name:N[n]+'2',midi:n+36});
+    const STEPS=16,ctx=new AudioContext(),gridEl=document.getElementById('grid'),cells={};
+    let pattern=new Array(STEPS).fill(null),params={waveform:'sawtooth',filterFreq:400,filterQ:4,decay:.3};
+    let bpm=120,playing=false,step=-1,timer=null;
+    const freq=m=>440*Math.pow(2,(m-69)/12);
+
+    ROWS.forEach((r,row)=>{
+      const l=document.createElement('div');l.className='lbl-cell';l.textContent=r.name;gridEl.appendChild(l);
+      cells[row]={};
+      for(let col=0;col<STEPS;col++){const c=document.createElement('div');c.className='cell'+(col%4===0?' bt':'');c.dataset.r=row;c.dataset.c=col;gridEl.appendChild(c);cells[row][col]=c}
+    });
+
+    document.getElementById('paramBtn').addEventListener('click',()=>{document.getElementById('params').classList.toggle('open');document.getElementById('paramBtn').classList.toggle('on')});
+
+    gridEl.addEventListener('pointerdown',e=>{
+      const c=e.target.closest('.cell');if(!c)return;
+      const row=+c.dataset.r,col=+c.dataset.c,note=ROWS[row].name;
+      if(pattern[col]===note){pattern[col]=null;c.classList.remove('on')}
+      else{ROWS.forEach((_,r)=>cells[r][col].classList.remove('on'));pattern[col]=note;c.classList.add('on')}
+      broadcastState();
+    });
+
+    function renderPattern(){for(let col=0;col<STEPS;col++)ROWS.forEach((r,row)=>cells[row][col].classList.toggle('on',pattern[col]===r.name))}
+    function playBass(midi,dur){
+      const now=ctx.currentTime,o=ctx.createOscillator(),f=ctx.createBiquadFilter(),g=ctx.createGain();
+      o.type=params.waveform;o.frequency.value=freq(midi);f.type='lowpass';f.frequency.value=params.filterFreq;f.Q.value=params.filterQ;
+      o.connect(f);f.connect(g);g.connect(ctx.destination);
+      g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(.35,now+.01);g.gain.exponentialRampToValueAtTime(.001,now+dur);
+      o.start(now);o.stop(now+dur);
+    }
+    function startPlay(){if(playing)return;ctx.resume();playing=true;step=-1;document.getElementById('playBtn').classList.add('on');tick()}
+    function stopPlay(){playing=false;clearTimeout(timer);document.getElementById('playBtn').classList.remove('on');if(step>=0)ROWS.forEach((_,r)=>cells[r][step].classList.remove('pl'));step=-1}
+    function tick(){
+      if(!playing)return;if(step>=0)ROWS.forEach((_,r)=>cells[r][step].classList.remove('pl'));
+      step=(step+1)%STEPS;ROWS.forEach((_,r)=>cells[r][step].classList.add('pl'));
+      const dur=60/bpm/4;if(pattern[step]){const r=ROWS.findIndex(r=>r.name===pattern[step]);if(r>=0)playBass(ROWS[r].midi,Math.min(dur*.8,params.decay))}
+      timer=setTimeout(tick,dur*1000);
+    }
+
+    document.getElementById('playBtn').addEventListener('click',startPlay);
+    document.getElementById('stopBtn').addEventListener('click',stopPlay);
+    document.getElementById('clearBtn').addEventListener('click',()=>{pattern.fill(null);renderPattern();broadcastState()});
+    document.getElementById('bpm').addEventListener('change',e=>{bpm=+e.target.value;broadcastState()});
+    document.getElementById('wave').addEventListener('change',e=>{params.waveform=e.target.value});
+    document.getElementById('cutoff').addEventListener('input',e=>{params.filterFreq=+e.target.value});
+    document.getElementById('reso').addEventListener('input',e=>{params.filterQ=+e.target.value});
+    document.getElementById('decayP').addEventListener('input',e=>{params.decay=+e.target.value});
+
+    function broadcastState(){const n=pattern.filter(Boolean).length;mup.updateState(`Bass: ${n}/16, ${bpm} BPM, ${params.waveform}${playing?', playing':''}`,{pattern,params,bpm,playing})}
+
+    mup.registerFunction('setPattern',({steps})=>{for(let i=0;i<STEPS;i++)pattern[i]=steps[i]||null;renderPattern();broadcastState();return{content:[{type:'text',text:`Pattern set (${pattern.filter(Boolean).length} notes)`}]}});
+    mup.registerFunction('setParams',(p)=>{const c=[];if(p.waveform){params.waveform=p.waveform;document.getElementById('wave').value=p.waveform;c.push('wave:'+p.waveform)}if(p.filterFreq!==undefined){params.filterFreq=p.filterFreq;document.getElementById('cutoff').value=p.filterFreq;c.push('cutoff:'+p.filterFreq)}if(p.filterQ!==undefined){params.filterQ=p.filterQ;document.getElementById('reso').value=p.filterQ;c.push('reso:'+p.filterQ)}if(p.decay!==undefined){params.decay=p.decay;document.getElementById('decayP').value=p.decay;c.push('decay:'+p.decay)}return{content:[{type:'text',text:`Params: ${c.join(', ')}`}]}});
+    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}]}});
+    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}]}});
+    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}]}});
+    mup.registerFunction('clear',()=>{pattern.fill(null);renderPattern();broadcastState();return{content:[{type:'text',text:'Cleared'}]}});
+    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Bass: ${pattern.filter(Boolean).length}/16, ${bpm} BPM`},{type:'data',data:{track:'bass',pattern,params,bpm}}]}));
+
+    mup.onReady(p=>{if(p?.savedState){const s=p.savedState;if(s.pattern){pattern=s.pattern;renderPattern()}if(s.params)Object.assign(params,s.params);if(s.bpm){bpm=s.bpm;document.getElementById('bpm').value=bpm}}broadcastState()});
+  </script>
+</body>
+</html>

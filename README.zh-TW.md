@@ -99,7 +99,7 @@ npm start
 
 ## 內建範例
 
-`examples/` 裡有 12 個現成的 MUP：
+`examples/` 裡有 20 個現成的 MUP：
 
 | 分類 | MUP | 說明 |
 |------|-----|------|
@@ -113,8 +113,16 @@ npm start
 | media | Camera | 即時相機 + 拍照 |
 | media | Voice | 語音轉文字 + 文字轉語音 |
 | media | Drum Machine | 四軌步進音序器 |
+| music | Keys | 鋼琴卷軸音序器（雙八度、複音） |
+| music | Bass | 低音音序器（C2–B2、單音） |
+| music | Chords | 和弦進行音序器（8 格、撥弦） |
+| music | Strings | 弦樂 Pad 音序器（去諧波厚實音色） |
+| music | Synth | Lead 合成器音序器（波形、濾波、ADSR） |
+| music | Mixer | 多軌混音台（音量、靜音、Solo） |
+| music | Arranger | 歌曲編排器（段落結構、完整編曲） |
 | productivity | Sticky Notes | 可拖曳便利貼 |
 | productivity | Kanban | 拖放式任務看板 |
+| productivity | Markdown | Markdown 即時編輯器 + 預覽 |
 
 ## 快速範例
 

@@ -54,8 +54,16 @@ MUPs are auto-activated on first use — no need to activate manually.
 | mup-camera | Camera | Live camera + photo capture |
 | mup-voice | Voice | Speech-to-text + text-to-speech |
 | mup-drum-machine | Drum Machine | 4-track step sequencer |
+| mup-piano | Keys | Piano roll step sequencer (2 octaves, polyphonic) |
+| mup-bass | Bass | Bass step sequencer (C2–B2) |
+| mup-guitar | Chords | Chord progression sequencer (8 slots) |
+| mup-strings | Strings | String pad sequencer (detuned oscillators) |
+| mup-synth | Synth | Lead synth sequencer (waveform, filter, ADSR) |
+| mup-mixer | Mixer | Multi-track mixing console |
+| mup-arranger | Arranger | Song structure arranger (sections, arrangement) |
 | mup-sticky-notes | Sticky Notes | Draggable notes board |
 | mup-kanban | Kanban | Task board with columns |
+| mup-markdown | Markdown | Live Markdown editor with preview |
 
 ## Notes
 
