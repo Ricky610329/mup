@@ -47,7 +47,74 @@ MUP changes this. It puts clickable, visual UI right inside the chat — so anyo
 
 - **[Spec](spec/MUP-Spec.md)** — Protocol definition: manifest, functions, lifecycle, error handling
 - **[Design Philosophy](spec/MUP-Philosophy.md)** — Why MUP is designed this way, and what we intentionally left out
-- **[Examples](spec/MUP-Examples.md)** — 16 example MUPs with walkthroughs
+- **[Examples](spec/MUP-Examples.md)** — Example MUPs with walkthroughs
+
+## Getting Started
+
+### With Claude Code (recommended)
+
+If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code), one command sets everything up:
+
+```bash
+git clone https://github.com/Ricky610329/mup.git
+cd mup/mup-mcp-server
+npm install && npm run build
+claude mcp add --transport stdio --scope user mup -- node $(pwd)/dist/index.js --mups-dir $(pwd)/../examples
+```
+
+Restart Claude Code. MUP panels are now available as tools — just ask Claude to use them. A browser window opens at `http://localhost:3200` showing the MUP panel grid.
+
+Try it:
+- "Draw a smiley face with pixel art"
+- "Create a presentation about MUP"
+- "Let's play chess"
+
+### With Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "mup": {
+      "command": "node",
+      "args": ["/path/to/mup/mup-mcp-server/dist/index.js", "--mups-dir", "/path/to/mup/examples"]
+    }
+  }
+}
+```
+
+### Standalone (with built-in chat)
+
+For use without Claude — includes its own chat interface and supports multiple LLM providers.
+
+```bash
+cd mup/mup-agent
+npm install
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+npm start
+```
+
+Supports Anthropic, OpenAI, Google, Groq, xAI. Opens at `http://localhost:3100`.
+
+## Built-in Examples
+
+12 ready-to-use MUPs in `examples/`:
+
+| Category | MUP | Description |
+|----------|-----|-------------|
+| basic | Counter | Click +/−, LLM sets value |
+| basic | Dice | Roll with animation, history |
+| basic | Timer | Countdown with progress ring |
+| basic | Chess | Play chess against the LLM |
+| creative | Pixel Art | 16×16 pixel canvas |
+| creative | Slides | Presentation builder |
+| data | Chart | Bar, line, pie, doughnut, radar, scatter |
+| media | Camera | Live camera + snapshot |
+| media | Voice | Speech-to-text + text-to-speech |
+| media | Drum Machine | 4-track step sequencer |
+| productivity | Sticky Notes | Draggable notes board |
+| productivity | Kanban | Task board with drag-and-drop |
 
 ## Quick Example
 
@@ -73,66 +140,6 @@ MUP changes this. It puts clickable, visual UI right inside the chat — so anyo
 
 Drop this into a MUP-compatible host, and it works.
 
-## Getting Started
-
-```bash
-git clone https://github.com/Ricky610329/mup.git
-cd mup/mup-agent
-npm install
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
-npm start
-```
-
-A browser window opens automatically. The 16 built-in example MUPs are pre-loaded — activate them from the Manager card, chat with the agent, and the LLM calls MUP functions as tools.
-
-> **No API key yet?** Just skip the `echo` step — `npm start` will open the Settings panel in the browser where you can enter it.
-
-### Other providers
-
-```bash
-# OpenAI
-echo "OPENAI_API_KEY=sk-..." > .env
-npm start -- --provider openai --model gpt-4o
-
-# Google
-echo "GOOGLE_API_KEY=..." > .env
-npm start -- --provider google --model gemini-2.5-flash
-```
-
-### Options
-
-```
---provider <name>    LLM provider: anthropic, openai, google, groq, xai (default: anthropic)
---model <id>         Model ID (default: claude-sonnet-4-6)
---api-key <key>      API key (alternative to .env)
---mups-dir <dir>     Load MUPs from a directory (default: examples/)
---port <port>        UI panel port (default: 3100)
---no-open            Don't auto-open the browser
-```
-
-### Built-in Examples
-
-16 ready-to-use MUPs in `examples/`:
-
-| Category | MUP | Description |
-|----------|-----|-------------|
-| basic | Counter | Click +/−, LLM sets value |
-| basic | Dice | Roll with animation, history |
-| basic | Timer | Countdown with progress ring |
-| basic | Chess | Play chess against the LLM |
-| creative | Pixel Art | 16×16 pixel canvas |
-| creative | Markdown | Markdown renderer, loads files |
-| creative | Editor | Text editor with selection-aware LLM |
-| creative | Slides | Presentation builder |
-| data | Chart | Bar, line, pie charts |
-| data | Search | Web search via host |
-| data | Workspace | Browse, read, write local files |
-| media | Camera | Live camera + snapshot |
-| media | Voice | Speech-to-text + text-to-speech |
-| media | Drum Machine | 4-track step sequencer |
-| productivity | Sticky Notes | Draggable notes board |
-| productivity | Kanban | Task board with drag-and-drop |
-
 ## Architecture
 
 ```
@@ -141,29 +148,19 @@ npm start -- --provider google --model gemini-2.5-flash
 │        manifest + UI + functions         │
 └──────────────────┬───────────────────────┘
                    │ loaded by
-                   ▼
-┌──────────────────────────────────────────┐
-│           mup-agent (Node.js)            │
-│                                          │
-│  ┌─────────────┐    ┌─────────────────┐  │
-│  │ Agent       │    │ MUP Manager     │  │
-│  │ (pi-agent-  │    │ (load, parse,   │  │
-│  │  core)      │    │  route calls)   │  │
-│  └──────┬──────┘    └────────┬────────┘  │
-│         │  LLM API          │            │
-│         ▼                   │            │
-│  ┌─────────────┐            │            │
-│  │ LLM Provider│            │            │
-│  │ (Anthropic, │            │            │
-│  │  OpenAI...) │            │            │
-│  └─────────────┘            │            │
-└─────────────────────────────┼────────────┘
-                              │ WebSocket
-                              ▼
-                   ┌─────────────────────┐
-                   │   Browser Panel     │
-                   │  (chat + MUP grid)  │
-                   └─────────────────────┘
+        ┌──────────┴──────────┐
+        ▼                     ▼
+┌──────────────┐    ┌──────────────────┐
+│  MCP Server  │    │   mup-agent      │
+│ (Claude Code │    │ (standalone with │
+│  / Desktop)  │    │  built-in chat)  │
+└──────┬───────┘    └────────┬─────────┘
+       │ WebSocket           │ WebSocket
+       ▼                     ▼
+┌─────────────────────────────────────┐
+│          Browser Panel              │
+│  (MUP grid + workspace manager)    │
+└─────────────────────────────────────┘
 ```
 
 ## Star History

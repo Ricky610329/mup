@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MUP Panel (MCP)</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='white'/%3E%3Crect x='5' y='5' width='9' height='22' rx='2' fill='%231a1a1a'/%3E%3Crect x='17' y='5' width='10' height='12' rx='2' fill='%231a1a1a'/%3E%3Crect x='17' y='20' width='10' height='7' rx='2' fill='%231a1a1a'/%3E%3C/svg%3E">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/gridstack/dist/gridstack.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/gridstack/dist/gridstack-all.js"></script>
+  <style>
+    :root {
+      --bg-base: #f5f5f5;
+      --bg-panel: rgba(255, 255, 255, 0.92);
+      --bg-mup-body: #ffffff;
+      --text-primary: #1a1a1a;
+      --text-secondary: rgba(0, 0, 0, 0.5);
+      --text-tertiary: rgba(0, 0, 0, 0.25);
+      --border: rgba(0, 0, 0, 0.08);
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --cell-size: 260px;
+      --cell-gap: 10px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      height: 100vh;
+      overflow: auto;
+    }
+
+    /* Header bar */
+    .header {
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-panel);
+    }
+    .header-logo {
+      width: 28px; height: 28px;
+      background: var(--text-primary);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: white;
+    }
+    .header-title { font-size: 14px; font-weight: 600; letter-spacing: -0.3px; }
+    .header-badge {
+      font-size: 11px; color: var(--text-secondary);
+      background: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 8px;
+    }
+    .header-spacer { flex: 1; }
+    .workspace-btn {
+      background: none; border: 1px solid var(--border); cursor: pointer;
+      color: var(--text-secondary); font-size: 11px; font-weight: 500;
+      padding: 4px 10px; border-radius: 8px;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .workspace-btn:hover { background: rgba(0,0,0,0.04); color: var(--text-primary); }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+
+    /* Workspace panel */
+    .ws-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.3);
+      z-index: 2000; display: none;
+    }
+    .ws-overlay.open { display: block; }
+    .ws-panel {
+      position: fixed; top: 0; right: -340px; width: 340px; height: 100vh;
+      background: var(--bg-panel); border-left: 1px solid var(--border);
+      z-index: 2001; display: flex; flex-direction: column;
+      transition: right 0.2s ease;
+      box-shadow: -4px 0 20px rgba(0,0,0,0.08);
+    }
+    .ws-panel.open { right: 0; }
+    .ws-panel-header {
+      padding: 14px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .ws-panel-header h3 { font-size: 14px; font-weight: 600; }
+    .ws-close-btn {
+      background: none; border: none; cursor: pointer; font-size: 18px;
+      color: var(--text-tertiary); padding: 2px 6px; border-radius: 4px;
+    }
+    .ws-close-btn:hover { background: rgba(0,0,0,0.06); }
+    .ws-save-bar {
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      display: flex; gap: 8px;
+    }
+    .ws-save-input {
+      flex: 1; border: 1px solid var(--border); border-radius: 8px;
+      padding: 6px 10px; font-size: 12px; font-family: inherit;
+      outline: none;
+    }
+    .ws-save-input:focus { border-color: var(--text-secondary); }
+    .ws-save-btn {
+      background: var(--text-primary); color: white; border: none;
+      border-radius: 8px; padding: 6px 14px; font-size: 12px;
+      font-weight: 500; cursor: pointer;
+    }
+    .ws-save-btn:hover { opacity: 0.85; }
+    .ws-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+    .ws-item {
+      padding: 10px 16px; cursor: pointer;
+      display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid rgba(0,0,0,0.04);
+    }
+    .ws-item:hover { background: rgba(0,0,0,0.03); }
+    .ws-item-info { flex: 1; min-width: 0; }
+    .ws-item-name { font-size: 13px; font-weight: 500; }
+    .ws-item-desc { font-size: 11px; color: var(--text-primary); margin-top: 2px; opacity: 0.7; }
+    .ws-item-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+    .ws-item-del {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-tertiary); font-size: 14px;
+      padding: 4px 6px; border-radius: 4px; flex-shrink: 0;
+    }
+    .ws-item-del:hover { background: rgba(0,0,0,0.06); color: var(--red); }
+    .ws-empty { padding: 20px 16px; font-size: 12px; color: var(--text-tertiary); text-align: center; }
+    .status-dot.connected { background: var(--green); }
+    .status-dot.disconnected { background: var(--red); }
+    .status-dot.connecting { background: var(--amber); animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* Grid */
+    .dashboard { padding: 10px; }
+
+    .grid-stack { margin: 0 auto; }
+    .grid-stack-item-content {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-panel);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .mup-card-header {
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      cursor: grab;
+      flex-shrink: 0;
+    }
+    .mup-name {
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      padding: 2px 4px; border-radius: 4px;
+    }
+    .mup-name:hover { background: rgba(0,0,0,0.04); }
+    .mup-close-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-tertiary); font-size: 16px;
+      width: 20px; height: 20px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 4px;
+    }
+    .mup-close-btn:hover { background: rgba(0,0,0,0.06); color: var(--red); }
+    .mup-card-body {
+      flex: 1; overflow: hidden; position: relative;
+      background: var(--bg-mup-body);
+    }
+    .mup-card-body iframe {
+      width: 100%; height: 100%; border: none;
+      position: absolute; top: 0; left: 0;
+    }
+    body.grid-stack-dragging .mup-card-body iframe { pointer-events: none; }
+
+    /* Manager card */
+    .manager-list {
+      flex: 1; overflow-y: auto; padding: 4px 0;
+    }
+    .manager-file {
+      padding: 6px 12px; cursor: pointer;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--text-secondary);
+    }
+    .manager-file:hover { background: rgba(0,0,0,0.03); }
+    .manager-file.active { color: var(--green); }
+    .manager-file.invalid { color: var(--text-tertiary); cursor: default; }
+    .manager-file.is-folder { color: var(--text-primary); font-weight: 500; }
+    .manager-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Event badge */
+    .event-badges {
+      position: fixed; bottom: 16px; right: 16px;
+      display: flex; flex-direction: column; gap: 4px;
+      z-index: 1000; pointer-events: none;
+    }
+    .event-badge {
+      background: var(--bg-panel); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 12px;
+      font-size: 11px; color: var(--text-secondary);
+      animation: badgeFade 3s forwards;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    @keyframes badgeFade {
+      0% { opacity: 0; transform: translateY(8px); }
+      10% { opacity: 1; transform: translateY(0); }
+      80% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">M</div>
+  <span class="header-title">MUP Panel</span>
+  <span class="header-badge">MCP</span>
+  <div class="header-spacer"></div>
+  <button class="workspace-btn" id="wsBtn">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>
+    Workspaces
+  </button>
+  <div class="status-dot connecting" id="statusDot"></div>
+</div>
+
+<div class="dashboard" id="dashboard">
+  <div class="grid-stack" id="grid"></div>
+</div>
+
+<div class="event-badges" id="eventBadges"></div>
+
+<!-- Workspace panel -->
+<div class="ws-overlay" id="wsOverlay"></div>
+<div class="ws-panel" id="wsPanel">
+  <div class="ws-panel-header">
+    <h3>Workspaces</h3>
+    <button class="ws-close-btn" id="wsCloseBtn">&times;</button>
+  </div>
+  <div class="ws-save-bar" style="flex-wrap: wrap;">
+    <input class="ws-save-input" id="wsSaveInput" placeholder="Name" style="flex: 1; min-width: 80px;" />
+    <button class="ws-save-btn" id="wsSaveBtn">Save</button>
+    <button class="ws-save-btn" id="wsNewBtn" style="background: var(--text-secondary);">New</button>
+    <input class="ws-save-input" id="wsSaveDesc" placeholder="Description (optional)" style="flex-basis: 100%; margin-top: 6px;" />
+  </div>
+  <div class="ws-list" id="wsList"></div>
+</div>
+
+<script>
+// ---- MUP SDK (injected into each iframe) ----
+const MUP_SDK_SOURCE = `
+class MupSDK {
+  constructor() {
+    this._port = null; this._functions = new Map(); this._readyCallback = null;
+    this._pendingRequests = new Map(); this._nextId = 1; this._initialized = false;
+    window.addEventListener("message", (event) => {
+      if (event.data && event.data.type === "mup:init" && event.ports[0]) {
+        this._port = event.ports[0];
+        this._port.onmessage = (msg) => this._handleMessage(msg.data);
+      }
+    });
+  }
+  registerFunction(name, handler) { this._functions.set(name, handler); }
+  onReady(callback) { this._readyCallback = callback; if (this._initialized && this._initParams) callback(this._initParams); }
+  updateState(summary, data) { this._notify("notifications/state/update", { summary, data }); }
+  notifyInteraction(action, summary, data) { this._notify("notifications/interaction", { action, summary, data }); }
+  system(action, params) { return this._request("system/request", { action, params }); }
+  _handleMessage(data) {
+    if (!data || data.jsonrpc !== "2.0") return;
+    if ("id" in data && !("method" in data)) {
+      const p = this._pendingRequests.get(data.id);
+      if (p) { this._pendingRequests.delete(data.id); data.error ? p.reject(new Error(data.error.message)) : p.resolve(data.result); }
+      return;
+    }
+    if ("id" in data && "method" in data) { this._handleRequest(data); return; }
+    if ("method" in data) { this._handleNotification(data); return; }
+  }
+  _handleNotification(msg) {
+    if (msg.method === "notifications/shutdown") this._notify("notifications/shutdown/complete", {});
+  }
+  async _handleRequest(msg) {
+    const { id, method, params } = msg;
+    if (method === "initialize") {
+      this._initParams = params; this._initialized = true;
+      this._sendResponse(id, { protocolVersion: "mup/2026-03-17", mupInfo: { name: document.title || "MUP", version: "1.0.0" } });
+      if (this._readyCallback) this._readyCallback(params);
+      return;
+    }
+    if (method === "functions/call") {
+      const handler = this._functions.get(params.name);
+      if (!handler) { this._sendError(id, -32603, "Function not registered: " + params.name); return; }
+      try { this._sendResponse(id, await handler(params.arguments, params.source)); }
+      catch (e) { this._sendError(id, -32603, e.message || "Internal error"); }
+      return;
+    }
+    this._sendError(id, -32601, "Method not found: " + method);
+  }
+  _sendResponse(id, result) { if (this._port) this._port.postMessage({ jsonrpc: "2.0", id, result }); }
+  _sendError(id, code, message) { if (this._port) this._port.postMessage({ jsonrpc: "2.0", id, error: { code, message } }); }
+  _notify(method, params) { if (this._port) this._port.postMessage({ jsonrpc: "2.0", method, params }); }
+  _request(method, params) {
+    if (!this._port) return Promise.reject(new Error("Not connected"));
+    const id = this._nextId++;
+    return new Promise((resolve, reject) => { this._pendingRequests.set(id, { resolve, reject }); this._port.postMessage({ jsonrpc: "2.0", id, method, params }); });
+  }
+}
+const mup = new MupSDK();
+`;
+
+// ---- State ----
+const mups = new Map();
+const initResolvers = new Map();
+const callMap = new Map();
+let nextMsgId = 1;
+let ws = null;
+
+const statusDot = document.getElementById("statusDot");
+const eventBadges = document.getElementById("eventBadges");
+
+// ---- GridStack ----
+const CELL_SIZE = 260;
+const CELL_GAP = 10;
+const GS_MARGIN = CELL_GAP / 2;
+const MIN_COLS = 1;
+let grid;
+let currentCols = 4;
+let COL_SLOT = CELL_SIZE + 2 * GS_MARGIN;
+
+function calcColumns() {
+  const dashboard = document.getElementById('dashboard');
+  const cols = Math.floor(dashboard.clientWidth / COL_SLOT);
+  return Math.max(MIN_COLS, cols); // no max cap — fill available width
+}
+
+function setGridWidth(cols) {
+  const gridEl = document.getElementById('grid');
+  const totalW = cols * COL_SLOT;
+  gridEl.style.width = totalW + 'px';
+  gridEl.style.maxWidth = totalW + 'px';
+  gridEl.style.minWidth = totalW + 'px';
+  gridEl.style.margin = '0 auto';
+}
+
+function initGrid() {
+  currentCols = calcColumns();
+  setGridWidth(currentCols);
+  grid = GridStack.init({
+    column: currentCols,
+    cellHeight: COL_SLOT,
+    margin: GS_MARGIN,
+    float: false,
+    animate: false,
+    draggable: { handle: '.mup-card-header' },
+    resizable: { handles: 'se' },
+    minRow: 1,
+    disableOneColumnMode: true,
+  }, '#grid');
+  grid.on('dragstart resizestart', () => document.body.classList.add('grid-stack-dragging'));
+  grid.on('dragstop resizestop', () => document.body.classList.remove('grid-stack-dragging'));
+}
+
+window.addEventListener('resize', () => {
+  if (!grid) return;
+  const newCols = calcColumns();
+  if (newCols !== currentCols) {
+    currentCols = newCols;
+    setGridWidth(newCols);
+    grid.column(newCols, 'compact');
+  }
+});
+
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    initGrid();
+    if (catalog.length > 0) renderManagerCard();
+    for (const p of pendingMups) loadMup(p.mupId, p.html, p.manifest, p.savedState);
+    pendingMups.length = 0;
+  }, 100);
+});
+
+function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+// ---- Event Badges ----
+function addEventBadge(mupName, summary) {
+  const badge = document.createElement('div');
+  badge.className = 'event-badge';
+  badge.textContent = `${mupName}: ${summary}`;
+  eventBadges.appendChild(badge);
+  setTimeout(() => badge.remove(), 3000);
+}
+
+// ---- WebSocket ----
+function connect() {
+  const wsUrl = `ws://${location.hostname}:__WS_PORT__`;
+  ws = new WebSocket(wsUrl);
+  ws.onopen = () => {
+    statusDot.className = "status-dot connected";
+    ws.send(JSON.stringify({ type: "ready" }));
+  };
+  ws.onclose = () => {
+    statusDot.className = "status-dot disconnected";
+    setTimeout(connect, 3000);
+  };
+  ws.onerror = () => { statusDot.className = "status-dot disconnected"; };
+  ws.onmessage = (e) => {
+    try { handleServerMessage(JSON.parse(e.data)); }
+    catch (err) { console.error("Invalid message:", err); }
+  };
+}
+
+let catalog = [];
+
+function handleServerMessage(msg) {
+  switch (msg.type) {
+    case "mup-catalog": catalog = msg.catalog; renderManagerCard(); break;
+    case "load-mup": loadMup(msg.mupId, msg.html, msg.manifest, msg.savedState); break;
+    case "call": callMupFunction(msg.callId, msg.mupId, msg.fn, msg.args); break;
+    case "workspace-list": renderWorkspaceList(msg.workspaces); break;
+    case "workspace-saved": addEventBadge("Workspace", `"${msg.name}" saved`); break;
+    case "workspace-loaded":
+      // Remove all current MUP widgets (reload will come via load-mup)
+      if (grid) {
+        for (const item of grid.getGridItems()) {
+          if (item.getAttribute('gs-id') !== '__manager__') grid.removeWidget(item);
+        }
+      }
+      mups.clear();
+      // Store custom names to apply when MUPs load
+      if (msg.customNames) window._pendingCustomNames = msg.customNames;
+      addEventBadge("Workspace", `"${msg.name}" loaded`);
+      break;
+  }
+}
+
+// ---- MUP Loading ----
+const pendingMups = [];
+
+function loadMup(mupId, html, manifest, savedState) {
+  if (!grid) { pendingMups.push({ mupId, html, manifest, savedState }); return; }
+
+  // Check for custom name from workspace restore
+  const displayName = (window._pendingCustomNames && window._pendingCustomNames[mupId]) || manifest.name;
+
+  const el = document.createElement('div');
+  el.classList.add('grid-stack-item');
+  el.setAttribute('gs-w', '1');
+  el.setAttribute('gs-h', '1');
+  el.setAttribute('gs-min-w', '1');
+  el.setAttribute('gs-min-h', '1');
+  el.setAttribute('gs-auto-position', 'true');
+  el.setAttribute('gs-id', mupId);
+  el.innerHTML = `
+    <div class="grid-stack-item-content">
+      <div class="mup-card-header">
+        <span class="mup-name" title="Click to rename">${escapeHtml(displayName)}</span>
+        <button class="mup-close-btn" data-mup-id="${mupId}" title="Remove">&times;</button>
+      </div>
+      <div class="mup-card-body">
+        <iframe sandbox="allow-scripts allow-same-origin" ${
+          (manifest.permissions || []).length ? `allow="${manifest.permissions.map(p => p + " 'src'").join('; ')}"` : ''
+        }></iframe>
+      </div>
+    </div>`;
+
+  el.querySelector('.mup-close-btn').addEventListener('click', () => removeMup(mupId));
+
+  // Click-to-rename
+  const nameEl = el.querySelector('.mup-name');
+  nameEl.addEventListener('click', () => {
+    const current = nameEl.textContent;
+    const newName = prompt('Rename panel:', current);
+    if (newName && newName !== current) {
+      nameEl.textContent = newName;
+      const mup = mups.get(mupId);
+      if (mup) mup.customName = newName;
+    }
+  });
+
+  const widget = grid.addWidget(el);
+  const iframe = widget.querySelector('iframe');
+  setupMupIframe(mupId, manifest, iframe, html, savedState);
+}
+
+function setupMupIframe(mupId, manifest, iframe, html, savedState) {
+  const sdkScript = `<script>${MUP_SDK_SOURCE}<\/script>`;
+  let injected = html;
+  if (injected.includes("</head>")) {
+    injected = injected.replace("</head>", sdkScript + "\n</head>");
+  } else if (injected.includes("<body")) {
+    injected = injected.replace(/<body([^>]*)>/, `<body$1>\n${sdkScript}`);
+  } else {
+    injected = sdkScript + "\n" + injected;
+  }
+  injected = injected.replace(/<script[^>]*src="[^"]*mup-sdk\.js"[^>]*><\/script>/g, "");
+
+  const blob = new Blob([injected], { type: "text/html" });
+  const blobUrl = URL.createObjectURL(blob);
+
+  const channel = new MessageChannel();
+  const port = channel.port1;
+  port.onmessage = (e) => handleMupMessage(mupId, manifest.name, e.data);
+
+  iframe.onload = () => {
+    URL.revokeObjectURL(blobUrl);
+    iframe.contentWindow.postMessage({ type: "mup:init" }, "*", [channel.port2]);
+    const initId = nextMsgId++;
+    initResolvers.set(initId, mupId);
+    const initParams = {
+      protocolVersion: "mup/2026-03-17",
+      hostInfo: { name: "MUP MCP Panel", version: "0.1.0" },
+      gridAllocation: { width: 1, height: 1 },
+    };
+    if (savedState) initParams.savedState = savedState;
+    port.postMessage({ jsonrpc: "2.0", id: initId, method: "initialize", params: initParams });
+  };
+
+  iframe.src = blobUrl;
+  mups.set(mupId, { iframe, port, manifest, customName: null });
+}
+
+function handleMupMessage(mupId, mupName, data) {
+  if (!data || data.jsonrpc !== "2.0") return;
+
+  // Response (init or function call result)
+  if ("id" in data && !("method" in data)) {
+    if (initResolvers.has(data.id)) {
+      initResolvers.delete(data.id);
+      const catEntry = catalog.find(c => c.id === mupId);
+      if (catEntry) catEntry.active = true;
+      renderManagerCard();
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "mup-loaded", mupId }));
+      return;
+    }
+    if (callMap.has(data.id)) {
+      const callId = callMap.get(data.id);
+      callMap.delete(data.id);
+      const result = data.error
+        ? { content: [{ type: "text", text: data.error.message || "Error" }], isError: true }
+        : (data.result || { content: [{ type: "text", text: "No result" }], isError: false });
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "result", callId, result }));
+      return;
+    }
+    return;
+  }
+
+  // Notifications from MUP
+  if ("method" in data && !("id" in data)) {
+    if (data.method === "notifications/state/update") {
+      if (ws && ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: "state", mupId, summary: data.params?.summary || "", data: data.params?.data }));
+    } else if (data.method === "notifications/interaction") {
+      addEventBadge(mupName, data.params?.summary || data.params?.action);
+      if (ws && ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: "interaction", mupId, action: data.params?.action || "", summary: data.params?.summary || "", data: data.params?.data }));
+    }
+  }
+}
+
+function callMupFunction(callId, mupId, fn, args) {
+  const mup = mups.get(mupId);
+  if (!mup) {
+    if (ws && ws.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify({ type: "result", callId, result: { content: [{ type: "text", text: `MUP not loaded: ${mupId}` }], isError: true } }));
+    return;
+  }
+  const msgId = nextMsgId++;
+  callMap.set(msgId, callId);
+  mup.port.postMessage({ jsonrpc: "2.0", id: msgId, method: "functions/call", params: { name: fn, arguments: args || {}, source: "llm" } });
+}
+
+function removeMup(mupId) {
+  const items = grid.getGridItems();
+  for (const item of items) {
+    if (item.getAttribute('gs-id') === mupId) {
+      grid.removeWidget(item);
+      break;
+    }
+  }
+  mups.delete(mupId);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "deactivate-mup", mupId }));
+  }
+  const entry = catalog.find(c => c.id === mupId);
+  if (entry) entry.active = false;
+  renderManagerCard();
+}
+
+// ---- Manager Card ----
+let managerWidget = null;
+const browserMupCache = new Map();
+
+const FILE_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" opacity="0.3"><path d="M3 1a1 1 0 00-1 1v12a1 1 0 001 1h8l4-4V2a1 1 0 00-1-1H3zm6 0v4h4"/></svg>';
+const FOLDER_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>';
+
+// Browser folder scanning
+let browserFiles = [];
+
+async function scanDirectoryHandle(dirHandle) {
+  const items = [];
+  for await (const [name, handle] of dirHandle) {
+    if (handle.kind === 'directory' && !name.startsWith('.')) {
+      const children = await scanDirectoryHandle(handle);
+      items.push(...children);
+    } else if (handle.kind === 'file' && name.endsWith('.html')) {
+      try {
+        const file = await handle.getFile();
+        const html = await file.text();
+        const match = html.match(/<script\s+type=["']application\/mup-manifest["']\s*>([\s\S]*?)<\/script>/);
+        if (!match) continue;
+        const raw = JSON.parse(match[1].trim());
+        const id = raw.id || 'mup-' + name.replace('.html', '');
+        browserMupCache.set(id, { html, name, manifest: raw });
+        const isActive = catalog.some(c => c.id === id && c.active);
+        items.push({ id, name: raw.name || name, description: raw.description || '', functions: (raw.functions || []).length, active: isActive });
+      } catch {}
+    }
+  }
+  return items;
+}
+
+function renderManagerCard() {
+  if (!grid) return;
+
+  // Merge server catalog + browser-scanned files
+  const allItems = [...catalog];
+  for (const bf of browserFiles) {
+    if (!allItems.some(c => c.id === bf.id)) allItems.push(bf);
+  }
+
+  let listHtml = allItems.map(c => {
+    const cls = c.active ? 'manager-file active' : 'manager-file';
+    return `<div class="${cls}" data-id="${c.id}" title="${escapeHtml(c.description || c.name)}">${FILE_ICON}<span class="manager-file-name">${escapeHtml(c.name)}</span></div>`;
+  }).join('');
+
+  if (!managerWidget) {
+    const el = document.createElement('div');
+    el.classList.add('grid-stack-item');
+    el.setAttribute('gs-w', '1');
+    el.setAttribute('gs-h', '1');
+    el.setAttribute('gs-x', '0');
+    el.setAttribute('gs-y', '0');
+    el.setAttribute('gs-id', '__manager__');
+    el.innerHTML = `
+      <div class="grid-stack-item-content">
+        <div class="mup-card-header" style="cursor:grab;">
+          <span class="mup-name">MUPs</span>
+          <button class="mup-close-btn" id="folderPickerBtn" title="Open folder">${FOLDER_ICON}</button>
+        </div>
+        <div class="manager-list" id="managerList">${listHtml}</div>
+      </div>`;
+    managerWidget = grid.addWidget(el);
+
+    // Folder picker
+    managerWidget.querySelector('#folderPickerBtn').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+        browserFiles = await scanDirectoryHandle(dirHandle);
+        renderManagerCard();
+        addEventBadge("MUPs", `Scanned ${browserFiles.length} MUPs from folder`);
+      } catch {}
+    });
+  } else {
+    const listEl = managerWidget.querySelector('#managerList');
+    if (listEl) listEl.innerHTML = listHtml;
+  }
+
+  // Bind double-click to activate
+  if (managerWidget) {
+    managerWidget.querySelectorAll('.manager-file:not(.active)').forEach(el => {
+      el.ondblclick = () => {
+        const id = el.dataset.id;
+        if (!id) return;
+        const cached = browserMupCache.get(id);
+        if (cached && ws && ws.readyState === WebSocket.OPEN) {
+          // Browser-loaded MUP: send HTML to server for registration
+          ws.send(JSON.stringify({ type: "register-and-activate", mupId: id, html: cached.html, fileName: cached.name }));
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "activate-mup", mupId: id }));
+        }
+      };
+    });
+  }
+}
+
+// ---- Workspace UI ----
+const wsBtn = document.getElementById('wsBtn');
+const wsPanel = document.getElementById('wsPanel');
+const wsOverlay = document.getElementById('wsOverlay');
+const wsCloseBtn = document.getElementById('wsCloseBtn');
+const wsSaveBtn = document.getElementById('wsSaveBtn');
+const wsSaveInput = document.getElementById('wsSaveInput');
+const wsList = document.getElementById('wsList');
+
+function openWorkspacePanel() {
+  wsPanel.classList.add('open');
+  wsOverlay.classList.add('open');
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "list-workspaces" }));
+  }
+}
+
+function closeWorkspacePanel() {
+  wsPanel.classList.remove('open');
+  wsOverlay.classList.remove('open');
+}
+
+wsBtn.addEventListener('click', openWorkspacePanel);
+wsCloseBtn.addEventListener('click', closeWorkspacePanel);
+wsOverlay.addEventListener('click', closeWorkspacePanel);
+
+const wsSaveDesc = document.getElementById('wsSaveDesc');
+
+wsSaveBtn.addEventListener('click', () => {
+  const name = wsSaveInput.value.trim();
+  if (!name) return;
+  const description = wsSaveDesc.value.trim() || undefined;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "save-workspace", name, description }));
+  }
+  wsSaveInput.value = '';
+  wsSaveDesc.value = '';
+});
+
+wsSaveInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') wsSaveBtn.click();
+});
+
+document.getElementById('wsNewBtn').addEventListener('click', () => {
+  if (!confirm('Start a new workspace? Active panels will be closed.')) return;
+  // Remove all MUP widgets
+  if (grid) {
+    for (const item of grid.getGridItems()) {
+      if (item.getAttribute('gs-id') !== '__manager__') grid.removeWidget(item);
+    }
+  }
+  // Deactivate all on server
+  for (const [mupId] of mups) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "deactivate-mup", mupId }));
+    }
+  }
+  mups.clear();
+  for (const c of catalog) c.active = false;
+  window._pendingCustomNames = null;
+  renderManagerCard();
+  closeWorkspacePanel();
+  addEventBadge("Workspace", "New workspace started");
+});
+
+function renderWorkspaceList(workspaces) {
+  if (!workspaces || workspaces.length === 0) {
+    wsList.innerHTML = '<div class="ws-empty">No saved workspaces yet.<br>Save your current setup above.</div>';
+    return;
+  }
+  wsList.innerHTML = workspaces.map(w => {
+    const time = new Date(w.savedAt).toLocaleString();
+    const mupList = w.activeMups.join(', ');
+    const desc = w.description ? `<div class="ws-item-desc">${escapeHtml(w.description)}</div>` : '';
+    return `<div class="ws-item" data-name="${escapeHtml(w.name)}">
+      <div class="ws-item-info">
+        <div class="ws-item-name">${escapeHtml(w.name)}</div>
+        ${desc}
+        <div class="ws-item-meta">${time} &middot; ${mupList || 'no MUPs'}</div>
+      </div>
+      <button class="ws-item-del" data-name="${escapeHtml(w.name)}" title="Delete">&times;</button>
+    </div>`;
+  }).join('');
+
+  // Click to load
+  wsList.querySelectorAll('.ws-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('ws-item-del')) return;
+      const name = el.dataset.name;
+      if (name && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "load-workspace", name }));
+        closeWorkspacePanel();
+      }
+    });
+  });
+
+  // Delete button
+  wsList.querySelectorAll('.ws-item-del').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      if (name && confirm(`Delete workspace "${name}"?`)) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "delete-workspace", name }));
+        }
+      }
+    });
+  });
+}
+
+// ---- Start ----
+connect();
+</script>
+</body>
+</html>
