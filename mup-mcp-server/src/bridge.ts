@@ -32,6 +32,7 @@ export class UiBridge extends EventEmitter {
   private callIdCounter = 0;
   private port: number;
   private manager: MupManager;
+  public folderTree: unknown[] = [];
 
   constructor(manager: MupManager, port: number) {
     super();
@@ -71,7 +72,7 @@ export class UiBridge extends EventEmitter {
         }
       });
 
-      // Send catalog on connect
+      // Send catalog + folder tree on connect
       const catalog = this.manager.getCatalog().map((e) => ({
         id: e.manifest.id,
         name: e.manifest.name,
@@ -81,6 +82,9 @@ export class UiBridge extends EventEmitter {
         grid: e.manifest.grid,
       }));
       ws.send(JSON.stringify({ type: "mup-catalog", catalog }));
+      if (this.folderTree.length > 0) {
+        ws.send(JSON.stringify({ type: "folder-tree", tree: this.folderTree }));
+      }
 
       // Send already-active MUPs with saved state
       for (const mup of this.manager.getAll()) {

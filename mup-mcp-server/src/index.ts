@@ -28,6 +28,47 @@ function scanHtmlFiles(dir: string): string[] {
   return results;
 }
 
+interface FolderTreeNode {
+  type: "folder" | "file";
+  name: string;
+  children?: FolderTreeNode[];
+  id?: string;
+  description?: string;
+  active?: boolean;
+}
+
+function buildFolderTree(dir: string, manager: MupManager): FolderTreeNode[] {
+  const nodes: FolderTreeNode[] = [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const folders: FolderTreeNode[] = [];
+  const files: FolderTreeNode[] = [];
+
+  for (const entry of entries) {
+    if (entry.isDirectory() && !entry.name.startsWith(".")) {
+      const children = buildFolderTree(path.join(dir, entry.name), manager);
+      if (children.length > 0) {
+        folders.push({ type: "folder", name: entry.name, children });
+      }
+    } else if (entry.isFile() && entry.name.endsWith(".html")) {
+      const filePath = path.join(dir, entry.name);
+      try {
+        const manifest = manager.parseManifest(fs.readFileSync(filePath, "utf-8"), filePath);
+        const catalogEntry = manager.getCatalog().find((e) => e.manifest.id === manifest.id);
+        files.push({
+          type: "file",
+          name: manifest.name,
+          id: manifest.id,
+          description: manifest.description,
+          active: catalogEntry?.active || false,
+        });
+      } catch {}
+    }
+  }
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  return [...folders, ...files];
+}
+
 function openBrowser(url: string): void {
   const cmd =
     process.platform === "win32"
@@ -262,6 +303,7 @@ async function main() {
   const args = process.argv.slice(2);
 
   let mupFiles: string[] = [];
+  let mupsDirs: string[] = [];
   let port = 3200;
   let noOpen = false;
 
@@ -274,6 +316,7 @@ async function main() {
         process.exit(1);
       }
       mupFiles.push(...scanHtmlFiles(dir));
+      mupsDirs.push(dir);
     } else if (arg === "--port" && args[i + 1]) {
       port = parseInt(args[++i], 10);
     } else if (arg === "--no-open") {
@@ -307,6 +350,7 @@ Options:
     );
     if (fs.existsSync(defaultDir)) {
       mupFiles.push(...scanHtmlFiles(defaultDir));
+      mupsDirs.push(defaultDir);
     }
   }
 
@@ -321,11 +365,19 @@ Options:
     }
   }
 
+  // Build folder tree from scanned directories
+  let serverFolderTree: FolderTreeNode[] = [];
+  for (const dir of mupsDirs) {
+    const tree = buildFolderTree(dir, manager);
+    serverFolderTree.push(...tree);
+  }
+
   // --- Find available port ---
   port = await findAvailablePort(port);
 
   // --- Bridge ---
   const bridge = new UiBridge(manager, port);
+  bridge.folderTree = serverFolderTree;
   await bridge.start();
 
   // No auto-restore — user picks from Workspaces panel in browser.

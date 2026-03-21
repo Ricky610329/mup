@@ -426,6 +426,11 @@ function clearAllMupWidgets() {
 function handleServerMessage(msg) {
   switch (msg.type) {
     case "mup-catalog": catalog = msg.catalog; renderManagerCard(); break;
+    case "folder-tree":
+      folderTree = msg.tree || [];
+      navStack = [];
+      renderManagerCard();
+      break;
     case "load-mup": loadMup(msg.mupId, msg.html, msg.manifest, msg.savedState); break;
     case "call": callMupFunction(msg.callId, msg.mupId, msg.fn, msg.args); break;
     case "workspace-list": renderWorkspaceList(msg.workspaces); break;
