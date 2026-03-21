@@ -33,6 +33,7 @@ export class UiBridge extends EventEmitter {
   private port: number;
   private manager: MupManager;
   public folderTree: unknown[] = [];
+  public folderPath: string = "";
 
   constructor(manager: MupManager, port: number) {
     super();
@@ -84,7 +85,7 @@ export class UiBridge extends EventEmitter {
       }));
       ws.send(JSON.stringify({ type: "mup-catalog", catalog }));
       if (this.folderTree.length > 0) {
-        ws.send(JSON.stringify({ type: "folder-tree", tree: this.folderTree }));
+        ws.send(JSON.stringify({ type: "folder-tree", tree: this.folderTree, path: this.folderPath }));
       }
 
       // Send already-active MUPs with saved state

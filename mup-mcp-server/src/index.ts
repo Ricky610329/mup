@@ -357,19 +357,7 @@ Options:
     }
   }
 
-  // Default to ../examples/ if no MUPs specified
-  if (mupFiles.length === 0) {
-    const defaultDir = path.resolve(
-      path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1")),
-      "..",
-      "..",
-      "examples"
-    );
-    if (fs.existsSync(defaultDir)) {
-      mupFiles.push(...scanHtmlFiles(defaultDir));
-      mupsDirs.push(defaultDir);
-    }
-  }
+  // No default scanning — user must specify --mups-dir or individual files
 
   // --- Manager ---
   const manager = new MupManager();
@@ -395,6 +383,7 @@ Options:
   // --- Bridge ---
   const bridge = new UiBridge(manager, port);
   bridge.folderTree = serverFolderTree;
+  bridge.folderPath = mupsDirs.length > 0 ? mupsDirs[0] : "";
   await bridge.start();
 
   // No auto-restore — user picks from Workspaces panel in browser.

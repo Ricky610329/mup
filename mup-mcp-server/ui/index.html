@@ -191,6 +191,11 @@
     .manager-file.invalid { color: var(--text-tertiary); cursor: default; }
     .manager-file.is-folder { color: var(--text-primary); font-weight: 500; }
     .manager-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .manager-folder-path {
+      padding: 4px 12px; font-size: 10px; color: var(--text-tertiary);
+      border-bottom: 1px solid var(--border);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     .manager-breadcrumb {
       padding: 4px 12px; font-size: 11px; color: var(--text-tertiary);
       border-bottom: 1px solid var(--border);
@@ -446,6 +451,8 @@ function connect() {
 
 let catalog = [];
 let currentWorkspaceName = null;
+let serverFolderPath = '';
+let browserFolderName = '';
 
 function clearAllMupWidgets() {
   if (grid) {
@@ -462,6 +469,7 @@ function handleServerMessage(msg) {
     case "error": addEventBadge("Error", msg.message || "Unknown error"); break;
     case "folder-tree":
       folderTree = msg.tree || [];
+      serverFolderPath = msg.path || '';
       navStack = [];
       renderManagerCard();
       break;
@@ -702,6 +710,11 @@ function renderCurrentView() {
   const items = getCurrentViewItems();
   let html = '';
 
+  if (items.length === 0 && navStack.length === 0) {
+    html = '<div style="padding:12px;font-size:11px;color:var(--text-tertiary);text-align:center;">No MUPs loaded.<br>Click ${FOLDER_ICON} to open a folder.</div>';
+    return html;
+  }
+
   // Back button
   if (navStack.length > 0) {
     html += `<div class="manager-file is-folder" data-action="back">${BACK_ICON}<span class="manager-file-name">..</span></div>`;
@@ -748,12 +761,14 @@ function renderManagerCard() {
     el.setAttribute('gs-x', '0');
     el.setAttribute('gs-y', '0');
     el.setAttribute('gs-id', '__manager__');
+    const folderDisplay = serverFolderPath || browserFolderName || '';
     el.innerHTML = `
       <div class="grid-stack-item-content">
         <div class="mup-card-header" style="cursor:grab;">
           <span class="mup-name">MUPs</span>
           <button class="mup-close-btn" id="folderPickerBtn" title="Open folder">${FOLDER_ICON}</button>
         </div>
+        ${folderDisplay ? `<div class="manager-folder-path" id="managerFolderPath" title="${escapeHtml(folderDisplay)}">${escapeHtml(folderDisplay)}</div>` : '<div class="manager-folder-path" id="managerFolderPath"></div>'}
         <div id="managerBreadcrumb">${breadcrumb}</div>
         <div class="manager-list" id="managerList">${listHtml}</div>
       </div>`;
@@ -764,6 +779,7 @@ function renderManagerCard() {
       e.stopPropagation();
       try {
         const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+        browserFolderName = dirHandle.name;
         folderTree = await scanDirectoryHandle(dirHandle);
         navStack = [];
         renderManagerCard();
@@ -776,6 +792,12 @@ function renderManagerCard() {
     if (listEl) listEl.innerHTML = listHtml;
     const bcEl = managerWidget.querySelector('#managerBreadcrumb');
     if (bcEl) bcEl.innerHTML = breadcrumb;
+    const pathEl = managerWidget.querySelector('#managerFolderPath');
+    if (pathEl) {
+      const folderDisplay = serverFolderPath || browserFolderName || '';
+      pathEl.textContent = folderDisplay;
+      pathEl.title = folderDisplay;
+    }
   }
 
   bindManagerEvents();
