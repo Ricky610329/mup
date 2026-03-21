@@ -9,3 +9,7 @@ dist/
 mup-agent/dist/
 mup-agent/node_modules/
 .mup-agent/
+
+# MCP Registry tokens and publisher binary
+.mcpregistry_*
+mcp-publisher.exe

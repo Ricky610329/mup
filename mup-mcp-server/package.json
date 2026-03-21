@@ -1,14 +1,38 @@
 {
   "name": "mup-mcp-server",
-  "version": "0.1.0",
-  "description": "MCP server that exposes MUP panels as tools for Claude Desktop",
+  "version": "0.1.1",
+  "description": "MCP server that turns HTML MUP panels into interactive tools for LLMs — render UI, call functions, and pipe data between panels",
   "type": "module",
+  "license": "MIT",
+  "author": "Ricky610329",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ricky610329/mup.git",
+    "directory": "mup-mcp-server"
+  },
+  "homepage": "https://github.com/Ricky610329/mup",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "mup",
+    "llm",
+    "ui",
+    "interactive",
+    "claude",
+    "tools"
+  ],
+  "mcpName": "io.github.Ricky610329/mup",
   "bin": {
     "mup-mcp-server": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "ui"
+  ],
   "scripts": {
     "build": "tsc",
-    "postinstall": "npm run build",
+    "prepare": "npm run build",
     "start": "node dist/index.js"
   },
   "dependencies": {
