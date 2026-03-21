@@ -270,28 +270,31 @@ function restoreWorkspace(
 
 function buildToolDescription(manager: MupManager, port: number): string {
   const catalog = manager.getCatalog();
+  const active = catalog.filter((e) => e.active);
+  const inactive = catalog.filter((e) => !e.active);
 
-  // Compact: only list MUP IDs and names. Full function details returned on activate/list.
-  const mupLines = catalog.map((e) => {
-    const status = e.active ? "ACTIVE" : "available";
-    const fns = e.manifest.functions.map((f) => f.name).join(", ");
-    return `  ${e.manifest.id} (${status}) — ${e.manifest.name}. Functions: ${fns}`;
-  });
-
-  return [
+  const lines = [
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``,
-    `Call function: { "mupId": "mup-chart", "functionName": "renderChart", "functionArgs": { ... } }`,
-    `Check user UI activity: { "action": "checkInteractions" } (optional "since": timestamp)`,
-    `Save workspace: { "action": "save", "name": "...", "description": "..." }`,
-    `Load workspace: { "action": "load", "name": "..." }`,
-    `List workspaces: { "action": "workspaces" }`,
-    `List MUPs with full details: { "action": "list" }`,
-    `View history: { "action": "history" }`,
-    ``,
-    `MUPs:`,
-    ...mupLines,
-  ].join("\n");
+    `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
+    `Actions: checkInteractions, save, load, workspaces, list, history`,
+  ];
+
+  // Active MUPs: show function details (Claude needs these to call them)
+  if (active.length > 0) {
+    lines.push(``, `Active MUPs:`);
+    for (const e of active) {
+      const fns = e.manifest.functions.map((f) => `${f.name}`).join(", ");
+      lines.push(`  ${e.manifest.id} — ${e.manifest.name}. Functions: ${fns}`);
+    }
+  }
+
+  // Inactive MUPs: just names (use "list" for details)
+  if (inactive.length > 0) {
+    lines.push(``, `Available: ${inactive.map((e) => e.manifest.id).join(", ")}`);
+  }
+
+  return lines.join("\n");
 }
 
 /** Build detailed function info for a single MUP (returned on activate/list) */
@@ -684,20 +687,37 @@ Options:
 
     // --- action: history ---
     if (args.action === "history") {
+      const RECENT = 5;
       const mupId = args.mupId as string;
+
+      function formatHistory(history: CallHistoryEntry[], limit: number): string[] {
+        const lines: string[] = [];
+        if (history.length > limit) {
+          // Summarize older entries
+          const older = history.slice(0, -limit);
+          const fnCounts = new Map<string, number>();
+          for (const h of older) fnCounts.set(h.functionName, (fnCounts.get(h.functionName) || 0) + 1);
+          const summary = Array.from(fnCounts.entries()).map(([fn, c]) => `${fn}(${c}x)`).join(", ");
+          lines.push(`  ... ${older.length} earlier calls: ${summary}`);
+        }
+        for (const h of history.slice(-limit)) {
+          const time = new Date(h.timestamp).toLocaleTimeString();
+          const argStr = JSON.stringify(h.args);
+          const shortArgs = argStr.length > 80 ? argStr.slice(0, 80) + "..." : argStr;
+          lines.push(`  [${time}] ${h.functionName}(${shortArgs}) → ${h.result}`);
+        }
+        return lines;
+      }
+
       if (!mupId) {
-        // Show history for all active MUPs
         const parts: string[] = [];
         for (const mup of manager.getAll()) {
           const history = callHistory[mup.manifest.id];
           if (history && history.length > 0) {
             parts.push(`## ${mup.manifest.name} (${mup.manifest.id})`);
             if (mup.stateSummary) parts.push(`State: ${mup.stateSummary}`);
-            parts.push(`Recent calls (${history.length}):`);
-            for (const h of history.slice(-10)) {
-              const time = new Date(h.timestamp).toLocaleTimeString();
-              parts.push(`  [${time}] ${h.functionName}(${JSON.stringify(h.args)}) → ${h.result}`);
-            }
+            parts.push(`${history.length} calls:`);
+            parts.push(...formatHistory(history, RECENT));
           }
         }
         return { content: [text(parts.length > 0 ? parts.join("\n") : "No call history yet.")] };
@@ -709,11 +729,8 @@ Options:
       if (!history || history.length === 0) {
         parts.push("No call history for this MUP.");
       } else {
-        parts.push(`Recent calls (${history.length}):`);
-        for (const h of history) {
-          const time = new Date(h.timestamp).toLocaleTimeString();
-          parts.push(`  [${time}] ${h.functionName}(${JSON.stringify(h.args)}) → ${h.result}`);
-        }
+        parts.push(`${history.length} calls:`);
+        parts.push(...formatHistory(history, RECENT));
       }
       return { content: [text(parts.join("\n"))] };
     }
@@ -755,8 +772,13 @@ Options:
     if (activation.activated) {
       content.push(text(`[Auto-activated] ${activation.activated}`));
     }
+    const MAX_RESPONSE = 2000;
     for (const c of result.content) {
-      content.push({ type: "text" as const, text: c.text || JSON.stringify(c.data || "") });
+      let t = c.text || JSON.stringify(c.data || "");
+      if (t.length > MAX_RESPONSE) {
+        t = t.slice(0, MAX_RESPONSE) + `\n... (truncated, ${t.length} chars total)`;
+      }
+      content.push({ type: "text" as const, text: t });
     }
 
     // Only auto-append "discuss" interactions (user explicitly wants LLM attention)
