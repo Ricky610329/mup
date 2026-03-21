@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Input Controller</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Input Controller",
+    "description": "Detects keyboard and gamepad input in real-time. Auto-starts on load. The LLM can define named bindings (e.g. bind 'W' to 'moveUp') and read active inputs. Use with pipes to route input to other MUPs.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "functions": [
+      {
+        "name": "getState",
+        "description": "Get currently pressed keys, active gamepad axes/buttons, and triggered bindings.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "addBinding",
+        "description": "Bind a key or gamepad button to a named action. Triggers are reported via state updates.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "description": "Action name, e.g. 'moveUp', 'jump', 'attack'" },
+            "key": { "type": "string", "description": "Keyboard key (e.g. 'w', 'ArrowUp', 'Space', 'Enter')" },
+            "gamepadButton": { "type": "integer", "description": "Gamepad button index (0=A, 1=B, 2=X, 3=Y on Xbox)" },
+            "gamepadAxis": { "type": "integer", "description": "Gamepad axis index (0=LX, 1=LY, 2=RX, 3=RY)" },
+            "axisDirection": { "type": "string", "enum": ["positive", "negative"], "description": "Axis direction threshold (default: positive)" }
+          },
+          "required": ["action"]
+        }
+      },
+      {
+        "name": "removeBinding",
+        "description": "Remove a binding by action name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": { "action": { "type": "string" } },
+          "required": ["action"]
+        }
+      },
+      {
+        "name": "setBindings",
+        "description": "Set all bindings at once (replaces existing). Each entry: { action, key?, gamepadButton?, gamepadAxis?, axisDirection? }",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "bindings": { "type": "array", "items": { "type": "object" } }
+          },
+          "required": ["bindings"]
+        }
+      },
+      {
+        "name": "getBindings",
+        "description": "List all current bindings.",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,sans-serif;background:#111;color:#aaa;height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+    .header{padding:6px 10px;background:#0a0a0a;border-bottom:1px solid#222;font-size:11px;color:#666;display:flex;align-items:center;gap:8px;flex-shrink:0}
+    .header .dot{width:6px;height:6px;border-radius:50%;background:#333;flex-shrink:0}
+    .header .dot.on{background:#5a5}
+    .header .label{flex:1}
+    .content{flex:1;display:flex;flex-direction:column;gap:8px;padding:8px;overflow-y:auto}
+
+    .section{border:1px solid#1e1e1e;border-radius:6px;padding:8px;background:#161616}
+    .section-title{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+
+    .keys-grid{display:flex;flex-wrap:wrap;gap:3px;min-height:24px}
+    .key{padding:3px 8px;border:1px solid#333;border-radius:4px;font-size:11px;font-family:monospace;background:#1a1a1a;color:#888;transition:all .1s}
+    .key.pressed{background:#2a4a2a;border-color:#4a8a4a;color:#8c8}
+
+    .gp-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+    .gp-label{font-size:10px;color:#666;width:48px;flex-shrink:0}
+    .axis-bar{flex:1;height:12px;background:#1a1a1a;border-radius:3px;position:relative;overflow:hidden;border:1px solid#282828}
+    .axis-fill{position:absolute;top:0;height:100%;background:#3a6a3a;transition:width .05s,left .05s}
+    .btn-dot{width:18px;height:18px;border-radius:50%;border:1px solid#333;background:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:8px;color:#666;transition:all .1s;flex-shrink:0}
+    .btn-dot.pressed{background:#2a4a2a;border-color:#4a8a4a;color:#8c8}
+
+    .bindings-list{display:flex;flex-direction:column;gap:2px}
+    .bind-row{display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0}
+    .bind-action{color:#68c;width:72px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .bind-trigger{color:#666;font-family:monospace;font-size:10px}
+    .bind-row.active .bind-action{color:#8c8}
+    .bind-row.active .bind-trigger{color:#5a5}
+
+    .empty{font-size:10px;color:#444;font-style:italic}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="dot" id="kbDot"></div>
+    <span>KB</span>
+    <div class="dot" id="gpDot"></div>
+    <span>Gamepad</span>
+    <div class="label"></div>
+    <span id="fps" style="color:#444;font-size:10px"></span>
+  </div>
+  <div class="content">
+    <div class="section">
+      <div class="section-title">Pressed Keys</div>
+      <div class="keys-grid" id="keysGrid"><span class="empty">Waiting for input...</span></div>
+    </div>
+    <div class="section" id="gpSection" style="display:none">
+      <div class="section-title">Gamepad</div>
+      <div id="gpInfo"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Bindings</div>
+      <div class="bindings-list" id="bindingsList"><span class="empty">No bindings. LLM can define them.</span></div>
+    </div>
+  </div>
+
+  <script>
+    // ---- State ----
+    const pressedKeys = new Set();
+    let bindings = []; // [{ action, key?, gamepadButton?, gamepadAxis?, axisDirection? }]
+    let activeActions = new Set();
+    let gamepad = null;
+    let gpButtons = [];
+    let gpAxes = [];
+    let lastStateBroadcast = '';
+    let frameCount = 0;
+
+    const AXIS_THRESHOLD = 0.3;
+
+    // ---- DOM refs ----
+    const keysGrid = document.getElementById('keysGrid');
+    const kbDot = document.getElementById('kbDot');
+    const gpDot = document.getElementById('gpDot');
+    const gpSection = document.getElementById('gpSection');
+    const gpInfo = document.getElementById('gpInfo');
+    const bindingsList = document.getElementById('bindingsList');
+    const fpsEl = document.getElementById('fps');
+
+    // ---- Keyboard ----
+    function keyId(e) {
+      // Use e.code for physical keys, fallback to e.key
+      return e.code || e.key;
+    }
+
+    function friendlyKey(code) {
+      const map = {
+        Space: '␣', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+        ShiftLeft: 'L⇧', ShiftRight: 'R⇧', ControlLeft: 'LCtrl', ControlRight: 'RCtrl',
+        AltLeft: 'LAlt', AltRight: 'RAlt', MetaLeft: 'LMeta', MetaRight: 'RMeta',
+        Backspace: '⌫', Enter: '⏎', Tab: '⇥', Escape: 'Esc', CapsLock: 'Caps',
+      };
+      if (map[code]) return map[code];
+      if (code.startsWith('Key')) return code.slice(3);
+      if (code.startsWith('Digit')) return code.slice(5);
+      if (code.startsWith('Numpad')) return 'N' + code.slice(6);
+      return code;
+    }
+
+    window.addEventListener('keydown', e => {
+      if (e.repeat) return;
+      const k = keyId(e);
+      pressedKeys.add(k);
+      kbDot.classList.add('on');
+      renderKeys();
+      updateBindings();
+      broadcastState();
+      e.preventDefault();
+    });
+
+    window.addEventListener('keyup', e => {
+      const k = keyId(e);
+      pressedKeys.delete(k);
+      if (pressedKeys.size === 0) kbDot.classList.remove('on');
+      renderKeys();
+      updateBindings();
+      broadcastState();
+      e.preventDefault();
+    });
+
+    // Focus handling — keep receiving keys even after clicking buttons
+    window.addEventListener('blur', () => {
+      pressedKeys.clear();
+      kbDot.classList.remove('on');
+      renderKeys();
+      updateBindings();
+      broadcastState();
+    });
+
+    function renderKeys() {
+      if (pressedKeys.size === 0) {
+        keysGrid.innerHTML = '<span class="empty">Waiting for input...</span>';
+        return;
+      }
+      keysGrid.innerHTML = [...pressedKeys].map(k =>
+        `<span class="key pressed">${friendlyKey(k)}</span>`
+      ).join('');
+    }
+
+    // ---- Gamepad ----
+    window.addEventListener('gamepadconnected', e => {
+      gamepad = e.gamepad;
+      gpDot.classList.add('on');
+      gpSection.style.display = '';
+      renderGamepad();
+    });
+
+    window.addEventListener('gamepaddisconnected', () => {
+      gamepad = null;
+      gpButtons = [];
+      gpAxes = [];
+      gpDot.classList.remove('on');
+      gpSection.style.display = 'none';
+      updateBindings();
+      broadcastState();
+    });
+
+    function pollGamepad() {
+      const gamepads = navigator.getGamepads();
+      for (const gp of gamepads) {
+        if (gp) { gamepad = gp; break; }
+      }
+      if (!gamepad) return;
+
+      const prevButtons = [...gpButtons];
+      const prevAxes = [...gpAxes];
+      gpButtons = gamepad.buttons.map(b => b.pressed);
+      gpAxes = gamepad.axes.map(a => Math.abs(a) < 0.05 ? 0 : a);
+
+      // Check if changed
+      const changed = gpButtons.some((b, i) => b !== prevButtons[i]) ||
+                      gpAxes.some((a, i) => Math.abs(a - (prevAxes[i] || 0)) > 0.1);
+
+      if (changed) {
+        renderGamepad();
+        updateBindings();
+        broadcastState();
+      }
+    }
+
+    const GP_BTN_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'Back', 'Start', 'LS', 'RS', '↑', '↓', '←', '→', 'Home'];
+
+    function renderGamepad() {
+      if (!gamepad) return;
+      let html = '';
+
+      // Axes
+      const axisNames = ['LX', 'LY', 'RX', 'RY'];
+      for (let i = 0; i < Math.min(gamepad.axes.length, 4); i++) {
+        const v = gpAxes[i] || 0;
+        const pct = ((v + 1) / 2) * 100;
+        const w = Math.abs(v) * 50;
+        const left = v < 0 ? 50 - w : 50;
+        html += `<div class="gp-row">
+          <span class="gp-label">${axisNames[i] || 'A' + i}</span>
+          <div class="axis-bar"><div class="axis-fill" style="left:${left}%;width:${w}%"></div></div>
+          <span style="font-size:10px;color:#555;width:36px;text-align:right">${v.toFixed(2)}</span>
+        </div>`;
+      }
+
+      // Buttons
+      html += '<div class="gp-row" style="flex-wrap:wrap;gap:3px;margin-top:4px">';
+      for (let i = 0; i < gamepad.buttons.length; i++) {
+        const name = GP_BTN_NAMES[i] || i;
+        html += `<div class="btn-dot${gpButtons[i] ? ' pressed' : ''}">${name}</div>`;
+      }
+      html += '</div>';
+
+      gpInfo.innerHTML = html;
+    }
+
+    // ---- Bindings ----
+    function matchKey(binding) {
+      if (!binding.key) return false;
+      // Match by key name (case-insensitive) or code
+      const k = binding.key;
+      for (const pressed of pressedKeys) {
+        if (pressed.toLowerCase() === k.toLowerCase()) return true;
+        // Also match "w" to "KeyW", "Space" to "Space", etc.
+        if (pressed === 'Key' + k.toUpperCase()) return true;
+        if (pressed === k) return true;
+      }
+      return false;
+    }
+
+    function matchGamepad(binding) {
+      if (binding.gamepadButton !== undefined && gpButtons[binding.gamepadButton]) return true;
+      if (binding.gamepadAxis !== undefined) {
+        const v = gpAxes[binding.gamepadAxis] || 0;
+        const dir = binding.axisDirection || 'positive';
+        if (dir === 'positive' && v > AXIS_THRESHOLD) return true;
+        if (dir === 'negative' && v < -AXIS_THRESHOLD) return true;
+      }
+      return false;
+    }
+
+    function updateBindings() {
+      const prev = new Set(activeActions);
+      activeActions = new Set();
+      for (const b of bindings) {
+        if (matchKey(b) || matchGamepad(b)) activeActions.add(b.action);
+      }
+      renderBindings();
+    }
+
+    function renderBindings() {
+      if (bindings.length === 0) {
+        bindingsList.innerHTML = '<span class="empty">No bindings. LLM can define them.</span>';
+        return;
+      }
+      bindingsList.innerHTML = bindings.map(b => {
+        const active = activeActions.has(b.action);
+        const triggers = [];
+        if (b.key) triggers.push(`Key: ${b.key}`);
+        if (b.gamepadButton !== undefined) triggers.push(`Btn: ${GP_BTN_NAMES[b.gamepadButton] || b.gamepadButton}`);
+        if (b.gamepadAxis !== undefined) triggers.push(`Axis${b.gamepadAxis} ${(b.axisDirection || 'pos')[0]}`);
+        return `<div class="bind-row${active ? ' active' : ''}">
+          <span class="bind-action">${b.action}</span>
+          <span class="bind-trigger">${triggers.join(' / ') || '—'}</span>
+        </div>`;
+      }).join('');
+    }
+
+    // ---- State broadcast ----
+    function broadcastState() {
+      const state = {
+        keys: [...pressedKeys],
+        actions: [...activeActions],
+        gamepad: gamepad ? {
+          axes: gpAxes.slice(0, 4),
+          buttons: gpButtons,
+        } : null,
+      };
+      const json = JSON.stringify(state);
+      if (json === lastStateBroadcast) return;
+      lastStateBroadcast = json;
+
+      const parts = [];
+      if (pressedKeys.size > 0) parts.push(`Keys: ${[...pressedKeys].map(friendlyKey).join('+')}`);
+      if (activeActions.size > 0) parts.push(`Actions: ${[...activeActions].join(', ')}`);
+      if (gamepad) parts.push('Gamepad connected');
+      const summary = parts.length > 0 ? parts.join(' | ') : 'Idle';
+
+      mup.updateState(summary, state);
+    }
+
+    // ---- Game loop (for gamepad polling) ----
+    function loop() {
+      pollGamepad();
+      frameCount++;
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // FPS counter
+    setInterval(() => { fpsEl.textContent = frameCount + ' fps'; frameCount = 0; }, 1000);
+
+    // ---- MUP Functions ----
+    mup.registerFunction('getState', () => {
+      return {
+        content: [{
+          type: 'text',
+          text: `Keys: ${[...pressedKeys].map(friendlyKey).join(', ') || 'none'} | Actions: ${[...activeActions].join(', ') || 'none'} | Gamepad: ${gamepad ? 'connected' : 'none'}`
+        }, {
+          type: 'data',
+          data: {
+            keys: [...pressedKeys],
+            actions: [...activeActions],
+            gamepad: gamepad ? { axes: gpAxes.slice(0, 4), buttons: gpButtons } : null,
+            bindings: bindings,
+          }
+        }]
+      };
+    });
+
+    mup.registerFunction('addBinding', ({ action, key, gamepadButton, gamepadAxis, axisDirection }) => {
+      // Remove existing binding with same action
+      bindings = bindings.filter(b => b.action !== action);
+      const b = { action };
+      if (key) b.key = key;
+      if (gamepadButton !== undefined) b.gamepadButton = gamepadButton;
+      if (gamepadAxis !== undefined) { b.gamepadAxis = gamepadAxis; b.axisDirection = axisDirection || 'positive'; }
+      bindings.push(b);
+      updateBindings();
+      broadcastState();
+      return { content: [{ type: 'text', text: `Bound "${action}": ${key ? 'key=' + key : ''}${gamepadButton !== undefined ? ' btn=' + gamepadButton : ''}${gamepadAxis !== undefined ? ' axis=' + gamepadAxis + '(' + (axisDirection || 'pos') + ')' : ''}` }] };
+    });
+
+    mup.registerFunction('removeBinding', ({ action }) => {
+      const had = bindings.length;
+      bindings = bindings.filter(b => b.action !== action);
+      updateBindings();
+      broadcastState();
+      return { content: [{ type: 'text', text: bindings.length < had ? `Removed "${action}"` : `"${action}" not found` }] };
+    });
+
+    mup.registerFunction('setBindings', ({ bindings: newBindings }) => {
+      bindings = newBindings.map(b => ({
+        action: b.action,
+        ...(b.key && { key: b.key }),
+        ...(b.gamepadButton !== undefined && { gamepadButton: b.gamepadButton }),
+        ...(b.gamepadAxis !== undefined && { gamepadAxis: b.gamepadAxis, axisDirection: b.axisDirection || 'positive' }),
+      }));
+      updateBindings();
+      broadcastState();
+      return { content: [{ type: 'text', text: `Set ${bindings.length} bindings: ${bindings.map(b => b.action).join(', ')}` }] };
+    });
+
+    mup.registerFunction('getBindings', () => {
+      return {
+        content: [
+          { type: 'text', text: bindings.length > 0 ? bindings.map(b => `${b.action}: ${b.key || ''}${b.gamepadButton !== undefined ? ' btn' + b.gamepadButton : ''}${b.gamepadAxis !== undefined ? ' axis' + b.gamepadAxis : ''}`).join(', ') : 'No bindings' },
+          { type: 'data', data: bindings }
+        ]
+      };
+    });
+
+    // ---- Init ----
+    mup.onReady(p => {
+      if (p?.savedState) {
+        if (Array.isArray(p.savedState.bindings)) {
+          bindings = p.savedState.bindings;
+          renderBindings();
+        }
+      }
+      broadcastState();
+    });
+  </script>
+</body>
+</html>

@@ -19,7 +19,7 @@ export type { CallHistoryEntry, GridLayoutItem };
 
 const DATA_DIR = path.join(os.homedir(), ".mup-mcp");
 const WORKSPACES_DIR = path.join(DATA_DIR, "workspaces");
-const LAST_WORKSPACE = "_last";
+const DEFAULT_LAST_WORKSPACE = "_last";
 
 function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -40,8 +40,14 @@ export class WorkspaceManager {
   private bridge: UiBridge | null = null;
   private _dirty = false;
   private _saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private _lastWorkspace = DEFAULT_LAST_WORKSPACE;
 
   constructor(private manager: MupManager) {}
+
+  /** Set instance-specific auto-save key (e.g. port) to avoid conflicts with parallel instances */
+  setInstanceId(id: string | number): void {
+    this._lastWorkspace = `_last_${id}`;
+  }
 
   /** Set bridge reference for auto-save notifications */
   setBridge(bridge: UiBridge): void {
@@ -139,7 +145,7 @@ export class WorkspaceManager {
         }
       })
         .filter((x): x is NonNullable<typeof x> => x !== null)
-        .filter((w) => w.name !== LAST_WORKSPACE)
+        .filter((w) => !w.name.startsWith("_last"))
         .sort((a, b) => b.savedAt - a.savedAt);
     } catch (err) {
       console.error("[mup-mcp] Failed to list workspaces:", err);
@@ -160,7 +166,7 @@ export class WorkspaceManager {
   /** Auto-save to _last workspace and notify browser */
   autoSave(): void {
     if (this.manager.getAll().length > 0) {
-      this.save(LAST_WORKSPACE);
+      this.save(this._lastWorkspace);
       if (this.bridge) this.bridge.sendRaw({ type: "auto-saved" });
     }
   }
@@ -189,7 +195,7 @@ export class WorkspaceManager {
 
   /** Silent restore on startup — activates MUPs without sending browser messages */
   silentRestore(): string[] {
-    const data = this.load(LAST_WORKSPACE);
+    const data = this.load(this._lastWorkspace);
     if (!data || data.activeMups.length === 0) return [];
     return this._applyWorkspaceData(data);
   }

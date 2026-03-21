@@ -7,53 +7,18 @@ import { exec } from "node:child_process";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { MupManager, type LoadedMup } from "./manager.js";
+import { MupManager } from "./manager.js";
 import { UiBridge } from "./bridge.js";
 import { WorkspaceManager } from "./workspace.js";
+import { PipelineManager } from "./pipeline.js";
 import { CONFIG } from "./config.js";
-import type { FolderTreeNode, CallHistoryEntry, SendLoadMupFn } from "./types.js";
-
-// ---- File Scanning ----
-
-function scanHtmlFiles(dir: string): string[] {
-  const results: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory() && !entry.name.startsWith(".")) {
-      results.push(...scanHtmlFiles(path.join(dir, entry.name)));
-    } else if (entry.isFile() && entry.name.endsWith(".html")) {
-      results.push(path.join(dir, entry.name));
-    }
-  }
-  return results;
-}
-
-function buildFolderTree(dir: string, manager: MupManager): FolderTreeNode[] {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  const folders: FolderTreeNode[] = [];
-  const files: FolderTreeNode[] = [];
-
-  for (const entry of entries) {
-    if (entry.isDirectory() && !entry.name.startsWith(".")) {
-      const children = buildFolderTree(path.join(dir, entry.name), manager);
-      if (children.length > 0) folders.push({ type: "folder", name: entry.name, children });
-    } else if (entry.isFile() && entry.name.endsWith(".html")) {
-      try {
-        const manifest = manager.parseManifest(fs.readFileSync(path.join(dir, entry.name), "utf-8"), path.join(dir, entry.name));
-        const catalogEntry = manager.getCatalog().find((e) => e.manifest.id === manifest.id);
-        files.push({
-          type: "file", name: manifest.name, id: manifest.id,
-          description: manifest.description, active: catalogEntry?.active || false,
-          multiInstance: manifest.multiInstance || false,
-        });
-      } catch {
-        // Non-MUP HTML file — expected, skip silently
-      }
-    }
-  }
-  folders.sort((a, b) => a.name.localeCompare(b.name));
-  files.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  return [...folders, ...files];
-}
+import { scanHtmlFiles, buildFolderTree } from "./scanner.js";
+import {
+  text, buildToolDescription, buildMupDetail,
+  handleWorkspaces, handleSave, handleLoad, handleList,
+  handleCheckInteractions, handleHistory, handlePipe,
+} from "./handlers.js";
+import type { FolderTreeNode, SendLoadMupFn } from "./types.js";
 
 // ---- Utilities ----
 
@@ -82,141 +47,7 @@ async function findAvailablePort(startPort: number): Promise<number> {
   return startPort;
 }
 
-// ---- Tool Description Builders ----
-
-const text = (t: string) => ({ type: "text" as const, text: t });
-
-function buildToolDescription(manager: MupManager, port: number): string {
-  const catalog = manager.getCatalog();
-  const active = catalog.filter((e) => e.active);
-  const inactive = catalog.filter((e) => !e.active);
-  const lines = [
-    `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
-    ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
-    `Actions: checkInteractions, save, load, workspaces, list, history`,
-  ];
-  if (active.length > 0) {
-    lines.push(``, `Active MUPs:`);
-    for (const e of active) lines.push(`  ${e.manifest.id} — ${e.manifest.name}. Functions: ${e.manifest.functions.map((f) => f.name).join(", ")}`);
-  }
-  if (inactive.length > 0) {
-    lines.push(``, `Available: ${inactive.map((e) => e.manifest.id).join(", ")}`);
-  }
-  return lines.join("\n");
-}
-
-function buildMupDetail(manifest: { name: string; id: string; description: string; functions: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> }): string {
-  const lines = [`${manifest.name} (${manifest.id}): ${manifest.description}`];
-  for (const fn of manifest.functions) {
-    const props = (fn.inputSchema.properties || {}) as Record<string, Record<string, unknown>>;
-    const required = (fn.inputSchema.required || []) as string[];
-    const params = Object.entries(props).map(([k, v]) => `${k}${required.includes(k) ? "" : "?"}: ${v.type || "any"}`);
-    lines.push(`  - ${fn.name}(${params.join(", ")}) — ${fn.description}`);
-  }
-  return lines.join("\n");
-}
-
-// ---- MCP Action Handlers ----
-
-function handleWorkspaces(ws: WorkspaceManager) {
-  const workspaces = ws.list();
-  if (workspaces.length === 0) return { content: [text('No saved workspaces. Use { "action": "save", "name": "..." } to save.')] };
-  const lines = workspaces.map((w) => {
-    const time = new Date(w.savedAt).toLocaleString();
-    const desc = w.description ? ` — ${w.description}` : "";
-    return `- ${w.displayName}${desc} (saved ${time}, MUPs: ${w.activeMups.join(", ")})`;
-  });
-  return { content: [text("Saved workspaces:\n" + lines.join("\n"))] };
-}
-
-function handleSave(ws: WorkspaceManager, manager: MupManager, args: Record<string, unknown>) {
-  const name = args.name as string;
-  if (!name) return { content: [text('Provide "name" for the workspace.')], isError: true };
-  const desc = args.description as string | undefined;
-  ws.save(name, desc);
-  const active = manager.getAll().map((m) => ws.customNames[m.manifest.id] || m.manifest.name);
-  return { content: [text(`Workspace "${name}" saved.${desc ? ` Description: ${desc}` : ""}\nActive MUPs: ${active.join(", ") || "none"}.`)] };
-}
-
-function handleLoad(ws: WorkspaceManager, manager: MupManager, bridge: UiBridge, sendLoadMup: SendLoadMupFn, args: Record<string, unknown>) {
-  const name = args.name as string;
-  if (!name) return { content: [text('Provide "name" of the workspace to load.')], isError: true };
-  if (!ws.load(name)) return { content: [text(`Workspace "${name}" not found.`)], isError: true };
-  const restored = ws.restore(bridge, sendLoadMup, name);
-  const desc = ws.description ? `\nDescription: ${ws.description}` : "";
-  return { content: [text(`Workspace "${name}" loaded.${desc}\nActive MUPs: ${restored.join(", ") || "none"}.`)] };
-}
-
-function handleList(manager: MupManager) {
-  const sections = manager.getCatalog().map((e) => `${e.active ? "[ACTIVE]" : "[available]"} ${buildMupDetail(e.manifest)}`);
-  return { content: [text(sections.join("\n\n"))] };
-}
-
-function handleCheckInteractions(manager: MupManager, args: Record<string, unknown>) {
-  const since = typeof args.since === "number" ? args.since : undefined;
-  const events = manager.drainEvents(since);
-  const states = manager.getAll().filter((m) => m.stateSummary).map((m) => `[${m.manifest.name}] ${m.stateSummary}`);
-  const parts: string[] = [];
-
-  if (events.length > 0) {
-    const groups = new Map<string, { mupName: string; action: string; count: number; lastSummary: string }>();
-    for (const e of events) {
-      const key = `${e.mupName}|${e.action}`;
-      const g = groups.get(key);
-      if (g) { g.count++; g.lastSummary = e.summary; }
-      else groups.set(key, { mupName: e.mupName, action: e.action, count: 1, lastSummary: e.summary });
-    }
-    const lines = Array.from(groups.values()).map((g) =>
-      g.count === 1 ? `  [${g.mupName}] ${g.action}: ${g.lastSummary}` : `  [${g.mupName}] ${g.action} (${g.count}x, latest: ${g.lastSummary})`
-    );
-    parts.push("User interactions:\n" + lines.join("\n"));
-  }
-  if (states.length > 0) parts.push("Current states:\n" + states.map((s) => `  ${s}`).join("\n"));
-  return { content: [text(parts.length > 0 ? parts.join("\n\n") : "No interactions or state changes.")] };
-}
-
-function handleHistory(ws: WorkspaceManager, manager: MupManager, args: Record<string, unknown>) {
-  const mupId = args.mupId as string;
-
-  function formatHistory(history: CallHistoryEntry[], limit: number): string[] {
-    const lines: string[] = [];
-    if (history.length > limit) {
-      const older = history.slice(0, -limit);
-      const fnCounts = new Map<string, number>();
-      for (const h of older) fnCounts.set(h.functionName, (fnCounts.get(h.functionName) || 0) + 1);
-      lines.push(`  ... ${older.length} earlier calls: ${Array.from(fnCounts.entries()).map(([fn, c]) => `${fn}(${c}x)`).join(", ")}`);
-    }
-    for (const h of history.slice(-limit)) {
-      const time = new Date(h.timestamp).toLocaleTimeString();
-      const argStr = JSON.stringify(h.args);
-      lines.push(`  [${time}] ${h.functionName}(${argStr.length > 80 ? argStr.slice(0, 80) + "..." : argStr}) → ${h.result}`);
-    }
-    return lines;
-  }
-
-  if (!mupId) {
-    const parts: string[] = [];
-    for (const mup of manager.getAll()) {
-      const history = ws.callHistory[mup.manifest.id];
-      if (history && history.length > 0) {
-        parts.push(`## ${mup.manifest.name} (${mup.manifest.id})`);
-        if (mup.stateSummary) parts.push(`State: ${mup.stateSummary}`);
-        parts.push(`${history.length} calls:`, ...formatHistory(history, CONFIG.recentHistoryCount));
-      }
-    }
-    return { content: [text(parts.length > 0 ? parts.join("\n") : "No call history yet.")] };
-  }
-
-  const history = ws.callHistory[mupId];
-  const mup = manager.get(mupId);
-  const parts: string[] = [];
-  if (mup?.stateSummary) parts.push(`State: ${mup.stateSummary}`);
-  if (!history || history.length === 0) parts.push("No call history for this MUP.");
-  else { parts.push(`${history.length} calls:`, ...formatHistory(history, CONFIG.recentHistoryCount)); }
-  return { content: [text(parts.join("\n"))] };
-}
-
-// ---- CLI Argument Parsing ----
+// ---- CLI ----
 
 interface CliConfig {
   mupFiles: string[];
@@ -299,8 +130,6 @@ function setupBrowserEvents(bridge: UiBridge, manager: MupManager, ws: Workspace
   bridge.typedOn("browser-disconnected", () => { ws.flushSave(); console.error("[mup-mcp] Saved on disconnect"); });
 }
 
-// ---- Workspace Browser Events ----
-
 function setupWorkspaceEvents(bridge: UiBridge, manager: MupManager, ws: WorkspaceManager, sendLoadMup: SendLoadMupFn): void {
   bridge.typedOn("list-workspaces", () => bridge.sendRaw({ type: "workspace-list", workspaces: ws.list() }));
 
@@ -327,11 +156,8 @@ function setupWorkspaceEvents(bridge: UiBridge, manager: MupManager, ws: Workspa
 // ---- Hot-Reload File Watching ----
 
 function setupFileWatching(
-  mupsDirs: string[],
-  manager: MupManager,
-  bridge: UiBridge,
-  sendLoadMup: SendLoadMupFn,
-  rebuildFolderTree: () => void
+  mupsDirs: string[], manager: MupManager, bridge: UiBridge,
+  sendLoadMup: SendLoadMupFn, rebuildFolderTree: () => void
 ): void {
   for (const dir of mupsDirs) {
     try {
@@ -362,12 +188,10 @@ function setupFileWatching(
 // ---- MCP Server Setup ----
 
 function setupMcpServer(
-  manager: MupManager,
-  bridge: UiBridge,
-  ws: WorkspaceManager,
-  port: number,
-  sendLoadMup: SendLoadMupFn,
-  ensureActive: (mupId: string) => { error?: string; activated?: string }
+  manager: MupManager, bridge: UiBridge, ws: WorkspaceManager,
+  port: number, sendLoadMup: SendLoadMupFn,
+  ensureActive: (mupId: string) => { error?: string; activated?: string },
+  pipeline: PipelineManager
 ): Server {
   const server = new Server({ name: "mup-mcp-server", version: "0.2.0" }, { capabilities: { tools: {} } });
 
@@ -378,13 +202,21 @@ function setupMcpServer(
       inputSchema: {
         type: "object" as const,
         properties: {
-          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs. Omit when calling a function.' },
+          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "pipe" to manage data pipes. Omit when calling a function.' },
           mupId: { type: "string", description: "MUP ID (e.g. mup-chess, mup-chart). Auto-activated on first use." },
           functionName: { type: "string", description: "Function to call (e.g. makeMove, renderChart, setPixels)" },
           functionArgs: { type: "object", description: "Arguments for the function. Can be a JSON object or JSON string." },
           name: { type: "string", description: "Workspace name for save/load/deleteWorkspace actions." },
           description: { type: "string", description: "Workspace description — what you're working on. Used with save action." },
           since: { type: "number", description: "Unix timestamp (ms). Only return interactions after this time. Used with checkInteractions." },
+          subAction: { type: "string", description: 'For pipe action: "create", "list", "delete", "enable", "disable"' },
+          pipeId: { type: "string", description: "Pipe ID for delete/enable/disable." },
+          sourceMupId: { type: "string", description: "Pipe source MUP ID." },
+          sourceFunction: { type: "string", description: "Optional: call this function on source to get data (else uses stateData)." },
+          targetMupId: { type: "string", description: "Pipe target MUP ID." },
+          targetFunction: { type: "string", description: "Function to call on target MUP." },
+          transform: { type: "object", description: 'Key mapping: { targetArgName: "source.path" }. Use "." for entire data, "\'literal\'" for strings.' },
+          debounceMs: { type: "number", description: "Debounce interval in ms (default 500)." },
         },
       },
     }],
@@ -405,6 +237,7 @@ function setupMcpServer(
     if (args.action === "list") return handleList(manager);
     if (args.action === "checkInteractions") return handleCheckInteractions(manager, args);
     if (args.action === "history") return handleHistory(ws, manager, args);
+    if (args.action === "pipe") return handlePipe(pipeline, args);
 
     // --- Call MUP function ---
     const mupId = args.mupId as string;
@@ -477,6 +310,7 @@ async function main() {
   await bridge.start();
 
   const ws = new WorkspaceManager(manager);
+  ws.setInstanceId(port);
   ws.setBridge(bridge);
 
   // --- Auto-restore last session ---
@@ -505,6 +339,11 @@ async function main() {
     bridge.sendRaw({ type: "folder-tree", tree: serverFolderTree, path: bridge.folderPath });
   }
 
+  // --- Pipeline ---
+  const pipeline = new PipelineManager((mupId, fn, args) => bridge.callFunction(mupId, fn, args));
+  bridge.typedOn("state-update", (mupId, _summary, data) => pipeline.onStateUpdate(mupId, data));
+  bridge.typedOn("deactivate-mup", (mupId) => pipeline.onMupDeactivated(mupId));
+
   // --- Wire up events ---
   setupBrowserEvents(bridge, manager, ws, sendLoadMup);
   setupWorkspaceEvents(bridge, manager, ws, sendLoadMup);
@@ -512,7 +351,7 @@ async function main() {
   setupLifecycle(ws);
 
   // --- MCP Server ---
-  const server = setupMcpServer(manager, bridge, ws, port, sendLoadMup, ensureActive);
+  const server = setupMcpServer(manager, bridge, ws, port, sendLoadMup, ensureActive, pipeline);
 
   // --- Browser auto-open ---
   if (!noOpen) {

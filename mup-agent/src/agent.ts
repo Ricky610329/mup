@@ -14,6 +14,7 @@ import { Type, type TSchema } from "@sinclair/typebox";
 import type { MupManager } from "./manager.js";
 import type { UiBridge } from "./bridge.js";
 import type { TreeNode } from "./types.js";
+import { PipelineManager } from "./pipeline.js";
 import { setupSessionHandler } from "./session-handler.js";
 
 // ---- Tool building ----
@@ -65,7 +66,7 @@ export function buildMupTools(
 
 // ---- System prompt ----
 
-export function buildSystemPrompt(manager: MupManager): string {
+export function buildSystemPrompt(manager: MupManager, pipeline?: PipelineManager): string {
   const active = manager.getAll();
   const catalog = manager.getCatalog();
   const inactive = catalog.filter(e => !e.active);
@@ -94,11 +95,22 @@ export function buildSystemPrompt(manager: MupManager): string {
     prompt += `\nNo panels available. User can load MUPs from the Manager card.\n`;
   }
 
+  if (pipeline) {
+    const pipes = pipeline.listPipes().filter(p => p.enabled);
+    if (pipes.length > 0) {
+      const list = pipes.map(p =>
+        `- ${p.id}: ${p.sourceMupId}${p.sourceFunction ? `.${p.sourceFunction}` : ""} → ${p.targetMupId}.${p.targetFunction}`
+      ).join("\n");
+      prompt += `\nActive data pipes:\n${list}\n`;
+    }
+  }
+
   prompt += `\nRULES:
 1. ALWAYS use tool calls to perform actions. NEVER write function calls as text.
 2. To use a panel: first call activateMup, then its functions become available as tools.
 3. After activateMup returns, call the panel's functions directly as tool calls.
-4. Keep text responses short. Let the panels show the content visually.`;
+4. Keep text responses short. Let the panels show the content visually.
+5. Use managePipe to create data pipes between panels for automatic data forwarding.`;
   return prompt;
 }
 
@@ -133,6 +145,11 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
   let model = resolveModel(provider, modelId, apiKey);
   const tools = buildMupTools(manager, bridge);
 
+  // --- Pipeline ---
+  const pipeline = new PipelineManager((mupId, fn, args) => bridge.callFunction(mupId, fn, args));
+  bridge.on("state-update", (mupId: string, _summary: string, data: unknown) => pipeline.onStateUpdate(mupId, data));
+  bridge.on("deactivate-mup", (mupId: string) => pipeline.onMupDeactivated(mupId));
+
   // Built-in tool: let LLM activate MUPs
   const activateMupTool: AgentTool<TSchema, unknown> = {
     name: "activateMup",
@@ -154,10 +171,69 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
     },
   };
 
-  const allTools = [...tools, activateMupTool];
+  // Built-in tool: manage data pipes between MUPs
+  const managePipeTool: AgentTool<TSchema, unknown> = {
+    name: "managePipe",
+    label: "Manage Data Pipes",
+    description: "Create, list, or delete data pipes between MUP panels. Pipes auto-forward data when a source MUP's state changes.",
+    parameters: Type.Object({
+      action: Type.Union([
+        Type.Literal("create"),
+        Type.Literal("list"),
+        Type.Literal("delete"),
+        Type.Literal("enable"),
+        Type.Literal("disable"),
+      ], { description: "Pipe action" }),
+      pipeId: Type.Optional(Type.String({ description: "Pipe ID (for delete/enable/disable)" })),
+      sourceMupId: Type.Optional(Type.String({ description: "Source MUP ID" })),
+      sourceFunction: Type.Optional(Type.String({ description: "Optional: call this function on source to get data (else uses stateData)" })),
+      targetMupId: Type.Optional(Type.String({ description: "Target MUP ID" })),
+      targetFunction: Type.Optional(Type.String({ description: "Function to call on target" })),
+      transform: Type.Optional(Type.Record(Type.String(), Type.String(), { description: 'Key mapping: { targetArgName: "source.path" }' })),
+      debounceMs: Type.Optional(Type.Number({ description: "Debounce interval in ms (default 500)" })),
+    }) as TSchema,
+    async execute(_id: string, params: unknown): Promise<AgentToolResult<unknown>> {
+      const p = params as any;
+      if (p.action === "create") {
+        if (!p.sourceMupId || !p.targetMupId || !p.targetFunction || !p.transform) {
+          return { content: [{ type: "text", text: "create requires: sourceMupId, targetMupId, targetFunction, transform." }], details: null };
+        }
+        const result = pipeline.addPipe({
+          sourceMupId: p.sourceMupId,
+          sourceFunction: p.sourceFunction,
+          targetMupId: p.targetMupId,
+          targetFunction: p.targetFunction,
+          transform: p.transform,
+          debounceMs: p.debounceMs,
+        });
+        if ("error" in result) return { content: [{ type: "text", text: result.error }], details: null };
+        return { content: [{ type: "text", text: `Pipe created: ${result.id} (${p.sourceMupId} → ${p.targetMupId}.${p.targetFunction})` }], details: null };
+      }
+      if (p.action === "list") {
+        const pipes = pipeline.listPipes();
+        if (pipes.length === 0) return { content: [{ type: "text", text: "No pipes defined." }], details: null };
+        const lines = pipes.map((pipe: any) =>
+          `${pipe.id}: ${pipe.sourceMupId}${pipe.sourceFunction ? `.${pipe.sourceFunction}` : ""} → ${pipe.targetMupId}.${pipe.targetFunction} [${pipe.enabled ? "active" : "disabled"}]`
+        );
+        return { content: [{ type: "text", text: lines.join("\n") }], details: null };
+      }
+      if (p.action === "delete") {
+        return { content: [{ type: "text", text: pipeline.removePipe(p.pipeId) ? `Deleted ${p.pipeId}` : `Not found: ${p.pipeId}` }], details: null };
+      }
+      if (p.action === "enable") {
+        return { content: [{ type: "text", text: pipeline.enablePipe(p.pipeId) ? `Enabled ${p.pipeId}` : `Not found: ${p.pipeId}` }], details: null };
+      }
+      if (p.action === "disable") {
+        return { content: [{ type: "text", text: pipeline.disablePipe(p.pipeId) ? `Disabled ${p.pipeId}` : `Not found: ${p.pipeId}` }], details: null };
+      }
+      return { content: [{ type: "text", text: "Unknown action." }], details: null };
+    },
+  };
+
+  const allTools = [...tools, activateMupTool, managePipeTool];
 
   const agent = new Agent({
-    initialState: { systemPrompt: buildSystemPrompt(manager), model, tools: allTools },
+    initialState: { systemPrompt: buildSystemPrompt(manager, pipeline), model, tools: allTools },
     transformContext: async (messages: AgentMessage[]) => {
       // 1. Refresh system prompt with latest MUP states
       agent.setSystemPrompt(buildSystemPrompt(manager));
@@ -244,8 +320,8 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
   // ---- Helper: rebuild tools + system prompt after MUP changes ----
 
   function refreshAgentTools() {
-    agent.setTools([...buildMupTools(manager, bridge), activateMupTool]);
-    agent.setSystemPrompt(buildSystemPrompt(manager));
+    agent.setTools([...buildMupTools(manager, bridge), activateMupTool, managePipeTool]);
+    agent.setSystemPrompt(buildSystemPrompt(manager, pipeline));
   }
 
   // Shared activate logic (used by both LLM tool and browser UI)
