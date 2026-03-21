@@ -41,8 +41,13 @@ export class WorkspaceManager {
   private _dirty = false;
   private _saveTimer: ReturnType<typeof setTimeout> | null = null;
   private _lastWorkspace = DEFAULT_LAST_WORKSPACE;
+  private _currentName: string | null = null;
 
   constructor(private manager: MupManager) {}
+
+  /** Get/set the current named workspace (auto-save will also save to this) */
+  get currentName(): string | null { return this._currentName; }
+  set currentName(name: string | null) { this._currentName = name; }
 
   /** Set instance-specific auto-save key (e.g. port) to avoid conflicts with parallel instances */
   setInstanceId(id: string | number): void {
@@ -163,10 +168,11 @@ export class WorkspaceManager {
     return false;
   }
 
-  /** Auto-save to _last workspace and notify browser */
+  /** Auto-save to _last workspace (and current named workspace if set) */
   autoSave(): void {
     if (this.manager.getAll().length > 0) {
       this.save(this._lastWorkspace);
+      if (this._currentName) this.save(this._currentName);
       if (this.bridge) this.bridge.sendRaw({ type: "auto-saved" });
     }
   }
@@ -208,6 +214,7 @@ export class WorkspaceManager {
     // Deactivate all current MUPs
     for (const mup of this.manager.getAll()) this.manager.deactivate(mup.manifest.id);
     this.reset();
+    this._currentName = name.startsWith("_last") ? null : name;
 
     // Apply workspace data
     const restored = this._applyWorkspaceData(data);
@@ -247,5 +254,6 @@ export class WorkspaceManager {
     for (const k of Object.keys(this.customNames)) delete this.customNames[k];
     this.description = "";
     this.gridLayout = [];
+    this._currentName = null;
   }
 }

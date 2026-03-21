@@ -50,17 +50,36 @@ MUP changes this. It puts clickable, visual UI right inside the chat — so anyo
 - **[Design Philosophy](spec/MUP-Philosophy.md)** — Why MUP is designed this way, and what we intentionally left out
 - **[Examples](spec/MUP-Examples.md)** — Example MUPs with walkthroughs
 
-## Getting Started
+## Install
 
-### With Claude Code (recommended)
+### npm (recommended)
 
-If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code), one command sets everything up:
+```bash
+npm install -g mup-mcp-server
+```
+
+Or run directly:
+
+```bash
+npx mup-mcp-server --mups-dir ./my-mups
+```
+
+Also available on the [MCP Server Registry](https://registry.modelcontextprotocol.io/).
+
+### From source
 
 ```bash
 git clone https://github.com/Ricky610329/mup.git
 cd mup/mup-mcp-server
 npm install && npm run build
-claude mcp add --transport stdio --scope user mup -- node $(pwd)/dist/index.js --mups-dir $(pwd)/../examples
+```
+
+## Getting Started
+
+### With Claude Code (recommended)
+
+```bash
+claude mcp add --transport stdio --scope user mup -- npx mup-mcp-server --mups-dir /path/to/mup/examples
 ```
 
 Restart Claude Code. MUP panels are now available as tools — just ask Claude to use them. A browser window opens at `http://localhost:3200` showing the MUP panel grid.
@@ -78,8 +97,8 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "mup": {
-      "command": "node",
-      "args": ["/path/to/mup/mup-mcp-server/dist/index.js", "--mups-dir", "/path/to/mup/examples"]
+      "command": "npx",
+      "args": ["mup-mcp-server", "--mups-dir", "/path/to/mup/examples"]
     }
   }
 }

@@ -57,6 +57,7 @@ export function handleSave(ws: WorkspaceManager, manager: MupManager, args: Reco
   if (!name) return { content: [text('Provide "name" for the workspace.')], isError: true };
   const desc = args.description as string | undefined;
   ws.save(name, desc);
+  ws.currentName = name;
   const active = manager.getAll().map((m) => ws.customNames[m.manifest.id] || m.manifest.name);
   return { content: [text(`Workspace "${name}" saved.${desc ? ` Description: ${desc}` : ""}\nActive MUPs: ${active.join(", ") || "none"}.`)] };
 }

@@ -135,6 +135,7 @@ function setupWorkspaceEvents(bridge: UiBridge, manager: MupManager, ws: Workspa
 
   bridge.typedOn("save-workspace", (name, desc) => {
     ws.save(name, desc);
+    ws.currentName = name;
     bridge.sendRaw({ type: "workspace-saved", name });
     bridge.sendRaw({ type: "workspace-list", workspaces: ws.list() });
   });

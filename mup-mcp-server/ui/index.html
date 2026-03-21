@@ -292,6 +292,9 @@
   <span class="header-title">MUP Panel</span>
   <span class="header-badge">MCP</span>
   <span class="header-ws-name" id="headerWsName" title="Click to edit workspace info"></span>
+  <button class="workspace-btn" id="quickSaveBtn" style="display:none;padding:4px 8px;min-width:0" title="Save to current workspace">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 1h8l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z"/><path d="M5 1v4h5V1"/><path d="M5 10h6"/></svg>
+  </button>
   <div class="header-spacer"></div>
   <button class="workspace-btn" id="wsBtn">
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>
@@ -1117,14 +1120,24 @@ function renderWorkspaceList(workspaces) {
 }
 
 // ---- Header workspace name + edit modal ----
+const quickSaveBtn = document.getElementById('quickSaveBtn');
+
 function updateHeaderWsName() {
-  const display = currentWorkspaceName && currentWorkspaceName !== '_last' ? currentWorkspaceName : '';
+  const display = currentWorkspaceName && !currentWorkspaceName.startsWith('_last') ? currentWorkspaceName : '';
   headerWsName.textContent = display;
   headerWsName.title = display ? `${display}${currentWorkspaceDesc ? ' — ' + currentWorkspaceDesc : ''}\nClick to edit` : '';
+  quickSaveBtn.style.display = display ? '' : 'none';
 }
 
+quickSaveBtn.addEventListener('click', () => {
+  if (currentWorkspaceName && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "save-workspace", name: currentWorkspaceName, description: currentWorkspaceDesc }));
+    addEventBadge("Saved", `"${currentWorkspaceName}"`);
+  }
+});
+
 headerWsName.addEventListener('click', () => {
-  if (!currentWorkspaceName || currentWorkspaceName === '_last') return;
+  if (!currentWorkspaceName || currentWorkspaceName.startsWith('_last')) return;
   document.getElementById('editWsName').value = currentWorkspaceName;
   document.getElementById('editWsDesc').value = currentWorkspaceDesc;
   document.getElementById('editWsOverlay').classList.add('open');
