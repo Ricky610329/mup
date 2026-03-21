@@ -174,7 +174,7 @@ npm start
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Ricky610329/mup&type=Date)](https://star-history.com/#Ricky610329/mup&Date)
+[![Star History Chart](https://api.star-history.com/image?repos=Ricky610329/mup&type=date&legend=top-left)](https://www.star-history.com/?repos=Ricky610329%2Fmup&type=date&legend=top-left)
 
 ## 授權
 
