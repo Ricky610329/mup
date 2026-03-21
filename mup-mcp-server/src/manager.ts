@@ -164,7 +164,7 @@ export class MupManager {
     }
   }
 
-  drainEvents(): Array<{
+  drainEvents(since?: number): Array<{
     mupId: string;
     mupName: string;
     action: string;
@@ -181,10 +181,15 @@ export class MupManager {
       timestamp: number;
     }> = [];
     for (const [mupId, mup] of this.mups) {
+      const keep: typeof mup.pendingEvents = [];
       for (const event of mup.pendingEvents) {
-        events.push({ mupId, mupName: mup.manifest.name, ...event });
+        if (since && event.timestamp <= since) {
+          keep.push(event); // keep events older than since
+        } else {
+          events.push({ mupId, mupName: mup.manifest.name, ...event });
+        }
       }
-      mup.pendingEvents = [];
+      mup.pendingEvents = keep;
     }
     return events;
   }

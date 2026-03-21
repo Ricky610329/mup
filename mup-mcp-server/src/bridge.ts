@@ -52,6 +52,7 @@ export class UiBridge extends EventEmitter {
 
       this.ws = ws;
       console.error("[mup-mcp] Browser panel connected");
+      this.emit("browser-connected");
 
       ws.on("message", (data) => {
         try {
@@ -126,13 +127,9 @@ export class UiBridge extends EventEmitter {
     args: Record<string, unknown>
   ): Promise<FunctionResult> {
     if (!this.isConnected()) {
+      const msg = `MUP UI panel is not connected. Ask the user to open http://localhost:${this.port} in their browser.`;
       return {
-        content: [
-          {
-            type: "text",
-            text: `MUP UI panel is not connected. Ask the user to open http://localhost:${this.port} in their browser.`,
-          },
-        ],
+        content: [{ type: "text", text: msg }],
         isError: true,
       };
     }
@@ -142,6 +139,7 @@ export class UiBridge extends EventEmitter {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pendingCalls.delete(callId);
+        this.sendRaw({ type: "error", message: `${functionName} timed out (30s) on ${mupId}` });
         resolve({
           content: [{ type: "text", text: "Function call timed out (30s)" }],
           isError: true,
@@ -233,6 +231,10 @@ export class UiBridge extends EventEmitter {
 
       case "delete-workspace":
         this.emit("delete-workspace", msg.name as string, msg.isCurrent as boolean);
+        break;
+
+      case "save-grid-layout":
+        this.emit("save-grid-layout", msg.layout);
         break;
     }
   }

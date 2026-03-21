@@ -126,6 +126,7 @@ interface WorkspaceData {
   mupStates: Record<string, unknown>;
   callHistory: Record<string, CallHistoryEntry[]>;
   customNames: Record<string, string>;
+  gridLayout?: Array<{ id: string; x: number; y: number; w: number; h: number }>;
 }
 
 // In-memory call history
@@ -145,6 +146,7 @@ function workspacePath(name: string): string {
 // In-memory workspace metadata
 let currentDescription = "";
 const customNames: Record<string, string> = {};
+let currentGridLayout: Array<{ id: string; x: number; y: number; w: number; h: number }> = [];
 
 function saveWorkspace(name: string, manager: MupManager, description?: string): void {
   try {
@@ -158,6 +160,7 @@ function saveWorkspace(name: string, manager: MupManager, description?: string):
       mupStates: manager.getStateSnapshot(),
       callHistory,
       customNames: { ...customNames },
+      gridLayout: currentGridLayout.length > 0 ? currentGridLayout : undefined,
     };
     fs.writeFileSync(workspacePath(name), JSON.stringify(data, null, 2));
     console.error(`[mup-mcp] Workspace saved: ${name}`);
@@ -176,18 +179,28 @@ function loadWorkspaceData(name: string): WorkspaceData | null {
   return null;
 }
 
-function listWorkspaces(): Array<{ name: string; description: string; savedAt: number; activeMups: string[] }> {
+function listWorkspaces(): Array<{ name: string; displayName: string; description: string; savedAt: number; activeMups: string[] }> {
   try {
     ensureDir(WORKSPACES_DIR);
     const files = fs.readdirSync(WORKSPACES_DIR).filter((f) => f.endsWith(".json"));
-    return files.map((f) => {
+    const all = files.map((f) => {
       try {
         const data = JSON.parse(fs.readFileSync(path.join(WORKSPACES_DIR, f), "utf-8")) as WorkspaceData;
-        return { name: data.name, description: data.description || "", savedAt: data.savedAt, activeMups: data.activeMups };
+        return {
+          name: data.name,
+          displayName: data.name === LAST_WORKSPACE ? "Last session" : data.name,
+          description: data.description || "",
+          savedAt: data.savedAt,
+          activeMups: data.activeMups,
+        };
       } catch {
         return null;
       }
-    }).filter((x): x is NonNullable<typeof x> => x !== null && x.name !== LAST_WORKSPACE);
+    }).filter((x): x is NonNullable<typeof x> => x !== null);
+    // _last first, then sorted by savedAt desc
+    const last = all.filter((w) => w.name === LAST_WORKSPACE);
+    const rest = all.filter((w) => w.name !== LAST_WORKSPACE).sort((a, b) => b.savedAt - a.savedAt);
+    return [...last, ...rest];
   } catch {
     return [];
   }
@@ -225,6 +238,7 @@ function restoreWorkspace(
 
   // Restore metadata
   currentDescription = data.description || "";
+  currentGridLayout = data.gridLayout || [];
   if (data.customNames) Object.assign(customNames, data.customNames);
   if (data.callHistory) {
     for (const [k, v] of Object.entries(data.callHistory)) callHistory[k] = v;
@@ -245,7 +259,7 @@ function restoreWorkspace(
     id: e.manifest.id, name: e.manifest.name, description: e.manifest.description,
     functions: e.manifest.functions.length, active: e.active, grid: e.manifest.grid,
   }));
-  bridge.sendRaw({ type: "workspace-loaded", name, customNames });
+  bridge.sendRaw({ type: "workspace-loaded", name, customNames, gridLayout: data.gridLayout });
   bridge.sendRaw({ type: "mup-catalog", catalog });
   for (const mup of manager.getAll()) sendLoadMup(mup.manifest.id, mup);
 
@@ -268,7 +282,7 @@ function buildToolDescription(manager: MupManager, port: number): string {
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``,
     `Call function: { "mupId": "mup-chart", "functionName": "renderChart", "functionArgs": { ... } }`,
-    `Check user UI activity: { "action": "checkInteractions" }`,
+    `Check user UI activity: { "action": "checkInteractions" } (optional "since": timestamp)`,
     `Save workspace: { "action": "save", "name": "...", "description": "..." }`,
     `Load workspace: { "action": "load", "name": "..." }`,
     `List workspaces: { "action": "workspaces" }`,
@@ -446,8 +460,45 @@ Options:
   // Save state when MUPs report state changes
   bridge.on("state-update", () => autoSave(manager));
 
+  // Save grid layout from browser
+  bridge.on("save-grid-layout", (layout: any) => {
+    if (Array.isArray(layout)) currentGridLayout = layout;
+  });
+
   // Auto-save every 30 seconds
   setInterval(() => autoSave(manager), 30_000);
+
+  // --- Hot-reload: watch MUP directories for changes ---
+  for (const dir of mupsDirs) {
+    try {
+      fs.watch(dir, { recursive: true }, (eventType, filename) => {
+        if (!filename || !filename.endsWith(".html")) return;
+        const filePath = path.join(dir, filename);
+        if (!fs.existsSync(filePath)) return;
+        try {
+          const html = fs.readFileSync(filePath, "utf-8");
+          const manifest = manager.parseManifest(html, filePath);
+          const mupId = manifest.id;
+          // Update catalog
+          const catalogEntry = manager.getCatalog().find((e) => e.manifest.id === mupId);
+          if (catalogEntry) {
+            catalogEntry.html = html;
+            catalogEntry.manifest = manifest;
+          }
+          // If active, reload in browser
+          if (manager.isActive(mupId)) {
+            const mup = manager.get(mupId);
+            if (mup) {
+              mup.html = html;
+              mup.manifest = manifest;
+              sendLoadMup(mupId, mup);
+              console.error(`[mup-mcp] Hot-reloaded: ${manifest.name}`);
+            }
+          }
+        } catch {}
+      });
+    } catch {}
+  }
 
   // --- Workspace events from browser ---
   bridge.on("list-workspaces", () => {
@@ -522,6 +573,10 @@ Options:
                 type: "string",
                 description: "Workspace description — what you're working on. Used with save action.",
               },
+              since: {
+                type: "number",
+                description: "Unix timestamp (ms). Only return interactions after this time. Used with checkInteractions.",
+              },
             },
           },
         },
@@ -545,7 +600,7 @@ Options:
       const lines = workspaces.map((w) => {
         const time = new Date(w.savedAt).toLocaleString();
         const desc = w.description ? ` — ${w.description}` : "";
-        return `- ${w.name}${desc} (saved ${time}, MUPs: ${w.activeMups.join(", ")})`;
+        return `- ${w.displayName}${desc} (saved ${time}, MUPs: ${w.activeMups.join(", ")})${w.name === "_last" ? " [auto-saved]" : ""}`;
       });
       return { content: [text("Saved workspaces:\n" + lines.join("\n"))] };
     }
@@ -596,7 +651,8 @@ Options:
 
     // --- action: checkInteractions ---
     if (args.action === "checkInteractions") {
-      const events = manager.drainEvents();
+      const since = typeof args.since === "number" ? args.since : undefined;
+      const events = manager.drainEvents(since);
       const states = manager
         .getAll()
         .filter((m) => m.stateSummary)
@@ -722,9 +778,16 @@ Options:
     return { content, isError: result.isError };
   });
 
-  // Open browser
+  // Open browser — only if no connection arrives within 3 seconds
+  // (existing tab will auto-reconnect faster than that)
   if (!noOpen) {
-    openBrowser(`http://localhost:${port}`);
+    const openTimer = setTimeout(() => {
+      if (!bridge.isConnected()) {
+        openBrowser(`http://localhost:${port}`);
+      }
+    }, 3000);
+    // Cancel if browser connects before timeout
+    bridge.once("browser-connected", () => clearTimeout(openTimer));
   }
 
   // Connect MCP via stdio

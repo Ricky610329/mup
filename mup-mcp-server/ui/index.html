@@ -191,6 +191,16 @@
     .manager-file.invalid { color: var(--text-tertiary); cursor: default; }
     .manager-file.is-folder { color: var(--text-primary); font-weight: 500; }
     .manager-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .manager-breadcrumb {
+      padding: 4px 12px; font-size: 11px; color: var(--text-tertiary);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 2px;
+      flex-wrap: wrap;
+    }
+    .manager-breadcrumb span { cursor: pointer; color: var(--text-secondary); }
+    .manager-breadcrumb span:hover { color: var(--text-primary); text-decoration: underline; }
+    .manager-breadcrumb .bc-sep { cursor: default; color: var(--text-tertiary); }
+    .manager-breadcrumb .bc-current { cursor: default; color: var(--text-tertiary); }
 
     /* Event badge */
     .event-badges {
@@ -359,7 +369,28 @@ function initGrid() {
     disableOneColumnMode: true,
   }, '#grid');
   grid.on('dragstart resizestart', () => document.body.classList.add('grid-stack-dragging'));
-  grid.on('dragstop resizestop', () => document.body.classList.remove('grid-stack-dragging'));
+  grid.on('dragstop resizestop', () => {
+    document.body.classList.remove('grid-stack-dragging');
+    saveGridLayout();
+  });
+}
+
+function saveGridLayout() {
+  if (!grid || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const layout = [];
+  for (const item of grid.getGridItems()) {
+    const id = item.getAttribute('gs-id');
+    if (id && id !== '__manager__') {
+      layout.push({
+        id,
+        x: parseInt(item.getAttribute('gs-x') || '0'),
+        y: parseInt(item.getAttribute('gs-y') || '0'),
+        w: parseInt(item.getAttribute('gs-w') || '1'),
+        h: parseInt(item.getAttribute('gs-h') || '1'),
+      });
+    }
+  }
+  ws.send(JSON.stringify({ type: "save-grid-layout", layout }));
 }
 
 window.addEventListener('resize', () => {
@@ -386,10 +417,12 @@ function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&l
 // ---- Event Badges ----
 function addEventBadge(mupName, summary) {
   const badge = document.createElement('div');
+  const isError = mupName === 'Error';
   badge.className = 'event-badge';
+  if (isError) badge.style.borderColor = 'var(--red)';
   badge.textContent = `${mupName}: ${summary}`;
   eventBadges.appendChild(badge);
-  setTimeout(() => badge.remove(), 3000);
+  setTimeout(() => badge.remove(), isError ? 5000 : 3000);
 }
 
 // ---- WebSocket ----
@@ -426,6 +459,7 @@ function clearAllMupWidgets() {
 function handleServerMessage(msg) {
   switch (msg.type) {
     case "mup-catalog": catalog = msg.catalog; renderManagerCard(); break;
+    case "error": addEventBadge("Error", msg.message || "Unknown error"); break;
     case "folder-tree":
       folderTree = msg.tree || [];
       navStack = [];
@@ -446,6 +480,7 @@ function handleServerMessage(msg) {
       clearAllMupWidgets();
       currentWorkspaceName = msg.name;
       if (msg.customNames) window._pendingCustomNames = msg.customNames;
+      if (msg.gridLayout) window._pendingGridLayout = msg.gridLayout;
       addEventBadge("Workspace", `"${msg.name}" loaded`);
       break;
   }
@@ -547,6 +582,18 @@ function handleMupMessage(mupId, mupName, data) {
       const catEntry = catalog.find(c => c.id === mupId);
       if (catEntry) catEntry.active = true;
       renderManagerCard();
+      // Apply saved grid layout if restoring workspace
+      if (window._pendingGridLayout && grid) {
+        const saved = window._pendingGridLayout.find(l => l.id === mupId);
+        if (saved) {
+          for (const item of grid.getGridItems()) {
+            if (item.getAttribute('gs-id') === mupId) {
+              grid.update(item, { x: saved.x, y: saved.y, w: saved.w, h: saved.h });
+              break;
+            }
+          }
+        }
+      }
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "mup-loaded", mupId }));
       return;
     }
@@ -672,10 +719,26 @@ function renderCurrentView() {
   return html;
 }
 
+function renderBreadcrumb() {
+  if (navStack.length === 0) return '';
+  let html = '<div class="manager-breadcrumb"><span data-nav-to="-1">MUPs</span>';
+  for (let i = 0; i < navStack.length; i++) {
+    html += `<span class="bc-sep">/</span>`;
+    if (i < navStack.length - 1) {
+      html += `<span data-nav-to="${i}">${escapeHtml(navStack[i].name)}</span>`;
+    } else {
+      html += `<span class="bc-current">${escapeHtml(navStack[i].name)}</span>`;
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
 function renderManagerCard() {
   if (!grid) return;
 
   const listHtml = renderCurrentView();
+  const breadcrumb = renderBreadcrumb();
 
   if (!managerWidget) {
     const el = document.createElement('div');
@@ -691,6 +754,7 @@ function renderManagerCard() {
           <span class="mup-name">MUPs</span>
           <button class="mup-close-btn" id="folderPickerBtn" title="Open folder">${FOLDER_ICON}</button>
         </div>
+        <div id="managerBreadcrumb">${breadcrumb}</div>
         <div class="manager-list" id="managerList">${listHtml}</div>
       </div>`;
     managerWidget = grid.addWidget(el);
@@ -710,6 +774,8 @@ function renderManagerCard() {
   } else {
     const listEl = managerWidget.querySelector('#managerList');
     if (listEl) listEl.innerHTML = listHtml;
+    const bcEl = managerWidget.querySelector('#managerBreadcrumb');
+    if (bcEl) bcEl.innerHTML = breadcrumb;
   }
 
   bindManagerEvents();
@@ -717,6 +783,19 @@ function renderManagerCard() {
 
 function bindManagerEvents() {
   if (!managerWidget) return;
+
+  // Breadcrumb navigation
+  managerWidget.querySelectorAll('[data-nav-to]').forEach(el => {
+    el.onclick = () => {
+      const target = parseInt(el.dataset.navTo);
+      if (target === -1) {
+        navStack = [];
+      } else {
+        navStack = navStack.slice(0, target + 1);
+      }
+      renderManagerCard();
+    };
+  });
 
   // Folder navigation
   managerWidget.querySelectorAll('.manager-file.is-folder').forEach(el => {
@@ -824,14 +903,17 @@ function renderWorkspaceList(workspaces) {
   wsList.innerHTML = workspaces.map(w => {
     const time = new Date(w.savedAt).toLocaleString();
     const mupList = w.activeMups.join(', ');
+    const label = w.displayName || w.name;
+    const isLast = w.name === '_last';
     const desc = w.description ? `<div class="ws-item-desc">${escapeHtml(w.description)}</div>` : '';
-    return `<div class="ws-item" data-name="${escapeHtml(w.name)}">
+    const style = isLast ? ' style="border-bottom: 2px solid var(--border);"' : '';
+    return `<div class="ws-item" data-name="${escapeHtml(w.name)}"${style}>
       <div class="ws-item-info">
-        <div class="ws-item-name">${escapeHtml(w.name)}</div>
+        <div class="ws-item-name">${escapeHtml(label)}${isLast ? ' <span style="font-size:10px;color:var(--text-tertiary);">(auto)</span>' : ''}</div>
         ${desc}
         <div class="ws-item-meta">${time} &middot; ${mupList || 'no MUPs'}</div>
       </div>
-      <button class="ws-item-del" data-name="${escapeHtml(w.name)}" title="Delete">&times;</button>
+      ${isLast ? '' : `<button class="ws-item-del" data-name="${escapeHtml(w.name)}" title="Delete">&times;</button>`}
     </div>`;
   }).join('');
 
