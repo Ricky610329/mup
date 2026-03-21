@@ -179,7 +179,7 @@
         editor.focus();
       } else {
         editor.style.display = 'none';
-        preview.style.display = '';
+        preview.style.display = 'block';
         preview.innerHTML = marked.parse(editor.value);
       }
       broadcastState();

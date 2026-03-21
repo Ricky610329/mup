@@ -9,6 +9,7 @@
 
 ## Demos
 
+- **[Stop Making Apps. Make MUP.](https://youtu.be/HkmWpmfX46o)** — Full demo: Music, Slides, Pixel Art, Notes
 - **[Draw & Analyze](https://youtu.be/14-4sgN2hSk)** — Pixel Art + Chart
 - **[Beat Making](https://youtu.be/vp6W5ZiFfuM)** — Drum Machine
 - **[See & Draw](https://youtu.be/jk7Hlzcy4ko)** — Camera + Pixel Art
