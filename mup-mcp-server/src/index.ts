@@ -216,61 +216,44 @@ function restoreWorkspace(
 function buildToolDescription(manager: MupManager, port: number): string {
   const catalog = manager.getCatalog();
 
-  const sections: string[] = [
-    `MUP (Model UI Protocol) — Interactive UI panels in the browser at http://localhost:${port}.`,
-    ``,
-    `This single tool handles everything: activate MUPs, call their functions, and check user interactions.`,
-    `MUPs are auto-activated on first use — just call the function directly.`,
-    ``,
-    `## Actions`,
-    ``,
-    `### Call a MUP function (most common)`,
-    `{ "mupId": "mup-chart", "functionName": "renderChart", "functionArgs": { "type": "bar", "data": [...] } }`,
-    ``,
-    `### Check what the user did with the UI`,
-    `{ "action": "checkInteractions" }`,
-    ``,
-    `### View call history for a MUP`,
-    `{ "action": "history", "mupId": "mup-pixel-art" }`,
-    ``,
-    `### Save current workspace (all active MUPs + their states)`,
-    `{ "action": "save", "name": "my project", "description": "Working on logo design with pixel art" }`,
-    ``,
-    `### Load a saved workspace`,
-    `{ "action": "load", "name": "my project" }`,
-    ``,
-    `### List saved workspaces`,
-    `{ "action": "workspaces" }`,
-    ``,
-    `### List available MUPs`,
-    `{ "action": "list" }`,
-    ``,
-    `## Available MUPs`,
-  ];
+  // Compact: only list MUP IDs and names. Full function details returned on activate/list.
+  const mupLines = catalog.map((e) => {
+    const status = e.active ? "ACTIVE" : "available";
+    const fns = e.manifest.functions.map((f) => f.name).join(", ");
+    return `  ${e.manifest.id} (${status}) — ${e.manifest.name}. Functions: ${fns}`;
+  });
 
-  for (const entry of catalog) {
-    const m = entry.manifest;
-    const status = entry.active ? "ACTIVE" : "available";
-    sections.push(`\n### ${m.id} (${status})`);
-    sections.push(`${m.name}: ${m.description}`);
+  return [
+    `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
+    ``,
+    `Call function: { "mupId": "mup-chart", "functionName": "renderChart", "functionArgs": { ... } }`,
+    `Check user UI activity: { "action": "checkInteractions" }`,
+    `Save workspace: { "action": "save", "name": "...", "description": "..." }`,
+    `Load workspace: { "action": "load", "name": "..." }`,
+    `List workspaces: { "action": "workspaces" }`,
+    `List MUPs with full details: { "action": "list" }`,
+    `View history: { "action": "history" }`,
+    ``,
+    `MUPs:`,
+    ...mupLines,
+  ].join("\n");
+}
 
-    if (m.functions.length > 0) {
-      sections.push(`Functions:`);
-      for (const fn of m.functions) {
-        const schema = fn.inputSchema as Record<string, unknown>;
-        const props = (schema.properties || {}) as Record<string, unknown>;
-        const required = (schema.required || []) as string[];
-        const paramList = Object.entries(props).map(([k, v]) => {
-          const info = v as Record<string, unknown>;
-          const req = required.includes(k) ? "" : "?";
-          return `${k}${req}: ${info.type || "any"}`;
-        });
-        sections.push(`  - ${fn.name}(${paramList.join(", ")}) — ${fn.description}`);
-      }
-    }
+/** Build detailed function info for a single MUP (returned on activate/list) */
+function buildMupDetail(manifest: { name: string; id: string; description: string; functions: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> }): string {
+  const lines = [`${manifest.name} (${manifest.id}): ${manifest.description}`];
+  for (const fn of manifest.functions) {
+    const schema = fn.inputSchema;
+    const props = (schema.properties || {}) as Record<string, unknown>;
+    const required = (schema.required || []) as string[];
+    const paramList = Object.entries(props).map(([k, v]) => {
+      const info = v as Record<string, unknown>;
+      const req = required.includes(k) ? "" : "?";
+      return `${k}${req}: ${info.type || "any"}`;
+    });
+    lines.push(`  - ${fn.name}(${paramList.join(", ")}) — ${fn.description}`);
   }
-
-  return sections.join("\n");
+  return lines.join("\n");
 }
 
 // ---- Main ----
@@ -360,14 +343,14 @@ Options:
   }
 
   // --- Auto-activate helper ---
-  function ensureActive(mupId: string): { error?: string } {
+  function ensureActive(mupId: string): { error?: string; activated?: string } {
     if (manager.isActive(mupId)) return {};
     const mup = manager.activate(mupId);
     if (!mup) return { error: `MUP "${mupId}" not found. Use { "action": "list" } to see available MUPs.` };
     sendLoadMup(mupId, mup);
     autoSave(manager);
     console.error(`[mup-mcp] Auto-activated: ${mup.manifest.name}`);
-    return {};
+    return { activated: buildMupDetail(mup.manifest) };
   }
 
   // Handle browser-side activation/deactivation
@@ -411,6 +394,9 @@ Options:
   // Save state when MUPs report state changes
   bridge.on("state-update", () => autoSave(manager));
 
+  // Auto-save every 30 seconds
+  setInterval(() => autoSave(manager), 30_000);
+
   // --- Workspace events from browser ---
   bridge.on("list-workspaces", () => {
     const workspaces = listWorkspaces();
@@ -427,8 +413,20 @@ Options:
     restoreWorkspace(name, manager, bridge, sendLoadMup);
   });
 
-  bridge.on("delete-workspace", (name: string) => {
+  bridge.on("delete-workspace", (name: string, isCurrent?: boolean) => {
     deleteWorkspace(name);
+    if (isCurrent) {
+      // Clear all active MUPs
+      for (const mup of manager.getAll()) manager.deactivate(mup.manifest.id);
+      for (const k of Object.keys(callHistory)) delete callHistory[k];
+      currentDescription = "";
+      const catalogData = manager.getCatalog().map((e) => ({
+        id: e.manifest.id, name: e.manifest.name, description: e.manifest.description,
+        functions: e.manifest.functions.length, active: e.active, grid: e.manifest.grid,
+      }));
+      bridge.sendRaw({ type: "workspace-cleared" });
+      bridge.sendRaw({ type: "mup-catalog", catalog: catalogData });
+    }
     bridge.sendRaw({ type: "workspace-list", workspaces: listWorkspaces() });
   });
 
@@ -534,15 +532,14 @@ Options:
       return { content: [text(ok ? `Workspace "${name}" deleted.` : `Workspace "${name}" not found.`)] };
     }
 
-    // --- action: list ---
+    // --- action: list (full details) ---
     if (args.action === "list") {
       const catalog = manager.getCatalog();
-      const lines = catalog.map((e) => {
+      const sections = catalog.map((e) => {
         const status = e.active ? "[ACTIVE]" : "[available]";
-        const fns = e.manifest.functions.map((f) => f.name).join(", ");
-        return `${status} ${e.manifest.id} — ${e.manifest.name}: ${e.manifest.description}. Functions: ${fns}`;
+        return `${status} ${buildMupDetail(e.manifest)}`;
       });
-      return { content: [text(lines.join("\n"))] };
+      return { content: [text(sections.join("\n\n"))] };
     }
 
     // --- action: checkInteractions ---
@@ -645,10 +642,14 @@ Options:
     addCallHistory(mupId, fn, fnArgs, resultText);
 
     // Build response
-    const content: Array<{ type: "text"; text: string }> = result.content.map((c) => ({
-      type: "text" as const,
-      text: c.text || JSON.stringify(c.data || ""),
-    }));
+    const content: Array<{ type: "text"; text: string }> = [];
+    // If just activated, prepend function details so Claude knows the API
+    if (activation.activated) {
+      content.push(text(`[Auto-activated] ${activation.activated}`));
+    }
+    for (const c of result.content) {
+      content.push({ type: "text" as const, text: c.text || JSON.stringify(c.data || "") });
+    }
 
     // Only auto-append "discuss" interactions (user explicitly wants LLM attention)
     // Other interactions stay in queue for checkInteractions

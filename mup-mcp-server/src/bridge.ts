@@ -228,7 +228,7 @@ export class UiBridge extends EventEmitter {
         break;
 
       case "delete-workspace":
-        this.emit("delete-workspace", msg.name as string);
+        this.emit("delete-workspace", msg.name as string, msg.isCurrent as boolean);
         break;
     }
   }

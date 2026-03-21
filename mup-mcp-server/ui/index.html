@@ -412,6 +412,16 @@ function connect() {
 }
 
 let catalog = [];
+let currentWorkspaceName = null;
+
+function clearAllMupWidgets() {
+  if (grid) {
+    for (const item of grid.getGridItems()) {
+      if (item.getAttribute('gs-id') !== '__manager__') grid.removeWidget(item);
+    }
+  }
+  mups.clear();
+}
 
 function handleServerMessage(msg) {
   switch (msg.type) {
@@ -420,15 +430,16 @@ function handleServerMessage(msg) {
     case "call": callMupFunction(msg.callId, msg.mupId, msg.fn, msg.args); break;
     case "workspace-list": renderWorkspaceList(msg.workspaces); break;
     case "workspace-saved": addEventBadge("Workspace", `"${msg.name}" saved`); break;
+    case "workspace-cleared":
+      clearAllMupWidgets();
+      currentWorkspaceName = null;
+      for (const c of catalog) c.active = false;
+      renderManagerCard();
+      addEventBadge("Workspace", "Cleared");
+      break;
     case "workspace-loaded":
-      // Remove all current MUP widgets (reload will come via load-mup)
-      if (grid) {
-        for (const item of grid.getGridItems()) {
-          if (item.getAttribute('gs-id') !== '__manager__') grid.removeWidget(item);
-        }
-      }
-      mups.clear();
-      // Store custom names to apply when MUPs load
+      clearAllMupWidgets();
+      currentWorkspaceName = msg.name;
       if (msg.customNames) window._pendingCustomNames = msg.customNames;
       addEventBadge("Workspace", `"${msg.name}" loaded`);
       break;
@@ -594,16 +605,19 @@ const browserMupCache = new Map();
 
 const FILE_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" opacity="0.3"><path d="M3 1a1 1 0 00-1 1v12a1 1 0 001 1h8l4-4V2a1 1 0 00-1-1H3zm6 0v4h4"/></svg>';
 const FOLDER_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>';
+const BACK_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 2L4 8l6 6"/></svg>';
 
-// Browser folder scanning
-let browserFiles = [];
+// Browser folder scanning — returns tree structure
+let folderTree = []; // [{type:'folder',name,children}, {type:'file',id,name,...}]
+let navStack = []; // navigation stack for folder drill-down
 
 async function scanDirectoryHandle(dirHandle) {
-  const items = [];
+  const folders = [];
+  const files = [];
   for await (const [name, handle] of dirHandle) {
     if (handle.kind === 'directory' && !name.startsWith('.')) {
       const children = await scanDirectoryHandle(handle);
-      items.push(...children);
+      if (children.length > 0) folders.push({ type: 'folder', name, children });
     } else if (handle.kind === 'file' && name.endsWith('.html')) {
       try {
         const file = await handle.getFile();
@@ -614,26 +628,49 @@ async function scanDirectoryHandle(dirHandle) {
         const id = raw.id || 'mup-' + name.replace('.html', '');
         browserMupCache.set(id, { html, name, manifest: raw });
         const isActive = catalog.some(c => c.id === id && c.active);
-        items.push({ id, name: raw.name || name, description: raw.description || '', functions: (raw.functions || []).length, active: isActive });
+        files.push({ type: 'file', id, name: raw.name || name, description: raw.description || '', active: isActive });
       } catch {}
     }
   }
-  return items;
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => a.name.localeCompare(b.name));
+  return [...folders, ...files];
+}
+
+function getCurrentViewItems() {
+  if (folderTree.length > 0) {
+    if (navStack.length === 0) return folderTree;
+    return navStack[navStack.length - 1].children;
+  }
+  // Fallback: flat catalog
+  return catalog.map(c => ({ type: 'file', id: c.id, name: c.name, description: c.description || '', active: c.active }));
+}
+
+function renderCurrentView() {
+  const items = getCurrentViewItems();
+  let html = '';
+
+  // Back button
+  if (navStack.length > 0) {
+    html += `<div class="manager-file is-folder" data-action="back">${BACK_ICON}<span class="manager-file-name">..</span></div>`;
+  }
+
+  for (const item of items) {
+    if (item.type === 'folder') {
+      html += `<div class="manager-file is-folder" data-folder="${escapeHtml(item.name)}">${FOLDER_ICON}<span class="manager-file-name">${escapeHtml(item.name)}</span></div>`;
+    } else {
+      const isActive = item.active || catalog.some(c => c.id === item.id && c.active);
+      const cls = isActive ? 'manager-file active' : 'manager-file';
+      html += `<div class="${cls}" data-id="${item.id}" title="${escapeHtml(item.description || item.name)}">${FILE_ICON}<span class="manager-file-name">${escapeHtml(item.name)}</span></div>`;
+    }
+  }
+  return html;
 }
 
 function renderManagerCard() {
   if (!grid) return;
 
-  // Merge server catalog + browser-scanned files
-  const allItems = [...catalog];
-  for (const bf of browserFiles) {
-    if (!allItems.some(c => c.id === bf.id)) allItems.push(bf);
-  }
-
-  let listHtml = allItems.map(c => {
-    const cls = c.active ? 'manager-file active' : 'manager-file';
-    return `<div class="${cls}" data-id="${c.id}" title="${escapeHtml(c.description || c.name)}">${FILE_ICON}<span class="manager-file-name">${escapeHtml(c.name)}</span></div>`;
-  }).join('');
+  const listHtml = renderCurrentView();
 
   if (!managerWidget) {
     const el = document.createElement('div');
@@ -658,9 +695,11 @@ function renderManagerCard() {
       e.stopPropagation();
       try {
         const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-        browserFiles = await scanDirectoryHandle(dirHandle);
+        folderTree = await scanDirectoryHandle(dirHandle);
+        navStack = [];
         renderManagerCard();
-        addEventBadge("MUPs", `Scanned ${browserFiles.length} MUPs from folder`);
+        const count = browserMupCache.size;
+        addEventBadge("MUPs", `Scanned ${count} MUPs from folder`);
       } catch {}
     });
   } else {
@@ -668,22 +707,43 @@ function renderManagerCard() {
     if (listEl) listEl.innerHTML = listHtml;
   }
 
-  // Bind double-click to activate
-  if (managerWidget) {
-    managerWidget.querySelectorAll('.manager-file:not(.active)').forEach(el => {
-      el.ondblclick = () => {
-        const id = el.dataset.id;
-        if (!id) return;
-        const cached = browserMupCache.get(id);
-        if (cached && ws && ws.readyState === WebSocket.OPEN) {
-          // Browser-loaded MUP: send HTML to server for registration
-          ws.send(JSON.stringify({ type: "register-and-activate", mupId: id, html: cached.html, fileName: cached.name }));
-        } else if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "activate-mup", mupId: id }));
-        }
-      };
-    });
-  }
+  bindManagerEvents();
+}
+
+function bindManagerEvents() {
+  if (!managerWidget) return;
+
+  // Folder navigation
+  managerWidget.querySelectorAll('.manager-file.is-folder').forEach(el => {
+    el.onclick = () => {
+      if (el.dataset.action === 'back') {
+        navStack.pop();
+        renderManagerCard();
+        return;
+      }
+      const folderName = el.dataset.folder;
+      const items = getCurrentViewItems();
+      const folder = items.find(i => i.type === 'folder' && i.name === folderName);
+      if (folder && folder.children) {
+        navStack.push(folder);
+        renderManagerCard();
+      }
+    };
+  });
+
+  // Double-click file to activate
+  managerWidget.querySelectorAll('.manager-file:not(.active):not(.is-folder)').forEach(el => {
+    el.ondblclick = () => {
+      const id = el.dataset.id;
+      if (!id) return;
+      const cached = browserMupCache.get(id);
+      if (cached && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "register-and-activate", mupId: id, html: cached.html, fileName: cached.name }));
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "activate-mup", mupId: id }));
+      }
+    };
+  });
 }
 
 // ---- Workspace UI ----
@@ -789,7 +849,9 @@ function renderWorkspaceList(workspaces) {
       const name = btn.dataset.name;
       if (name && confirm(`Delete workspace "${name}"?`)) {
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "delete-workspace", name }));
+          const isCurrent = name === currentWorkspaceName;
+          ws.send(JSON.stringify({ type: "delete-workspace", name, isCurrent }));
+          if (isCurrent) closeWorkspacePanel();
         }
       }
     });
