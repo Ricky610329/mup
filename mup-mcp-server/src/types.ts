@@ -69,6 +69,7 @@ export type BrowserMessage =
   | { type: "activate-mup"; mupId: string }
   | { type: "deactivate-mup"; mupId: string }
   | { type: "register-and-activate"; mupId: string; html: string; fileName: string }
+  | { type: "load-folder"; mups: Array<{ mupId: string; html: string; fileName: string }> }
   | { type: "new-instance"; mupId: string; customName?: string }
   | { type: "list-workspaces" }
   | { type: "save-workspace"; name: string; description?: string }
@@ -100,6 +101,7 @@ export interface BridgeEvents {
   "deactivate-mup": (mupId: string) => void;
   "new-instance": (baseMupId: string, customName?: string) => void;
   "register-and-activate": (mupId: string, html: string, fileName: string) => void;
+  "load-folder": (mups: Array<{ mupId: string; html: string; fileName: string }>) => void;
   "state-update": (mupId: string, summary: string, data?: unknown) => void;
   "interaction": (mupId: string, action: string, summary: string) => void;
   "save-grid-layout": (layout: GridLayoutItem[]) => void;

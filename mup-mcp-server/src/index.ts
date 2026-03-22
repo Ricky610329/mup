@@ -113,6 +113,14 @@ function setupBrowserEvents(bridge: UiBridge, manager: MupManager, ws: Workspace
     }
   });
 
+  bridge.typedOn("load-folder", (mups) => {
+    for (const { html, fileName } of mups) {
+      try { manager.scanFromHtml(html, fileName); }
+      catch (err: unknown) { console.error(`[mup-mcp] Skipping ${fileName}: ${(err as Error).message}`); }
+    }
+    bridge.sendRaw({ type: "mup-catalog", catalog: bridge.buildCatalogSummary() });
+  });
+
   bridge.typedOn("register-and-activate", (mupId, html, fileName) => {
     try {
       const manifest = manager.parseManifest(html, fileName);

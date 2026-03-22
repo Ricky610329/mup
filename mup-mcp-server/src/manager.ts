@@ -130,6 +130,15 @@ export class MupManager {
     return entry?.manifest.multiInstance ?? false;
   }
 
+  /** Register a MUP from HTML string into catalog without activating */
+  scanFromHtml(html: string, filePath: string): MupManifest {
+    const manifest = this.parseManifest(html, filePath);
+    if (!this.catalog.has(manifest.id)) {
+      this.catalog.set(manifest.id, { manifest, html, filePath, active: false });
+    }
+    return manifest;
+  }
+
   loadFromHtml(html: string, filePath: string): MupManifest {
     const manifest = this.parseManifest(html, filePath);
     const existing = this.catalog.get(manifest.id);

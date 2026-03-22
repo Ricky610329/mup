@@ -262,6 +262,21 @@
     .manager-breadcrumb .bc-sep { cursor: default; color: var(--text-tertiary); }
     .manager-breadcrumb .bc-current { cursor: default; color: var(--text-tertiary); }
 
+    .manager-empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 24px 16px; text-align: center; flex: 1;
+      color: var(--text-secondary); font-size: 13px;
+    }
+    .manager-empty-icon { opacity: 0.3; margin-bottom: 4px; }
+    .manager-empty-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 8px;
+      background: var(--text-primary); color: var(--bg-base); border: none;
+      cursor: pointer; font-size: 13px; font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    .manager-empty-btn:hover { opacity: 0.85; }
+
     /* Event badge */
     .event-badges {
       position: fixed; bottom: 16px; right: 16px;
@@ -847,8 +862,11 @@ function renderCurrentView() {
   let html = '';
 
   if (items.length === 0 && navStack.length === 0) {
-    html = '<div style="padding:12px;font-size:11px;color:var(--text-tertiary);text-align:center;">No MUPs loaded.<br>Click ${FOLDER_ICON} to open a folder.</div>';
-    return html;
+    return `<div class="manager-empty">
+      <svg class="manager-empty-icon" width="36" height="36" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>
+      <span>No MUPs loaded</span>
+      <button class="manager-empty-btn" id="emptyOpenFolderBtn">${FOLDER_ICON} Open Folder</button>
+    </div>`;
   }
 
   // Back button
@@ -922,6 +940,14 @@ function renderManagerCard() {
         browserFolderName = dirHandle.name;
         folderTree = await scanDirectoryHandle(dirHandle);
         navStack = [];
+        // Batch-register all valid MUPs to server catalog (without activating)
+        if (ws && ws.readyState === WebSocket.OPEN && browserMupCache.size > 0) {
+          const mups = [];
+          for (const [mupId, cached] of browserMupCache) {
+            mups.push({ mupId, html: cached.html, fileName: cached.name });
+          }
+          ws.send(JSON.stringify({ type: "load-folder", mups }));
+        }
         renderManagerCard();
         const count = browserMupCache.size;
         addEventBadge("MUPs", `Scanned ${count} MUPs from folder`);
@@ -945,6 +971,15 @@ function renderManagerCard() {
 
 function bindManagerEvents() {
   if (!managerWidget) return;
+
+  // Empty state "Open Folder" button
+  const emptyBtn = managerWidget.querySelector('#emptyOpenFolderBtn');
+  if (emptyBtn) {
+    emptyBtn.onclick = () => {
+      const pickerBtn = managerWidget.querySelector('#folderPickerBtn');
+      if (pickerBtn) pickerBtn.click();
+    };
+  }
 
   // Breadcrumb navigation
   managerWidget.querySelectorAll('[data-nav-to]').forEach(el => {

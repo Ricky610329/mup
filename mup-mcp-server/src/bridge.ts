@@ -216,6 +216,10 @@ export class UiBridge extends EventEmitter {
         this.typedEmit("register-and-activate", msg.mupId, msg.html, msg.fileName);
         break;
 
+      case "load-folder":
+        this.typedEmit("load-folder", msg.mups);
+        break;
+
       case "new-instance":
         this.typedEmit("new-instance", msg.mupId, msg.customName);
         break;
