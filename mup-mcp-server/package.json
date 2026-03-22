@@ -1,6 +1,6 @@
 {
   "name": "mup-mcp-server",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server that turns HTML MUP panels into interactive tools for LLMs — render UI, call functions, and pipe data between panels",
   "type": "module",
   "license": "MIT",
