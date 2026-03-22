@@ -1,6 +1,6 @@
 {
   "name": "mup-mcp-server",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "MCP server that turns HTML MUP panels into interactive tools for LLMs — render UI, call functions, and pipe data between panels",
   "type": "module",
   "license": "MIT",
@@ -33,7 +33,8 @@
   "scripts": {
     "build": "tsc",
     "prepare": "npm run build",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "node --test dist/__tests__/*.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

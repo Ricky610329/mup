@@ -528,7 +528,7 @@ window.addEventListener('load', () => {
   }, 100);
 });
 
-function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 
 // ---- Event Badges ----
 function addEventBadge(mupName, summary) {
@@ -720,7 +720,11 @@ function setupMupIframe(mupId, manifest, iframe, html, savedState) {
     if (savedState) initParams.savedState = savedState;
     port.postMessage({ jsonrpc: "2.0", id: initId, method: "initialize", params: initParams });
   };
-  iframe.onerror = () => URL.revokeObjectURL(blobUrl);
+  iframe.onerror = () => {
+    URL.revokeObjectURL(blobUrl);
+    const body = iframe.parentElement;
+    if (body) body.innerHTML = '<div style="padding:12px;color:#c00;">Failed to load MUP</div>';
+  };
 
   iframe.src = blobUrl;
   mups.set(mupId, { iframe, port, manifest, customName: null });

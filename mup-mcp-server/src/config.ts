@@ -15,8 +15,6 @@ export const CONFIG = {
   maxResponseLength: 2000,
   /** Delay before auto-opening browser (ms) */
   browserOpenDelayMs: 3000,
-  /** Wait for MUP initialization before first call (ms) */
-  mupInitWaitMs: 500,
   /** Max pending interaction events per MUP */
   maxPendingEvents: 50,
   /** Max call history entries per MUP */

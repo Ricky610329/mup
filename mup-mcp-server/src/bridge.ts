@@ -44,7 +44,7 @@ export class UiBridge extends EventEmitter {
     this.port = port;
 
     this.httpServer = http.createServer((req, res) => this.handleHttp(req, res));
-    this.wss = new WebSocketServer({ server: this.httpServer });
+    this.wss = new WebSocketServer({ server: this.httpServer, maxPayload: 10 * 1024 * 1024 });
 
     this.wss.on("connection", (ws) => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {

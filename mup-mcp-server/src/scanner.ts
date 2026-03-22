@@ -33,8 +33,12 @@ export function buildFolderTree(dir: string, manager: MupManager): FolderTreeNod
           description: manifest.description, active: catalogEntry?.active || false,
           multiInstance: manifest.multiInstance || false,
         });
-      } catch {
-        // Non-MUP HTML file — expected, skip silently
+      } catch (err) {
+        // If file has a manifest tag, it's a broken MUP — warn the developer
+        const content = fs.readFileSync(path.join(dir, entry.name), "utf-8");
+        if (content.includes("application/mup-manifest")) {
+          console.error(`[mup-mcp] Skipping ${entry.name}: ${(err as Error).message}`);
+        }
       }
     }
   }
