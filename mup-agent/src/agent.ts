@@ -391,6 +391,24 @@ export function createMupAgent(opts: MupAgentOptions): Agent {
     }
   });
 
+  // ---- Load folder (batch register without activating) ----
+
+  bridge.on("load-folder", (mups: Array<{ mupId: string; html: string; fileName: string }>) => {
+    for (const { html, fileName } of mups) {
+      try {
+        manager.scanFromHtml(html, fileName);
+      } catch (err) {
+        console.error(`[mup-agent] Skipping ${fileName}: ${(err as Error).message}`);
+      }
+    }
+    // Broadcast updated catalog
+    const catalog = manager.getCatalog().map(e => ({
+      id: e.manifest.id, name: e.manifest.name, description: e.manifest.description,
+      functions: e.manifest.functions.length, active: e.active, grid: e.manifest.grid,
+    }));
+    bridge.sendRaw({ type: "mup-catalog", catalog });
+  });
+
   // ---- System requests from MUPs ----
 
   bridge.on("system-request", async (mupId: string, requestId: string, action: string, params: any) => {

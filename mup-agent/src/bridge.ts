@@ -248,6 +248,10 @@ export class UiBridge extends EventEmitter {
         this.emit("register-and-activate", msg.mupId as string, msg.html as string, msg.fileName as string);
         break;
 
+      case "load-folder":
+        this.emit("load-folder", msg.mups as Array<{ mupId: string; html: string; fileName: string }>);
+        break;
+
       case "deactivate-mup":
         this.emit("deactivate-mup", msg.mupId as string);
         break;

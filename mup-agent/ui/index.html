@@ -418,6 +418,23 @@
     .manager-file.is-folder { cursor: pointer; }
     .manager-file.is-folder .manager-file-name { font-weight: 500; }
 
+    .manager-empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 24px 16px; text-align: center; flex: 1;
+      color: var(--text-secondary); font-size: 13px;
+    }
+    .manager-empty-icon {
+      opacity: 0.3; margin-bottom: 4px;
+    }
+    .manager-empty-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 8px;
+      background: var(--accent); color: #fff; border: none;
+      cursor: pointer; font-size: 13px; font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    .manager-empty-btn:hover { opacity: 0.85; }
+
     .mup-card-body {
       flex: 1; position: relative; overflow: hidden;
       background: var(--bg-mup-body);
@@ -1462,6 +1479,16 @@ function getCurrentViewItems() {
 function renderCurrentView() {
   const items = getCurrentViewItems();
   currentItems = items;
+
+  // Empty state: no folder loaded and no catalog items
+  if (items.length === 0 && navStack.length === 0) {
+    return `<div class="manager-empty">
+      <svg class="manager-empty-icon" width="36" height="36" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>
+      <span>No MUPs loaded</span>
+      <button class="manager-empty-btn" id="emptyOpenFolderBtn">${FOLDER_ICON_SM} Open Folder</button>
+    </div>`;
+  }
+
   let html = '';
 
   // ".." back button if inside a subfolder
@@ -1569,6 +1596,15 @@ function bindManagerEvents() {
     };
   });
 
+  // Empty state "Open Folder" button
+  const emptyBtn = managerWidget.querySelector('#emptyOpenFolderBtn');
+  if (emptyBtn) {
+    emptyBtn.onclick = () => {
+      const folderBtn2 = managerWidget.querySelector('#changeFolderBtn');
+      if (folderBtn2) folderBtn2.click();
+    };
+  }
+
   // Change folder button — use File System Access API
   const folderBtn = managerWidget.querySelector('#changeFolderBtn');
   if (folderBtn) {
@@ -1578,6 +1614,14 @@ function bindManagerEvents() {
         currentFolder = dirHandle.name;
         folderTree = await scanDirectoryHandle(dirHandle);
         navStack = []; // reset navigation
+        // Batch-register all valid MUPs to server catalog (without activating)
+        if (ws && ws.readyState === WebSocket.OPEN && browserMupCache.size > 0) {
+          const mups = [];
+          for (const [mupId, cached] of browserMupCache) {
+            mups.push({ mupId, html: cached.html, fileName: cached.name });
+          }
+          ws.send(JSON.stringify({ type: "load-folder", mups }));
+        }
         renderManagerCard();
       } catch (e) {
         // User cancelled

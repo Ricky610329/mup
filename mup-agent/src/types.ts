@@ -32,6 +32,7 @@ export type ClientMessage =
   | { type: "activate-mup"; mupId: string }
   | { type: "deactivate-mup"; mupId: string }
   | { type: "register-and-activate"; mupId: string; html: string; fileName: string }
+  | { type: "load-folder"; mups: Array<{ mupId: string; html: string; fileName: string }> }
   | { type: "scan-folder"; path: string }
   | { type: "list-sessions" }
   | { type: "load-session"; sessionId: string }
