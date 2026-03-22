@@ -124,6 +124,17 @@ export class UiBridge extends EventEmitter {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
+  /** Wait for a specific MUP to finish loading in the browser, with timeout fallback */
+  waitForMupLoaded(mupId: string, timeoutMs = CONFIG.functionCallTimeoutMs): Promise<void> {
+    return new Promise((resolve) => {
+      const onLoaded = (loadedId: string) => {
+        if (loadedId === mupId) { clearTimeout(timer); this.removeListener("mup-loaded", onLoaded); resolve(); }
+      };
+      const timer = setTimeout(() => { this.removeListener("mup-loaded", onLoaded); resolve(); }, timeoutMs);
+      this.on("mup-loaded", onLoaded);
+    });
+  }
+
   // ---- Communication ----
 
   sendRaw(msg: ServerMessage): void {
@@ -182,6 +193,7 @@ export class UiBridge extends EventEmitter {
 
       case "mup-loaded":
         console.error(`[mup-mcp] MUP initialized: ${msg.mupId}`);
+        this.typedEmit("mup-loaded", msg.mupId);
         break;
 
       case "result": {

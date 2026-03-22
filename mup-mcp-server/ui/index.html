@@ -720,6 +720,7 @@ function setupMupIframe(mupId, manifest, iframe, html, savedState) {
     if (savedState) initParams.savedState = savedState;
     port.postMessage({ jsonrpc: "2.0", id: initId, method: "initialize", params: initParams });
   };
+  iframe.onerror = () => URL.revokeObjectURL(blobUrl);
 
   iframe.src = blobUrl;
   mups.set(mupId, { iframe, port, manifest, customName: null });

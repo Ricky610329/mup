@@ -258,7 +258,7 @@ function setupMcpServer(
     if (activation.error) return { content: [text(activation.error)], isError: true };
 
     const fnArgs = parseArgs(args.functionArgs);
-    if (!manager.get(mupId)?.stateSummary && manager.isActive(mupId)) await new Promise((r) => setTimeout(r, CONFIG.mupInitWaitMs));
+    if (!manager.get(mupId)?.stateSummary && manager.isActive(mupId)) await bridge.waitForMupLoaded(mupId);
 
     const result = await bridge.callFunction(mupId, fn, fnArgs);
     const resultText = result.content.map((c) => c.text || "").join(" ").trim();
