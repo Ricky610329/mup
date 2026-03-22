@@ -106,6 +106,28 @@ export class MupManager {
     return loaded;
   }
 
+  /** Create an instance of a multi-instance MUP with a specific instance ID (for workspace restore) */
+  activateInstanceWithId(baseMupId: string, instanceId: string): LoadedMup | null {
+    const entry = this.catalog.get(baseMupId);
+    if (!entry || !entry.manifest.multiInstance) return null;
+    if (this.mups.has(instanceId)) return null;
+
+    const match = instanceId.match(/_(\d+)$/);
+    const n = match ? parseInt(match[1], 10) : 2;
+
+    const manifest = { ...entry.manifest, id: instanceId, name: `${entry.manifest.name} #${n}` };
+    const loaded: LoadedMup = {
+      manifest,
+      html: entry.html,
+      filePath: entry.filePath,
+      stateSummary: "",
+      stateData: undefined,
+      pendingEvents: [],
+    };
+    this.mups.set(instanceId, loaded);
+    return loaded;
+  }
+
   deactivate(mupId: string): void {
     this.mups.delete(mupId);
     // Only mark catalog entry inactive if no instances remain

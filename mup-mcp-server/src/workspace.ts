@@ -190,7 +190,13 @@ export class WorkspaceManager {
 
     const restored: string[] = [];
     for (const mupId of data.activeMups) {
-      const mup = this.manager.activate(mupId);
+      let mup: ReturnType<typeof this.manager.activate>;
+      const instanceMatch = mupId.match(/^(.+)_(\d+)$/);
+      if (instanceMatch) {
+        mup = this.manager.activateInstanceWithId(instanceMatch[1], mupId);
+      } else {
+        mup = this.manager.activate(mupId);
+      }
       if (mup) {
         if (data.mupStates[mupId] !== undefined) mup.stateData = data.mupStates[mupId];
         restored.push(this.customNames[mupId] || mup.manifest.name);
