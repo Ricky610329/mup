@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as net from "node:net";
 import { exec } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -300,6 +301,16 @@ function setupLifecycle(ws: WorkspaceManager): void {
 
 async function main() {
   const { mupFiles, mupsDirs, port: requestedPort, noOpen } = parseCliArgs();
+
+  // Default to ../examples if no MUPs specified
+  if (mupFiles.length === 0 && mupsDirs.length === 0) {
+    const defaultDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "examples");
+    if (fs.existsSync(defaultDir)) {
+      mupFiles.push(...scanHtmlFiles(defaultDir));
+      mupsDirs.push(defaultDir);
+      console.error(`[mup-mcp] No MUPs specified — loading defaults from ${defaultDir}`);
+    }
+  }
 
   // --- Manager & Workspace ---
   const manager = new MupManager();

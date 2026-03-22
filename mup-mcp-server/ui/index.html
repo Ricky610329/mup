@@ -522,7 +522,7 @@ window.addEventListener('resize', () => {
 window.addEventListener('load', () => {
   setTimeout(() => {
     initGrid();
-    if (catalog.length > 0) renderManagerCard();
+    renderManagerCard();
     for (const p of pendingMups) loadMup(p.mupId, p.html, p.manifest, p.savedState);
     pendingMups.length = 0;
   }, 100);
