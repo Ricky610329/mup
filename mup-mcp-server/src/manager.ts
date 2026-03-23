@@ -26,6 +26,7 @@ export interface MupManifest {
   functions: MupFunction[];
   permissions?: string[];
   multiInstance?: boolean;
+  darkMode?: boolean;
 }
 
 export interface LoadedMup {
@@ -201,6 +202,7 @@ export class MupManager {
       })),
       permissions: raw.permissions,
       multiInstance: raw.multiInstance ?? false,
+      darkMode: raw.darkMode ?? false,
     };
   }
 

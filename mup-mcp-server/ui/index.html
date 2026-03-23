@@ -35,7 +35,7 @@
     [data-theme="dark"] {
       --bg-base: #1a1a1a;
       --bg-panel: rgba(30, 30, 30, 0.95);
-      --bg-mup-body: #242424;
+      --bg-mup-body: #ffffff;
       --text-primary: #e5e5e5;
       --text-secondary: rgba(255, 255, 255, 0.5);
       --text-tertiary: rgba(255, 255, 255, 0.25);
@@ -46,6 +46,9 @@
       --accent: #e5e5e5;
       --accent-text: #1a1a1a;
       --shadow-badge: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    [data-theme="dark"] .mup-card-body[data-dark-mode] {
+      background: #242424;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -250,6 +253,7 @@ class MupSDK {
   constructor() {
     this._port = null; this._functions = new Map(); this._readyCallback = null;
     this._pendingRequests = new Map(); this._nextId = 1; this._initialized = false;
+    this._themeCallback = null; this.theme = 'light';
     window.addEventListener("message", (event) => {
       if (event.data && event.data.type === "mup:init" && event.ports[0]) {
         this._port = event.ports[0];
@@ -259,6 +263,7 @@ class MupSDK {
   }
   registerFunction(name, handler) { this._functions.set(name, handler); }
   onReady(callback) { this._readyCallback = callback; if (this._initialized && this._initParams) callback(this._initParams); }
+  onThemeChange(callback) { this._themeCallback = callback; if (this.theme) callback(this.theme); }
   updateState(summary, data) { this._notify("notifications/state/update", { summary, data }); }
   notifyInteraction(action, summary, data) { this._notify("notifications/interaction", { action, summary, data }); }
   system(action, params) { return this._request("system/request", { action, params }); }
@@ -274,12 +279,18 @@ class MupSDK {
   }
   _handleNotification(msg) {
     if (msg.method === "notifications/shutdown") this._notify("notifications/shutdown/complete", {});
+    if (msg.method === "notifications/theme") {
+      this.theme = msg.params?.theme || 'light';
+      if (this._themeCallback) this._themeCallback(this.theme);
+    }
   }
   async _handleRequest(msg) {
     const { id, method, params } = msg;
     if (method === "initialize") {
       this._initParams = params; this._initialized = true;
+      if (params.theme) { this.theme = params.theme; }
       this._sendResponse(id, { protocolVersion: "mup/2026-03-17", mupInfo: { name: document.title || "MUP", version: "1.0.0" } });
+      if (this._themeCallback) this._themeCallback(this.theme);
       if (this._readyCallback) this._readyCallback(params);
       return;
     }
@@ -314,6 +325,14 @@ function applyTheme(theme) {
   const btn = document.getElementById('themeToggleBtn');
   btn.innerHTML = theme === 'dark' ? sunIcon : moonIcon;
   btn.title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  // Broadcast theme to darkMode-opted MUPs
+  if (typeof mups !== 'undefined') {
+    for (const [, mup] of mups) {
+      if (mup.manifest.darkMode && mup.port) {
+        mup.port.postMessage({ jsonrpc: "2.0", method: "notifications/theme", params: { theme } });
+      }
+    }
+  }
 }
 applyTheme(localStorage.getItem('mup-theme') || 'light');
 document.getElementById('themeToggleBtn').addEventListener('click', () => {
@@ -536,7 +555,7 @@ function loadMup(mupId, html, manifest, savedState) {
         <span class="mup-name" title="Click to rename">${escapeHtml(displayName)}</span>
         <button class="mup-close-btn" data-mup-id="${mupId}" title="Remove">&times;</button>
       </div>
-      <div class="mup-card-body">
+      <div class="mup-card-body"${manifest.darkMode ? ' data-dark-mode' : ''}>
         <iframe sandbox="allow-scripts allow-same-origin allow-popups" ${
           (manifest.permissions || []).length ? `allow="${manifest.permissions.map(p => p + " 'src'").join('; ')}"` : ''
         }></iframe>
@@ -599,6 +618,7 @@ function setupMupIframe(mupId, manifest, iframe, html, savedState) {
       protocolVersion: "mup/2026-03-17",
       hostInfo: { name: "MUP MCP Panel", version: "0.1.0" },
       gridAllocation: { width: 1, height: 1 },
+      theme: document.documentElement.getAttribute('data-theme') || 'light',
     };
     if (savedState) initParams.savedState = savedState;
     port.postMessage({ jsonrpc: "2.0", id: initId, method: "initialize", params: initParams });

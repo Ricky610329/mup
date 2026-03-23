@@ -567,6 +567,7 @@ class MupSDK {
   constructor() {
     this._port = null; this._functions = new Map(); this._readyCallback = null;
     this._pendingRequests = new Map(); this._nextId = 1; this._initialized = false;
+    this._themeCallback = null; this.theme = 'light';
     window.addEventListener("message", (event) => {
       if (event.data && event.data.type === "mup:init" && event.ports[0]) {
         this._port = event.ports[0];
@@ -576,6 +577,7 @@ class MupSDK {
   }
   registerFunction(name, handler) { this._functions.set(name, handler); }
   onReady(callback) { this._readyCallback = callback; if (this._initialized && this._initParams) callback(this._initParams); }
+  onThemeChange(callback) { this._themeCallback = callback; if (this.theme) callback(this.theme); }
   updateState(summary, data) { this._notify("notifications/state/update", { summary, data }); }
   notifyInteraction(action, summary, data) { this._notify("notifications/interaction", { action, summary, data }); }
   system(action, params) { return this._request("system/request", { action, params }); }
@@ -591,12 +593,18 @@ class MupSDK {
   }
   _handleNotification(msg) {
     if (msg.method === "notifications/shutdown") this._notify("notifications/shutdown/complete", {});
+    if (msg.method === "notifications/theme") {
+      this.theme = msg.params?.theme || 'light';
+      if (this._themeCallback) this._themeCallback(this.theme);
+    }
   }
   async _handleRequest(msg) {
     const { id, method, params } = msg;
     if (method === "initialize") {
       this._initParams = params; this._initialized = true;
+      if (params.theme) { this.theme = params.theme; }
       this._sendResponse(id, { protocolVersion: "mup/2026-03-17", mupInfo: { name: document.title || "MUP", version: "1.0.0" } });
+      if (this._themeCallback) this._themeCallback(this.theme);
       if (this._readyCallback) this._readyCallback(params);
       return;
     }
