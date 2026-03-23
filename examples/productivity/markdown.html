@@ -7,7 +7,7 @@
   <script type="application/mup-manifest">
   {
     "name": "Markdown",
-    "description": "A markdown editor with Write and Display modes. User can select text in write mode to mark a section, then ask the LLM to modify it. Use getContent to read the full document when needed, replaceSelection to edit the marked part.",
+    "description": "A markdown editor with Write and Display modes. Supports incremental editing: appendContent, insertAt, replaceLines for token-efficient writes. Use getOutline to see document structure, getLines to peek at sections, getContent for full read. User can select text for replaceSelection.",
     "grid": { "minWidth": 2, "minHeight": 2 },
     "multiInstance": true,
     "functions": [
@@ -36,6 +36,59 @@
             "markdown": { "type": "string", "description": "New markdown to replace the selected text" }
           },
           "required": ["markdown"]
+        }
+      },
+      {
+        "name": "appendContent",
+        "description": "Append markdown to the end of the document. More token-efficient than setContent when adding to an existing document.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "Markdown to append" }
+          },
+          "required": ["markdown"]
+        }
+      },
+      {
+        "name": "replaceLines",
+        "description": "Replace a range of lines (1-based, inclusive). Use getOutline or getLines to find the right line numbers first.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "from": { "type": "integer", "description": "Start line number (1-based)" },
+            "to": { "type": "integer", "description": "End line number (1-based, inclusive)" },
+            "markdown": { "type": "string", "description": "Replacement text" }
+          },
+          "required": ["from", "to", "markdown"]
+        }
+      },
+      {
+        "name": "insertAt",
+        "description": "Insert markdown at a specific line number (1-based). The new text is inserted before the specified line.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "line": { "type": "integer", "description": "Line number to insert before (1-based)" },
+            "markdown": { "type": "string", "description": "Markdown to insert" }
+          },
+          "required": ["line", "markdown"]
+        }
+      },
+      {
+        "name": "getOutline",
+        "description": "Get document structure: headings with line numbers, total line count. Use this to understand document layout without reading the full content.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "getLines",
+        "description": "Read a specific range of lines (1-based, inclusive). More token-efficient than getContent for peeking at a section.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "from": { "type": "integer", "description": "Start line number (1-based)" },
+            "to": { "type": "integer", "description": "End line number (1-based, inclusive)" }
+          },
+          "required": ["from", "to"]
         }
       }
     ]
@@ -308,6 +361,77 @@
 
       return {
         content: [{ type: 'text', text: `Replaced "${truncate(original, 60)}" → ${markdown.length} chars.` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('appendContent', ({ markdown }) => {
+      editor.value = editor.value + (editor.value.endsWith('\n') ? '' : '\n') + markdown;
+      clearSelection();
+      if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+      broadcastState();
+      const lines = editor.value.split('\n');
+      return { content: [{ type: 'text', text: `Appended ${markdown.split('\n').length} line(s). Document now ${lines.length} lines.` }], isError: false };
+    });
+
+    mup.registerFunction('replaceLines', ({ from, to, markdown }) => {
+      const lines = editor.value.split('\n');
+      if (from < 1 || to < from || from > lines.length) {
+        return { content: [{ type: 'text', text: `Invalid range: ${from}-${to} (document has ${lines.length} lines)` }], isError: true };
+      }
+      const clamped = Math.min(to, lines.length);
+      const replaced = lines.slice(from - 1, clamped);
+      lines.splice(from - 1, clamped - from + 1, ...markdown.split('\n'));
+      editor.value = lines.join('\n');
+      clearSelection();
+      if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+      broadcastState();
+      return { content: [{ type: 'text', text: `Replaced lines ${from}-${clamped} (was ${replaced.length} lines, now ${markdown.split('\n').length}). Document: ${lines.length} lines.` }], isError: false };
+    });
+
+    mup.registerFunction('insertAt', ({ line, markdown }) => {
+      const lines = editor.value.split('\n');
+      const idx = Math.max(0, Math.min(line - 1, lines.length));
+      const newLines = markdown.split('\n');
+      lines.splice(idx, 0, ...newLines);
+      editor.value = lines.join('\n');
+      clearSelection();
+      if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+      broadcastState();
+      return { content: [{ type: 'text', text: `Inserted ${newLines.length} line(s) at line ${idx + 1}. Document: ${lines.length} lines.` }], isError: false };
+    });
+
+    mup.registerFunction('getOutline', () => {
+      const lines = editor.value.split('\n');
+      const headings = [];
+      lines.forEach((line, i) => {
+        const m = line.match(/^(#{1,6})\s+(.+)/);
+        if (m) headings.push({ line: i + 1, level: m[1].length, text: m[2].trim() });
+      });
+      const summary = headings.length > 0
+        ? headings.map(h => `${'  '.repeat(h.level - 1)}L${h.line}: ${'#'.repeat(h.level)} ${h.text}`).join('\n')
+        : '(no headings)';
+      return {
+        content: [
+          { type: 'text', text: `${lines.length} lines, ${headings.length} heading(s):\n${summary}` },
+          { type: 'data', data: { totalLines: lines.length, headings } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('getLines', ({ from, to }) => {
+      const lines = editor.value.split('\n');
+      if (from < 1 || from > lines.length) {
+        return { content: [{ type: 'text', text: `Line ${from} out of range (document has ${lines.length} lines)` }], isError: true };
+      }
+      const clamped = Math.min(to, lines.length);
+      const slice = lines.slice(from - 1, clamped);
+      return {
+        content: [
+          { type: 'text', text: slice.map((l, i) => `${from + i}: ${l}`).join('\n') },
+          { type: 'data', data: { from, to: clamped, lines: slice } }
+        ],
         isError: false
       };
     });

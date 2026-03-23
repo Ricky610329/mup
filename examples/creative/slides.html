@@ -7,7 +7,7 @@
   <script type="application/mup-manifest">
   {
     "name": "Slides",
-    "description": "A presentation maker. LLM creates slides with titles, markdown content, and different layouts. Users can browse, edit, and export to PDF. Supports title, content, split, and image layouts.",
+    "description": "A presentation maker. LLM creates slides incrementally with addSlide, or all at once with createPresentation. Use getOutline to see structure, getSlide to peek at one slide. Supports title, content, split layouts. Export to PDF.",
     "grid": { "minWidth": 2, "minHeight": 2 },
     "functions": [
       {
@@ -72,8 +72,24 @@
       },
       {
         "name": "getSlides",
-        "description": "Get all slide data",
+        "description": "Get all slide data (full content). For large presentations, use getOutline first then getSlide for specific slides.",
         "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "getOutline",
+        "description": "Get presentation structure: slide titles and layouts without content. Token-efficient way to understand the presentation before editing.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "getSlide",
+        "description": "Get a single slide's full data by index (0-based). More token-efficient than getSlides when you only need one slide.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "index": { "type": "number", "description": "Slide index (0-based)" }
+          },
+          "required": ["index"]
+        }
       },
       {
         "name": "setTheme",
@@ -422,6 +438,32 @@
       const summary = slides.map((s, i) => `${i}: [${s.layout || 'content'}] ${s.title}`).join('\n');
       return {
         content: [{ type: 'text', text: slides.length > 0 ? summary : 'No slides' }, { type: 'data', data: { slides, theme } }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('getOutline', async () => {
+      if (slides.length === 0) return { content: [{ type: 'text', text: 'No slides' }], isError: false };
+      const outline = slides.map((s, i) => `${i}: [${s.layout || 'content'}] ${s.title}`).join('\n');
+      return {
+        content: [
+          { type: 'text', text: `${slides.length} slides:\n${outline}` },
+          { type: 'data', data: { count: slides.length, slides: slides.map((s, i) => ({ index: i, title: s.title, layout: s.layout || 'content' })) } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('getSlide', async (params) => {
+      if (params.index < 0 || params.index >= slides.length) {
+        return { content: [{ type: 'text', text: `Invalid index: ${params.index} (${slides.length} slides)` }], isError: true };
+      }
+      const s = slides[params.index];
+      return {
+        content: [
+          { type: 'text', text: `Slide ${params.index}: [${s.layout || 'content'}] ${s.title}` },
+          { type: 'data', data: { index: params.index, title: s.title, content: s.content, layout: s.layout || 'content' } }
+        ],
         isError: false
       };
     });
