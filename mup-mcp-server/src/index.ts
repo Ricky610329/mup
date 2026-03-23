@@ -184,7 +184,8 @@ function setupMcpServer(
       inputSchema: {
         type: "object" as const,
         properties: {
-          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "pipe" to manage data pipes. Omit when calling a function.' },
+          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "pipe" to manage data pipes, "saveAs" to save workspace to a folder. Omit when calling a function.' },
+          path: { type: "string", description: "Target folder path for saveAs action." },
           mupId: { type: "string", description: "MUP ID (e.g. mup-chess, mup-chart). Auto-activated on first use." },
           functionName: { type: "string", description: "Function to call (e.g. makeMove, renderChart, setPixels)" },
           functionArgs: { type: "object", description: "Arguments for the function. Can be a JSON object or JSON string." },
@@ -210,6 +211,18 @@ function setupMcpServer(
     if (args.action === "checkInteractions") return handleCheckInteractions(manager, args);
     if (args.action === "history") return handleHistory(ws, manager, args);
     if (args.action === "pipe") return handlePipe(pipeline, args);
+    if (args.action === "saveAs") {
+      const targetPath = args.path as string;
+      if (!targetPath) return { content: [text('Provide "path" — the target folder to save the workspace to.')], isError: true };
+      const resolved = path.resolve(targetPath);
+      const result = ws.saveAs(resolved);
+      if (result.error) return { content: [text(`Save failed: ${result.error}`)], isError: true };
+      // Rescan the new folder so catalog reflects the new file locations
+      for (const file of scanHtmlFiles(resolved)) {
+        try { manager.scanFile(file); } catch { /* already known */ }
+      }
+      return { content: [text(`Workspace saved to ${resolved}\nCopied ${result.copied.length} MUP(s): ${result.copied.join(", ")}\nAuto-save now targets this folder.`)] };
+    }
 
     // --- Call MUP function ---
     const mupId = args.mupId as string;

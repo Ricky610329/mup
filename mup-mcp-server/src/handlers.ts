@@ -26,7 +26,7 @@ export function buildToolDescription(manager: MupManager, port: number): string 
   const lines = [
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
-    `Actions: checkInteractions, list, history, pipe`,
+    `Actions: checkInteractions, list, history, pipe, saveAs`,
   ];
   if (active.length > 0) {
     lines.push(``, `Active MUPs:`);

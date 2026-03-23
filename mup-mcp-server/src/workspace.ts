@@ -247,6 +247,50 @@ export class WorkspaceManager {
     this.markMetadataDirty();
   }
 
+  // ---- Save As (copy workspace to a new folder) ----
+
+  saveAs(targetDir: string): { copied: string[]; error?: string } {
+    try {
+      // Ensure target exists
+      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+      // Copy active MUP HTML files, preserving relative paths
+      const copied: string[] = [];
+      for (const mup of this.manager.getAll()) {
+        const rel = path.relative(this.mupsDir, mup.filePath);
+        const isOutside = rel.startsWith("..") || path.isAbsolute(rel);
+        const targetPath = isOutside
+          ? path.join(targetDir, path.basename(mup.filePath))
+          : path.join(targetDir, rel);
+
+        const targetSubDir = path.dirname(targetPath);
+        if (!fs.existsSync(targetSubDir)) fs.mkdirSync(targetSubDir, { recursive: true });
+        fs.copyFileSync(mup.filePath, targetPath);
+        mup.filePath = targetPath;
+        copied.push(path.relative(targetDir, targetPath));
+      }
+
+      // Switch workspace location
+      this.mupsDir = targetDir;
+      this.dotMupDir = path.join(targetDir, ".mup");
+      this.stateDir = path.join(this.dotMupDir, "state");
+
+      // Write metadata + all states to new location
+      this.saveMetadata();
+      for (const mup of this.manager.getAll()) {
+        if (mup.stateData !== undefined) this.saveMupState(mup.manifest.id);
+      }
+
+      return { copied };
+    } catch (err) {
+      return { copied: [], error: (err as Error).message };
+    }
+  }
+
+  getMupsDir(): string {
+    return this.mupsDir;
+  }
+
   // ---- Helpers ----
 
   buildCatalogSummary(): CatalogSummary[] {
