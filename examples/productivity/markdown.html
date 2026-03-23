@@ -258,7 +258,8 @@
       }
       broadcastState();
       return {
-        content: [{ type: 'text', text: `Document set (${markdown.length} chars, ${markdown.split('\n').length} lines).` }]
+        content: [{ type: 'text', text: `Document set (${markdown.length} chars, ${markdown.split('\n').length} lines).` }],
+        isError: false
       };
     });
 
@@ -281,7 +282,8 @@
                 : null
             }
           }
-        ]
+        ],
+        isError: false
       };
     });
 
@@ -305,7 +307,8 @@
       broadcastState();
 
       return {
-        content: [{ type: 'text', text: `Replaced "${truncate(original, 60)}" → ${markdown.length} chars.` }]
+        content: [{ type: 'text', text: `Replaced "${truncate(original, 60)}" → ${markdown.length} chars.` }],
+        isError: false
       };
     });
 

@@ -327,7 +327,7 @@
       sections[name] = { bars, tracks };
       render(); broadcastState();
       const trackList = Object.keys(tracks).filter(t => tracks[t]);
-      return { content: [{ type: 'text', text: `Section "${name}" (${bars} bars): ${trackList.join(', ') || 'empty'}` }] };
+      return { content: [{ type: 'text', text: `Section "${name}" (${bars} bars): ${trackList.join(', ') || 'empty'}` }], isError: false };
     });
 
     mup.registerFunction('removeSection', ({ name }) => {
@@ -335,27 +335,27 @@
       delete sections[name];
       arrangement = arrangement.filter(n => n !== name);
       render(); broadcastState();
-      return { content: [{ type: 'text', text: `Removed "${name}"` }] };
+      return { content: [{ type: 'text', text: `Removed "${name}"` }], isError: false };
     });
 
     mup.registerFunction('setArrangement', ({ order }) => {
       arrangement = order;
       render(); broadcastState();
-      return { content: [{ type: 'text', text: `Arrangement: ${order.join(' → ')}` }] };
+      return { content: [{ type: 'text', text: `Arrangement: ${order.join(' → ')}` }], isError: false };
     });
 
     mup.registerFunction('setBPM', ({ bpm: b }) => {
       bpm = b; document.getElementById('bpm').value = b; broadcastState();
-      return { content: [{ type: 'text', text: `BPM: ${b}` }] };
+      return { content: [{ type: 'text', text: `BPM: ${b}` }], isError: false };
     });
 
     mup.registerFunction('setMasterVolume', ({ volume }) => {
       master.gain.value = Math.max(0, Math.min(1, volume)); document.getElementById('vol').value = master.gain.value;
-      return { content: [{ type: 'text', text: `Volume: ${Math.round(volume * 100)}%` }] };
+      return { content: [{ type: 'text', text: `Volume: ${Math.round(volume * 100)}%` }], isError: false };
     });
 
-    mup.registerFunction('play', () => { startPlay(); return { content: [{ type: 'text', text: 'Playing arrangement' }] }; });
-    mup.registerFunction('stop', () => { stopPlay(); return { content: [{ type: 'text', text: 'Stopped' }] }; });
+    mup.registerFunction('play', () => { startPlay(); return { content: [{ type: 'text', text: 'Playing arrangement' }], isError: false }; });
+    mup.registerFunction('stop', () => { stopPlay(); return { content: [{ type: 'text', text: 'Stopped' }], isError: false }; });
 
     mup.registerFunction('getState', () => {
       const secInfo = Object.entries(sections).map(([k, v]) => `${k} (${v.bars}b): ${Object.keys(v.tracks || {}).join(',')}`);
@@ -363,7 +363,8 @@
         content: [
           { type: 'text', text: `Sections: ${secInfo.join('; ') || 'none'}\nArrangement: ${arrangement.join(' → ') || 'none'}` },
           { type: 'data', data: { sections: Object.fromEntries(Object.entries(sections).map(([k, v]) => [k, { bars: v.bars, tracks: Object.keys(v.tracks || {}) }])), arrangement, bpm } }
-        ]
+        ],
+        isError: false
       };
     });
 

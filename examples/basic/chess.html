@@ -30,6 +30,17 @@
         "name": "resetGame",
         "description": "Reset the board to starting position",
         "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setPlayerColor",
+        "description": "Set which color the human player controls. Board auto-flips for black. Only works before any moves or after reset.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "color": { "type": "string", "enum": ["white", "black"], "description": "The color for the human player" }
+          },
+          "required": ["color"]
+        }
       }
     ]
   }
@@ -540,7 +551,7 @@
       const status = gameOver ? 'game over' : (isInCheck(turn) ? 'check' : 'playing');
       mup.updateState(
         `${turn}'s turn, ${moveHistory.length} moves${status === 'check' ? ' (check)' : status === 'game over' ? ' (game over)' : ''}`,
-        { fen, turn, moveHistory, board: board.map(r => r.join('')), castling, gameOver, lastMove }
+        { fen, turn, moveHistory, board: board.map(r => r.join('')), castling, gameOver, lastMove, playerColor }
       );
     }
 
@@ -622,6 +633,22 @@
       return { content: [{ type: 'text', text: 'Game reset. White to move.' }], isError: false };
     });
 
+    mup.registerFunction('setPlayerColor', async (params) => {
+      const color = params.color;
+      if (color !== 'white' && color !== 'black') {
+        return { content: [{ type: 'text', text: 'Color must be "white" or "black".' }], isError: true };
+      }
+      if (moveHistory.length > 0) {
+        return { content: [{ type: 'text', text: 'Cannot change color after moves. Call resetGame first.' }], isError: true };
+      }
+      playerColor = color;
+      flipped = (color === 'black');
+      render();
+      updateStatus();
+      sendState();
+      return { content: [{ type: 'text', text: `Player is now ${color}. Board ${flipped ? 'flipped' : 'normal'}.` }], isError: false };
+    });
+
     // Init
     initBoard();
 
@@ -635,6 +662,7 @@
         castling = params.savedState.castling || { K: true, Q: true, k: true, q: true };
         gameOver = params.savedState.gameOver || false;
         lastMove = params.savedState.lastMove || null;
+        if (params.savedState.playerColor) { playerColor = params.savedState.playerColor; flipped = playerColor === 'black'; }
       }
       render();
       updateStatus();

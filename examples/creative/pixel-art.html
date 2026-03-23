@@ -157,11 +157,15 @@
 
     mup.registerFunction('setPixels', async (params) => {
       const pixels = params.pixels || [];
-      for (const p of pixels) setPixel(p.x, p.y, p.color);
+      let set = 0, skipped = 0;
+      for (const p of pixels) {
+        if (p.x >= 0 && p.x < SIZE && p.y >= 0 && p.y < SIZE) { setPixel(p.x, p.y, p.color); set++; }
+        else skipped++;
+      }
       render();
       mup.updateState(describeGrid(), { coloredPixels: countColored(), grid });
       return {
-        content: [{ type: 'text', text: `Set ${pixels.length} pixel(s)` }],
+        content: [{ type: 'text', text: `Set ${set} pixel(s)${skipped ? ` (${skipped} out of bounds)` : ''}` }],
         isError: false
       };
     });

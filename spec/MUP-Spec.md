@@ -331,6 +331,18 @@ mup.notifyInteraction('paint', 'User painted 12 pixels in red', { color: '#ff000
 - `summary`: LLM-readable description of what the user did
 - `data`: optional structured data
 
+#### Reserved action: `discuss`
+
+The action name `"discuss"` has special handling in some hosts: instead of being queued for the next `checkInteractions` poll, `discuss` interactions are immediately appended to the result of any currently-executing function call. This ensures the LLM sees time-sensitive user input without delay.
+
+Use `discuss` when the user's action requires an immediate LLM response — for example, a chess move that the LLM must reply to.
+
+```javascript
+mup.notifyInteraction('discuss', 'Player moved e2e4. Your turn.', { move: 'e2e4' });
+```
+
+Other action names are queued normally and returned via `checkInteractions`.
+
 ### `mup.system(action, params)` (optional)
 
 Request a host-provided service. Returns a promise that resolves with the host's response. Not all hosts support this — handle errors gracefully.

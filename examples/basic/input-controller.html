@@ -368,7 +368,8 @@
             gamepad: gamepad ? { axes: gpAxes.slice(0, 4), buttons: gpButtons } : null,
             bindings: bindings,
           }
-        }]
+        }],
+        isError: false
       };
     });
 
@@ -382,7 +383,7 @@
       bindings.push(b);
       updateBindings();
       broadcastState();
-      return { content: [{ type: 'text', text: `Bound "${action}": ${key ? 'key=' + key : ''}${gamepadButton !== undefined ? ' btn=' + gamepadButton : ''}${gamepadAxis !== undefined ? ' axis=' + gamepadAxis + '(' + (axisDirection || 'pos') + ')' : ''}` }] };
+      return { content: [{ type: 'text', text: `Bound "${action}": ${key ? 'key=' + key : ''}${gamepadButton !== undefined ? ' btn=' + gamepadButton : ''}${gamepadAxis !== undefined ? ' axis=' + gamepadAxis + '(' + (axisDirection || 'pos') + ')' : ''}` }], isError: false };
     });
 
     mup.registerFunction('removeBinding', ({ action }) => {
@@ -390,7 +391,7 @@
       bindings = bindings.filter(b => b.action !== action);
       updateBindings();
       broadcastState();
-      return { content: [{ type: 'text', text: bindings.length < had ? `Removed "${action}"` : `"${action}" not found` }] };
+      return { content: [{ type: 'text', text: bindings.length < had ? `Removed "${action}"` : `"${action}" not found` }], isError: false };
     });
 
     mup.registerFunction('setBindings', ({ bindings: newBindings }) => {
@@ -402,7 +403,7 @@
       }));
       updateBindings();
       broadcastState();
-      return { content: [{ type: 'text', text: `Set ${bindings.length} bindings: ${bindings.map(b => b.action).join(', ')}` }] };
+      return { content: [{ type: 'text', text: `Set ${bindings.length} bindings: ${bindings.map(b => b.action).join(', ')}` }], isError: false };
     });
 
     mup.registerFunction('getBindings', () => {
@@ -410,7 +411,8 @@
         content: [
           { type: 'text', text: bindings.length > 0 ? bindings.map(b => `${b.action}: ${b.key || ''}${b.gamepadButton !== undefined ? ' btn' + b.gamepadButton : ''}${b.gamepadAxis !== undefined ? ' axis' + b.gamepadAxis : ''}`).join(', ') : 'No bindings' },
           { type: 'data', data: bindings }
-        ]
+        ],
+        isError: false
       };
     });
 

@@ -48,8 +48,13 @@ export class UiBridge extends EventEmitter {
 
     this.wss.on("connection", (ws) => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        ws.close(4000, "Another panel is already connected");
-        return;
+        console.error("[mup-mcp] New connection replacing existing one");
+        this.ws.close(4001, "Replaced by new connection");
+        for (const [id, pending] of this.pendingCalls) {
+          clearTimeout(pending.timer);
+          pending.resolve({ content: [{ type: "text", text: "Browser reconnected — previous call cancelled" }], isError: true });
+          this.pendingCalls.delete(id);
+        }
       }
 
       this.ws = ws;

@@ -43,7 +43,7 @@
 <body>
   <div class="bar">
     <button id="playBtn">&#9654;</button><button id="stopBtn">&#9632;</button><div class="sep"></div>
-    <span class="lbl">BPM</span><input type="number" id="bpm" value="80" min="40" max="200"><div class="spacer"></div><button id="paramBtn">&#9881;</button>
+    <span class="lbl">BPM</span><input type="number" id="bpm" value="120" min="40" max="200"><div class="spacer"></div><button id="paramBtn">&#9881;</button>
   </div>
   <div class="params" id="params">
     <label>Bright</label><input type="range" id="bright" min="400" max="3000" value="1200">
@@ -58,7 +58,7 @@
     const NUM=8,ctx=new AudioContext(),master=ctx.createGain();master.gain.value=.7;master.connect(ctx.destination);
     const barsEl=document.getElementById('barsGrid');
     let bars=Array.from({length:NUM},()=>({chord:'',volume:.7})),params={brightness:1200,attack:.6,release:.8,detune:4};
-    let bpm=80,playing=false,cur=-1,timer=null;
+    let bpm=120,playing=false,cur=-1,timer=null;
     const barEls=[],freq=m=>440*Math.pow(2,(m-69)/12);
 
     for(let i=0;i<NUM;i++){
@@ -100,12 +100,12 @@
 
     function broadcastState(){const f=bars.filter(b=>b.chord).length;mup.updateState(`Strings: ${f}/${NUM} bars, ${bpm} BPM${playing?', playing':''}`,{bars,params,bpm,playing})}
 
-    mup.registerFunction('setPattern',({bars:b})=>{for(let i=0;i<NUM;i++)bars[i]=b[i]?{chord:b[i].chord||'',volume:b[i].volume??.7}:{chord:'',volume:.7};renderBars();broadcastState();return{content:[{type:'text',text:`Sequence: ${bars.filter(b=>b.chord).map(b=>b.chord).join(' → ')}`}]}});
-    mup.registerFunction('setParams',(p)=>{const c=[];if(p.brightness!==undefined){params.brightness=p.brightness;document.getElementById('bright').value=p.brightness;c.push('bright:'+p.brightness)}if(p.attack!==undefined){params.attack=p.attack;document.getElementById('atk').value=p.attack;c.push('atk:'+p.attack)}if(p.release!==undefined){params.release=p.release;document.getElementById('rel').value=p.release;c.push('rel:'+p.release)}if(p.detune!==undefined){params.detune=p.detune;document.getElementById('det').value=p.detune;c.push('det:'+p.detune)}return{content:[{type:'text',text:`Params: ${c.join(', ')}`}]}});
-    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}]}});
-    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}]}});
-    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}]}});
-    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Strings: ${bars.filter(b=>b.chord).map(b=>b.chord).join(' → ')}`},{type:'data',data:{track:'strings',bars,params,bpm}}]}));
+    mup.registerFunction('setPattern',({bars:b})=>{for(let i=0;i<NUM;i++)bars[i]=b[i]?{chord:b[i].chord||'',volume:b[i].volume??.7}:{chord:'',volume:.7};renderBars();broadcastState();return{content:[{type:'text',text:`Sequence: ${bars.filter(b=>b.chord).map(b=>b.chord).join(' → ')}`}],isError:false}});
+    mup.registerFunction('setParams',(p)=>{const c=[];if(p.brightness!==undefined){params.brightness=p.brightness;document.getElementById('bright').value=p.brightness;c.push('bright:'+p.brightness)}if(p.attack!==undefined){params.attack=p.attack;document.getElementById('atk').value=p.attack;c.push('atk:'+p.attack)}if(p.release!==undefined){params.release=p.release;document.getElementById('rel').value=p.release;c.push('rel:'+p.release)}if(p.detune!==undefined){params.detune=p.detune;document.getElementById('det').value=p.detune;c.push('det:'+p.detune)}return{content:[{type:'text',text:`Params: ${c.join(', ')}`}],isError:false}});
+    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}],isError:false}});
+    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}],isError:false}});
+    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}],isError:false}});
+    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Strings: ${bars.filter(b=>b.chord).map(b=>b.chord).join(' → ')}`},{type:'data',data:{track:'strings',bars,params,bpm}}],isError:false}));
 
     mup.onReady(p=>{if(p?.savedState){const s=p.savedState;if(s.bars){bars=s.bars;renderBars()}if(s.params)Object.assign(params,s.params);if(s.bpm){bpm=s.bpm;document.getElementById('bpm').value=bpm}}broadcastState()});
   </script>

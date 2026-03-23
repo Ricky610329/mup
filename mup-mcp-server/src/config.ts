@@ -13,6 +13,8 @@ export const CONFIG = {
   functionCallTimeoutMs: 30_000,
   /** Max length of a tool response text before truncation */
   maxResponseLength: 2000,
+  /** Max length of a data content item (JSON) before truncation */
+  maxDataResponseLength: 8000,
   /** Delay before auto-opening browser (ms) */
   browserOpenDelayMs: 3000,
   /** Max pending interaction events per MUP */

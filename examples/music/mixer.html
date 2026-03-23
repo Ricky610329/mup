@@ -87,13 +87,15 @@
       el.classList.add('loaded');
       const viz=el.querySelector('.viz');viz.innerHTML='';
       let cnt=0;
-      if(d.pattern&&Array.isArray(d.pattern))cnt=d.pattern.length;
+      if(t==='drums'&&d.pattern&&typeof d.pattern==='object'&&!Array.isArray(d.pattern))cnt=16;
+      else if(d.pattern&&Array.isArray(d.pattern))cnt=d.pattern.length;
       else if(d.slots)cnt=d.slots.length;
       else if(d.bars)cnt=d.bars.length;
       for(let i=0;i<cnt;i++){
         const b=document.createElement('div');b.className='b';
         let has=false;
-        if(t==='keys')has=d.pattern[i]&&d.pattern[i].length>0;
+        if(t==='drums')has=d.pattern&&Object.values(d.pattern).some(steps=>Array.isArray(steps)&&steps[i]);
+        else if(t==='keys')has=d.pattern[i]&&d.pattern[i].length>0;
         else if(t==='chords')has=d.slots&&d.slots[i]&&d.slots[i].chord;
         else if(t==='strings')has=d.bars&&d.bars[i]&&d.bars[i].chord;
         else has=d.pattern&&d.pattern[i];
@@ -127,7 +129,7 @@
       TRK.forEach(t=>{
         const tr=tracks[t];if(!tr.data)return;if(tr.muted)return;if(hasSolo&&!tr.solo)return;
         const bars=trackEls[t].querySelectorAll('.viz .b');bars.forEach(b=>b.classList.remove('cur'));
-        if(t==='keys'||t==='bass'||t==='synth'||t==='drums'){if(bars[stepIdx])bars[stepIdx].classList.add('cur');const p=tr.data.pattern;if(p&&p[stepIdx]){if(t==='drums'){const ds={};for(const[inst,steps]of Object.entries(p))if(Array.isArray(steps)&&steps[stepIdx])ds[inst]=true;playStep(t,ds,dur)}else playStep(t,p[stepIdx],dur)}}
+        if(t==='keys'||t==='bass'||t==='synth'||t==='drums'){if(bars[stepIdx])bars[stepIdx].classList.add('cur');const p=tr.data.pattern;if(t==='drums'){if(p){const ds={};for(const[inst,steps]of Object.entries(p))if(Array.isArray(steps)&&steps[stepIdx])ds[inst]=true;playStep(t,ds,dur)}}else if(p&&p[stepIdx]){playStep(t,p[stepIdx],dur)}}
         else if(t==='chords'){const slots=tr.data.slots||[];let acc=0,si=-1;for(let s=0;s<slots.length;s++){const b=(slots[s].beats||4)*4;if(stepIdx>=acc&&stepIdx<acc+b){si=s;break}acc+=b}if(si>=0&&bars[si])bars[si].classList.add('cur');if(si>=0&&stepIdx===acc)playChordStep(t,slots[si].chord,dur*(slots[si].beats||4)*4)}
         else if(t==='strings'){const bd=tr.data.bars||[];const spb=Math.floor(16/Math.max(bd.length,1));const bi=Math.floor(stepIdx/spb);if(bi<bd.length&&bars[bi])bars[bi].classList.add('cur');if(bi<bd.length&&stepIdx%spb===0)playChordStep(t,bd[bi].chord,spb*dur)}
       });
@@ -141,15 +143,15 @@
 
     function broadcastState(){const loaded=TRK.filter(t=>tracks[t].data);mup.updateState(`Mixer: ${loaded.length} tracks, ${bpm} BPM${playing?', playing':''}`,{tracks:Object.fromEntries(TRK.map(t=>[t,{loaded:!!tracks[t].data,volume:tracks[t].volume,muted:tracks[t].muted,solo:tracks[t].solo}])),bpm,playing})}
 
-    mup.registerFunction('setTrack',({track,data})=>{if(!tracks[track])return{content:[{type:'text',text:`Unknown: ${track}`}],isError:true};tracks[track].data=data;renderTrack(track);broadcastState();return{content:[{type:'text',text:`Loaded ${track}`}]}});
-    mup.registerFunction('setTrackVolume',({track,volume})=>{if(!tracks[track])return{content:[{type:'text',text:'Unknown'}],isError:true};tracks[track].volume=Math.max(0,Math.min(1,volume));const el=trackEls[track];el.querySelector('.vol input').value=tracks[track].volume;el.querySelector('.vol span').textContent=Math.round(tracks[track].volume*100);return{content:[{type:'text',text:`${track}: ${Math.round(volume*100)}%`}]}});
-    mup.registerFunction('muteTrack',({track})=>{if(!tracks[track])return{content:[{type:'text',text:'Unknown'}],isError:true};tracks[track].muted=!tracks[track].muted;trackEls[track].querySelector('.bm').classList.toggle('m-on',tracks[track].muted);trackEls[track].classList.toggle('muted',tracks[track].muted);broadcastState();return{content:[{type:'text',text:`${track} ${tracks[track].muted?'muted':'unmuted'}`}]}});
-    mup.registerFunction('soloTrack',({track})=>{if(!tracks[track])return{content:[{type:'text',text:'Unknown'}],isError:true};tracks[track].solo=!tracks[track].solo;trackEls[track].querySelector('.bs').classList.toggle('s-on',tracks[track].solo);broadcastState();return{content:[{type:'text',text:`${track} solo ${tracks[track].solo?'on':'off'}`}]}});
-    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}]}});
-    mup.registerFunction('setMasterVolume',({volume})=>{master.gain.value=Math.max(0,Math.min(1,volume));document.getElementById('masterVol').value=master.gain.value;return{content:[{type:'text',text:`Master: ${Math.round(volume*100)}%`}]}});
-    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}]}});
-    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}]}});
-    mup.registerFunction('getState',()=>{const loaded=TRK.filter(t=>tracks[t].data);return{content:[{type:'text',text:`Mixer: ${loaded.join(', ')||'empty'}, ${bpm} BPM`},{type:'data',data:{loadedTracks:loaded,bpm,masterVolume:master.gain.value,tracks:Object.fromEntries(TRK.map(t=>[t,{loaded:!!tracks[t].data,volume:tracks[t].volume,muted:tracks[t].muted,solo:tracks[t].solo}]))}}]}});
+    mup.registerFunction('setTrack',({track,data})=>{if(!tracks[track])return{content:[{type:'text',text:`Unknown: ${track}`}],isError:true};tracks[track].data=data;renderTrack(track);broadcastState();return{content:[{type:'text',text:`Loaded ${track}`}],isError:false}});
+    mup.registerFunction('setTrackVolume',({track,volume})=>{if(!tracks[track])return{content:[{type:'text',text:'Unknown'}],isError:true};tracks[track].volume=Math.max(0,Math.min(1,volume));const el=trackEls[track];el.querySelector('.vol input').value=tracks[track].volume;el.querySelector('.vol span').textContent=Math.round(tracks[track].volume*100);return{content:[{type:'text',text:`${track}: ${Math.round(volume*100)}%`}],isError:false}});
+    mup.registerFunction('muteTrack',({track})=>{if(!tracks[track])return{content:[{type:'text',text:'Unknown'}],isError:true};tracks[track].muted=!tracks[track].muted;trackEls[track].querySelector('.bm').classList.toggle('m-on',tracks[track].muted);trackEls[track].classList.toggle('muted',tracks[track].muted);broadcastState();return{content:[{type:'text',text:`${track} ${tracks[track].muted?'muted':'unmuted'}`}],isError:false}});
+    mup.registerFunction('soloTrack',({track})=>{if(!tracks[track])return{content:[{type:'text',text:'Unknown'}],isError:true};tracks[track].solo=!tracks[track].solo;trackEls[track].querySelector('.bs').classList.toggle('s-on',tracks[track].solo);broadcastState();return{content:[{type:'text',text:`${track} solo ${tracks[track].solo?'on':'off'}`}],isError:false}});
+    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}],isError:false}});
+    mup.registerFunction('setMasterVolume',({volume})=>{master.gain.value=Math.max(0,Math.min(1,volume));document.getElementById('masterVol').value=master.gain.value;return{content:[{type:'text',text:`Master: ${Math.round(volume*100)}%`}],isError:false}});
+    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}],isError:false}});
+    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}],isError:false}});
+    mup.registerFunction('getState',()=>{const loaded=TRK.filter(t=>tracks[t].data);return{content:[{type:'text',text:`Mixer: ${loaded.join(', ')||'empty'}, ${bpm} BPM`},{type:'data',data:{loadedTracks:loaded,bpm,masterVolume:master.gain.value,tracks:Object.fromEntries(TRK.map(t=>[t,{loaded:!!tracks[t].data,volume:tracks[t].volume,muted:tracks[t].muted,solo:tracks[t].solo}]))}}],isError:false}});
 
     mup.onReady(p=>{if(p?.savedState?.bpm){bpm=p.savedState.bpm;document.getElementById('bpm').value=bpm}TRK.forEach(renderTrack);broadcastState()});
   </script>

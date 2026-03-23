@@ -139,13 +139,13 @@
       mup.updateState(`Keys: ${n} notes, ${bpm} BPM, ${params.waveform}${playing?', playing':''}`,{pattern:patternData(),params,bpm,playing});
     }
 
-    mup.registerFunction('setPattern',({steps})=>{for(let i=0;i<STEPS;i++)pattern[i]=new Set(steps[i]||[]);renderPattern();broadcastState();return{content:[{type:'text',text:`Pattern set (${pattern.reduce((a,s)=>a+s.size,0)} notes)`}]}});
-    mup.registerFunction('setParams',(p)=>{const c=[];if(p.waveform){params.waveform=p.waveform;document.getElementById('wave').value=p.waveform;c.push('wave:'+p.waveform)}for(const k of['attack','decay','sustain','release'])if(p[k]!==undefined){params[k]=p[k];document.getElementById(k).value=p[k];c.push(k+':'+p[k])}broadcastState();return{content:[{type:'text',text:`Params: ${c.join(', ')}`}]}});
-    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}]}});
-    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}]}});
-    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}]}});
-    mup.registerFunction('clear',()=>{pattern=Array.from({length:STEPS},()=>new Set());renderPattern();broadcastState();return{content:[{type:'text',text:'Cleared'}]}});
-    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Keys: ${pattern.reduce((a,s)=>a+s.size,0)} notes, ${bpm} BPM`},{type:'data',data:{track:'keys',pattern:patternData(),params,bpm}}]}));
+    mup.registerFunction('setPattern',({steps})=>{for(let i=0;i<STEPS;i++)pattern[i]=new Set(steps[i]||[]);renderPattern();broadcastState();return{content:[{type:'text',text:`Pattern set (${pattern.reduce((a,s)=>a+s.size,0)} notes)`}],isError:false}});
+    mup.registerFunction('setParams',(p)=>{const c=[];if(p.waveform){params.waveform=p.waveform;document.getElementById('wave').value=p.waveform;c.push('wave:'+p.waveform)}for(const k of['attack','decay','sustain','release'])if(p[k]!==undefined){params[k]=p[k];document.getElementById(k).value=p[k];c.push(k+':'+p[k])}broadcastState();return{content:[{type:'text',text:`Params: ${c.join(', ')}`}],isError:false}});
+    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}],isError:false}});
+    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}],isError:false}});
+    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}],isError:false}});
+    mup.registerFunction('clear',()=>{pattern=Array.from({length:STEPS},()=>new Set());renderPattern();broadcastState();return{content:[{type:'text',text:'Cleared'}],isError:false}});
+    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Keys: ${pattern.reduce((a,s)=>a+s.size,0)} notes, ${bpm} BPM`},{type:'data',data:{track:'keys',pattern:patternData(),params,bpm}}],isError:false}));
 
     mup.onReady(p=>{
       if(p?.savedState){const s=p.savedState;if(s.pattern){for(let i=0;i<STEPS;i++)pattern[i]=new Set(s.pattern[i]||[]);renderPattern()}if(s.params)Object.assign(params,s.params);if(s.bpm){bpm=s.bpm;document.getElementById('bpm').value=bpm}}

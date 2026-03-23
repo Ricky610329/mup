@@ -31,7 +31,7 @@ export function buildToolDescription(manager: MupManager, port: number): string 
   ];
   if (active.length > 0) {
     lines.push(``, `Active MUPs:`);
-    for (const e of active) lines.push(`  ${e.manifest.id} — ${e.manifest.name}. Functions: ${e.manifest.functions.map((f) => f.name).join(", ")}`);
+    for (const e of active) lines.push(`  ${e.manifest.id}: ${e.manifest.functions.map((f) => f.name).join(", ")}`);
   }
   if (inactive.length > 0) {
     lines.push(``, `Available: ${inactive.map((e) => e.manifest.id).join(", ")}`);

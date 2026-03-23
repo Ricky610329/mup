@@ -108,13 +108,13 @@
 
     function broadcastState(){const n=pattern.filter(Boolean).length;mup.updateState(`Bass: ${n}/16, ${bpm} BPM, ${params.waveform}${playing?', playing':''}`,{pattern,params,bpm,playing})}
 
-    mup.registerFunction('setPattern',({steps})=>{for(let i=0;i<STEPS;i++)pattern[i]=steps[i]||null;renderPattern();broadcastState();return{content:[{type:'text',text:`Pattern set (${pattern.filter(Boolean).length} notes)`}]}});
-    mup.registerFunction('setParams',(p)=>{const c=[];if(p.waveform){params.waveform=p.waveform;document.getElementById('wave').value=p.waveform;c.push('wave:'+p.waveform)}if(p.filterFreq!==undefined){params.filterFreq=p.filterFreq;document.getElementById('cutoff').value=p.filterFreq;c.push('cutoff:'+p.filterFreq)}if(p.filterQ!==undefined){params.filterQ=p.filterQ;document.getElementById('reso').value=p.filterQ;c.push('reso:'+p.filterQ)}if(p.decay!==undefined){params.decay=p.decay;document.getElementById('decayP').value=p.decay;c.push('decay:'+p.decay)}return{content:[{type:'text',text:`Params: ${c.join(', ')}`}]}});
-    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}]}});
-    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}]}});
-    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}]}});
-    mup.registerFunction('clear',()=>{pattern.fill(null);renderPattern();broadcastState();return{content:[{type:'text',text:'Cleared'}]}});
-    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Bass: ${pattern.filter(Boolean).length}/16, ${bpm} BPM`},{type:'data',data:{track:'bass',pattern,params,bpm}}]}));
+    mup.registerFunction('setPattern',({steps})=>{for(let i=0;i<STEPS;i++)pattern[i]=steps[i]||null;renderPattern();broadcastState();return{content:[{type:'text',text:`Pattern set (${pattern.filter(Boolean).length} notes)`}],isError:false}});
+    mup.registerFunction('setParams',(p)=>{const c=[];if(p.waveform){params.waveform=p.waveform;document.getElementById('wave').value=p.waveform;c.push('wave:'+p.waveform)}if(p.filterFreq!==undefined){params.filterFreq=p.filterFreq;document.getElementById('cutoff').value=p.filterFreq;c.push('cutoff:'+p.filterFreq)}if(p.filterQ!==undefined){params.filterQ=p.filterQ;document.getElementById('reso').value=p.filterQ;c.push('reso:'+p.filterQ)}if(p.decay!==undefined){params.decay=p.decay;document.getElementById('decayP').value=p.decay;c.push('decay:'+p.decay)}return{content:[{type:'text',text:`Params: ${c.join(', ')}`}],isError:false}});
+    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}],isError:false}});
+    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}],isError:false}});
+    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}],isError:false}});
+    mup.registerFunction('clear',()=>{pattern.fill(null);renderPattern();broadcastState();return{content:[{type:'text',text:'Cleared'}],isError:false}});
+    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Bass: ${pattern.filter(Boolean).length}/16, ${bpm} BPM`},{type:'data',data:{track:'bass',pattern,params,bpm}}],isError:false}));
 
     mup.onReady(p=>{if(p?.savedState){const s=p.savedState;if(s.pattern){pattern=s.pattern;renderPattern()}if(s.params)Object.assign(params,s.params);if(s.bpm){bpm=s.bpm;document.getElementById('bpm').value=bpm}}broadcastState()});
   </script>

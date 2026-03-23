@@ -44,7 +44,7 @@
 <body>
   <div class="bar">
     <button id="playBtn">&#9654;</button><button id="stopBtn">&#9632;</button><div class="sep"></div>
-    <span class="lbl">BPM</span><input type="number" id="bpm" value="100" min="40" max="240"><div class="spacer"></div><button id="paramBtn">&#9881;</button>
+    <span class="lbl">BPM</span><input type="number" id="bpm" value="120" min="40" max="240"><div class="spacer"></div><button id="paramBtn">&#9881;</button>
   </div>
   <div class="params" id="params">
     <label>Strum</label><input type="range" id="strum" min="10" max="80" value="30">
@@ -58,7 +58,7 @@
     const COLORS=['#e8c878','#d4b060','#c0a050','#a89048','#907840','#786838'];
     const NUM=8,ctx=new AudioContext(),slotsEl=document.getElementById('slots');
     let slots=Array.from({length:NUM},()=>({chord:'',beats:4})),params={strumSpeed:30,brightness:2000,decay:1.2};
-    let bpm=100,playing=false,cur=-1,timer=null;
+    let bpm=120,playing=false,cur=-1,timer=null;
     const slotEls=[],freq=m=>440*Math.pow(2,(m-69)/12);
 
     for(let i=0;i<NUM;i++){
@@ -99,12 +99,12 @@
 
     function broadcastState(){const f=slots.filter(s=>s.chord).length;mup.updateState(`Chords: ${f}/${NUM} slots, ${bpm} BPM${playing?', playing':''}`,{slots,params,bpm,playing})}
 
-    mup.registerFunction('setProgression',({slots:sl})=>{for(let i=0;i<NUM;i++)slots[i]=sl[i]?{chord:sl[i].chord||'',beats:sl[i].beats||4}:{chord:'',beats:4};renderSlots();broadcastState();return{content:[{type:'text',text:`Progression: ${slots.filter(s=>s.chord).map(s=>s.chord).join(' → ')}`}]}});
-    mup.registerFunction('setParams',(p)=>{const c=[];if(p.strumSpeed!==undefined){params.strumSpeed=p.strumSpeed;document.getElementById('strum').value=p.strumSpeed;c.push('strum:'+p.strumSpeed)}if(p.brightness!==undefined){params.brightness=p.brightness;document.getElementById('bright').value=p.brightness;c.push('bright:'+p.brightness)}if(p.decay!==undefined){params.decay=p.decay;document.getElementById('decayP').value=p.decay;c.push('decay:'+p.decay)}return{content:[{type:'text',text:`Params: ${c.join(', ')}`}]}});
-    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}]}});
-    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}]}});
-    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}]}});
-    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Chords: ${slots.filter(s=>s.chord).map(s=>s.chord).join(' → ')}`},{type:'data',data:{track:'chords',slots,params,bpm}}]}));
+    mup.registerFunction('setProgression',({slots:sl})=>{for(let i=0;i<NUM;i++)slots[i]=sl[i]?{chord:sl[i].chord||'',beats:sl[i].beats||4}:{chord:'',beats:4};renderSlots();broadcastState();return{content:[{type:'text',text:`Progression: ${slots.filter(s=>s.chord).map(s=>s.chord).join(' → ')}`}],isError:false}});
+    mup.registerFunction('setParams',(p)=>{const c=[];if(p.strumSpeed!==undefined){params.strumSpeed=p.strumSpeed;document.getElementById('strum').value=p.strumSpeed;c.push('strum:'+p.strumSpeed)}if(p.brightness!==undefined){params.brightness=p.brightness;document.getElementById('bright').value=p.brightness;c.push('bright:'+p.brightness)}if(p.decay!==undefined){params.decay=p.decay;document.getElementById('decayP').value=p.decay;c.push('decay:'+p.decay)}return{content:[{type:'text',text:`Params: ${c.join(', ')}`}],isError:false}});
+    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}],isError:false}});
+    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}],isError:false}});
+    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}],isError:false}});
+    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Chords: ${slots.filter(s=>s.chord).map(s=>s.chord).join(' → ')}`},{type:'data',data:{track:'chords',slots,params,bpm}}],isError:false}));
 
     mup.onReady(p=>{if(p?.savedState){const s=p.savedState;if(s.slots){slots=s.slots;renderSlots()}if(s.params)Object.assign(params,s.params);if(s.bpm){bpm=s.bpm;document.getElementById('bpm').value=bpm}}broadcastState()});
   </script>

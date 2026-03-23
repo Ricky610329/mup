@@ -258,7 +258,32 @@ function setupMcpServer(
     if (activation.error) return { content: [text(activation.error)], isError: true };
 
     const fnArgs = parseArgs(args.functionArgs);
-    if (!manager.get(mupId)?.stateSummary && manager.isActive(mupId)) await bridge.waitForMupLoaded(mupId);
+
+    // Lightweight schema validation: check required fields and basic types
+    const mup = manager.get(mupId);
+    const fnDef = mup?.manifest.functions.find(f => f.name === fn);
+    if (fnDef?.inputSchema) {
+      const schema = fnDef.inputSchema;
+      const required = (schema.required || []) as string[];
+      const properties = (schema.properties || {}) as Record<string, Record<string, unknown>>;
+      const missing = required.filter(r => fnArgs[r] === undefined);
+      if (missing.length > 0) {
+        return { content: [text(`Missing required field(s): ${missing.join(", ")}`)], isError: true };
+      }
+      for (const [key, val] of Object.entries(fnArgs)) {
+        const prop = properties[key];
+        if (prop?.type && val !== undefined && val !== null) {
+          const actual = Array.isArray(val) ? "array" : typeof val;
+          if (prop.type === "integer" && (typeof val !== "number" || !Number.isInteger(val as number))) {
+            return { content: [text(`Field "${key}" must be an integer, got ${typeof val}`)], isError: true };
+          } else if (prop.type !== "integer" && prop.type !== actual && !(prop.type === "number" && actual === "number")) {
+            return { content: [text(`Field "${key}" must be ${prop.type}, got ${actual}`)], isError: true };
+          }
+        }
+      }
+    }
+
+    if (!mup?.stateSummary && manager.isActive(mupId)) await bridge.waitForMupLoaded(mupId);
 
     const result = await bridge.callFunction(mupId, fn, fnArgs);
     const resultText = result.content.map((c) => c.text || "").join(" ").trim();
@@ -268,12 +293,24 @@ function setupMcpServer(
     if (activation.activated) content.push(text(`[Auto-activated] ${activation.activated}`));
 
     for (const c of result.content) {
-      let t = c.text || JSON.stringify(c.data || "");
-      if (t.length > CONFIG.maxResponseLength) t = t.slice(0, CONFIG.maxResponseLength) + `\n... (truncated, ${t.length} chars total)`;
-      content.push({ type: "text" as const, text: t });
+      if (c.data !== undefined) {
+        const json = JSON.stringify(c.data);
+        if (json.length > CONFIG.maxDataResponseLength) {
+          content.push({ type: "text" as const, text: `[data truncated, ${json.length} chars. Use specific queries instead of full data dumps.]` });
+        } else {
+          content.push({ type: "text" as const, text: json });
+        }
+      } else {
+        let t = c.text || "";
+        if (t.length > CONFIG.maxResponseLength) t = t.slice(0, CONFIG.maxResponseLength) + `\n... (truncated, ${t.length} chars total)`;
+        content.push({ type: "text" as const, text: t });
+      }
     }
 
-    // Append "discuss" interactions (user explicitly wants LLM attention)
+    // "discuss" interactions are delivered immediately (appended to the current
+    // function call result) rather than queued for checkInteractions, ensuring
+    // time-sensitive user input reaches the LLM without polling delay.
+    // See spec: MUP-Spec.md § notifyInteraction → Reserved action: discuss
     const events = manager.drainEvents();
     const discuss = events.filter((e) => e.action === "discuss");
     for (const e of events.filter((e) => e.action !== "discuss")) manager.addEvent(e.mupId, e.action, e.summary, e.data);
