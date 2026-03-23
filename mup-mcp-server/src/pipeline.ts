@@ -44,7 +44,10 @@ export class PipelineManager {
   private nextId = 1;
   private callFn: CallFn;
 
-  constructor(callFn: CallFn) {
+  constructor(
+    callFn: CallFn,
+    private onPipeError?: (pipeId: string, sourceMupId: string, targetMupId: string, error: string) => void,
+  ) {
     this.callFn = callFn;
   }
 
@@ -114,7 +117,7 @@ export class PipelineManager {
       this.clearDebounce(pipe.id);
       const timer = setTimeout(() => {
         this.debounceTimers.delete(pipe.id);
-        this.executePipe(pipe, stateData).catch(() => {});
+        this.executePipe(pipe, stateData);
       }, pipe.debounceMs);
       this.debounceTimers.set(pipe.id, timer);
     }
@@ -147,7 +150,9 @@ export class PipelineManager {
 
       this.addLog(pipe.id, true);
     } catch (err) {
-      this.addLog(pipe.id, false, (err as Error).message);
+      const errorMsg = (err as Error).message;
+      this.addLog(pipe.id, false, errorMsg);
+      this.onPipeError?.(pipe.id, pipe.sourceMupId, pipe.targetMupId, errorMsg);
     } finally {
       this.executingPipes.delete(pipe.id);
     }

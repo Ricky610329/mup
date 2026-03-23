@@ -33,6 +33,7 @@ export class UiBridge extends EventEmitter {
   private ws: WebSocket | null = null;
   private pendingCalls = new Map<string, PendingCall>();
   private callIdCounter = 0;
+  private connectionEpoch = 0;
   private port: number;
   private manager: MupManager;
   public folderTree: FolderTreeNode[] = [];
@@ -47,6 +48,7 @@ export class UiBridge extends EventEmitter {
     this.wss = new WebSocketServer({ server: this.httpServer, maxPayload: 10 * 1024 * 1024 });
 
     this.wss.on("connection", (ws) => {
+      this.connectionEpoch++;
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         console.error("[mup-mcp] New connection replacing existing one");
         this.ws.close(4001, "Replaced by new connection");
@@ -156,7 +158,7 @@ export class UiBridge extends EventEmitter {
       };
     }
 
-    const callId = `c${++this.callIdCounter}`;
+    const callId = `c${this.connectionEpoch}_${++this.callIdCounter}`;
 
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -207,6 +209,8 @@ export class UiBridge extends EventEmitter {
           clearTimeout(pending.timer);
           this.pendingCalls.delete(msg.callId);
           pending.resolve(msg.result);
+        } else {
+          console.error(`[mup-mcp] Discarding stale result for ${msg.callId}`);
         }
         break;
       }

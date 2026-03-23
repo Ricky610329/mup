@@ -60,6 +60,13 @@ export class WorkspaceManager {
     if (!fs.existsSync(this.stateDir)) fs.mkdirSync(this.stateDir, { recursive: true });
   }
 
+  /** Write JSON atomically: write to .tmp then rename over target */
+  private atomicWriteJson(filePath: string, data: unknown): void {
+    const tmp = filePath + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    fs.renameSync(tmp, filePath);
+  }
+
   // ---- Call History (session-only) ----
 
   addCallHistory(mupId: string, functionName: string, args: Record<string, unknown>, result: string): void {
@@ -85,18 +92,22 @@ export class WorkspaceManager {
         gridLayout: this.gridLayout,
         customNames: { ...this.customNames },
       };
-      fs.writeFileSync(path.join(this.dotMupDir, METADATA_FILE), JSON.stringify(meta, null, 2));
+      this.atomicWriteJson(path.join(this.dotMupDir, METADATA_FILE), meta);
     } catch (err) {
       console.error("[mup-mcp] Failed to save metadata:", err);
     }
   }
 
   private loadMetadata(): WorkspaceMetadata | null {
+    const p = path.join(this.dotMupDir, METADATA_FILE);
     try {
-      const p = path.join(this.dotMupDir, METADATA_FILE);
       if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, "utf-8"));
     } catch (err) {
-      console.error("[mup-mcp] Failed to load metadata:", err);
+      console.error("[mup-mcp] Metadata corrupted, trying .tmp fallback:", err);
+      try {
+        const tmp = p + ".tmp";
+        if (fs.existsSync(tmp)) return JSON.parse(fs.readFileSync(tmp, "utf-8"));
+      } catch { /* both corrupted */ }
     }
     return null;
   }
@@ -114,21 +125,28 @@ export class WorkspaceManager {
         data: mup.stateData,
       };
       const filePath = path.join(this.stateDir, `${mupId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
-      fs.writeFileSync(filePath, JSON.stringify(stateFile, null, 2));
+      this.atomicWriteJson(filePath, stateFile);
     } catch (err) {
       console.error(`[mup-mcp] Failed to save state for ${mupId}:`, err);
     }
   }
 
   private loadMupState(mupId: string): unknown | undefined {
+    const filePath = path.join(this.stateDir, `${mupId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
     try {
-      const filePath = path.join(this.stateDir, `${mupId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
       if (fs.existsSync(filePath)) {
         const stateFile = JSON.parse(fs.readFileSync(filePath, "utf-8")) as MupStateFile;
         return stateFile.data;
       }
     } catch (err) {
-      console.error(`[mup-mcp] Failed to load state for ${mupId}:`, err);
+      console.error(`[mup-mcp] State corrupted for ${mupId}, trying .tmp fallback:`, err);
+      try {
+        const tmp = filePath + ".tmp";
+        if (fs.existsSync(tmp)) {
+          const stateFile = JSON.parse(fs.readFileSync(tmp, "utf-8")) as MupStateFile;
+          return stateFile.data;
+        }
+      } catch { /* both corrupted */ }
     }
     return undefined;
   }

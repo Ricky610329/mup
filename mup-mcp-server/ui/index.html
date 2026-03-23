@@ -482,6 +482,7 @@ function connect() {
   ws.onopen = () => {
     statusDot.className = "status-dot connected";
     _reconnectDelay = 1000; // reset on success
+    callMap.clear(); // discard stale pending calls from previous connection
     ws.send(JSON.stringify({ type: "ready" }));
   };
   ws.onclose = () => {
@@ -540,6 +541,7 @@ function loadMup(mupId, html, manifest, savedState) {
   // Check for custom name from workspace restore
   const displayName = (window._pendingCustomNames && window._pendingCustomNames[mupId]) || manifest.name;
 
+  const allowAttr = (manifest.permissions || []).length ? ` allow="${manifest.permissions.map(p => p + " 'src'").join('; ')}"` : '';
   const el = document.createElement('div');
   el.classList.add('grid-stack-item');
   el.setAttribute('gs-w', '1');
@@ -555,9 +557,7 @@ function loadMup(mupId, html, manifest, savedState) {
         <button class="mup-close-btn" data-mup-id="${mupId}" title="Remove">&times;</button>
       </div>
       <div class="mup-card-body"${manifest.darkMode ? ' data-dark-mode' : ''}>
-        <iframe sandbox="allow-scripts allow-same-origin allow-popups" ${
-          (manifest.permissions || []).length ? `allow="${manifest.permissions.map(p => p + " 'src'").join('; ')}"` : ''
-        }></iframe>
+        <iframe sandbox="allow-scripts allow-same-origin allow-popups"${allowAttr}></iframe>
       </div>
     </div>`;
 
@@ -585,6 +585,7 @@ function loadMup(mupId, html, manifest, savedState) {
   });
 
   const widget = grid.addWidget(el);
+  debouncedSaveGrid();
   const iframe = widget.querySelector('iframe');
   setupMupIframe(mupId, manifest, iframe, html, savedState);
 }
@@ -649,6 +650,7 @@ function handleMupMessage(mupId, mupName, data) {
           for (const item of grid.getGridItems()) {
             if (item.getAttribute('gs-id') === mupId) {
               grid.update(item, { x: saved.x, y: saved.y, w: saved.w, h: saved.h });
+              debouncedSaveGrid();
               break;
             }
           }
@@ -708,6 +710,7 @@ function removeMup(mupId, widgetEl) {
       }
     }
   }
+  debouncedSaveGrid();
   mups.delete(mupId);
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "deactivate-mup", mupId }));
@@ -831,14 +834,14 @@ function renderManagerCard() {
   const breadcrumb = renderBreadcrumb();
 
   if (!managerWidget) {
-    const el = document.createElement('div');
-    el.classList.add('grid-stack-item');
-    el.setAttribute('gs-w', '1');
-    el.setAttribute('gs-h', '1');
-    el.setAttribute('gs-x', '0');
-    el.setAttribute('gs-y', '0');
-    el.setAttribute('gs-id', '__manager__');
-    el.innerHTML = `
+    const mgrEl = document.createElement('div');
+    mgrEl.classList.add('grid-stack-item');
+    mgrEl.setAttribute('gs-w', '1');
+    mgrEl.setAttribute('gs-h', '1');
+    mgrEl.setAttribute('gs-x', '0');
+    mgrEl.setAttribute('gs-y', '0');
+    mgrEl.setAttribute('gs-id', '__manager__');
+    mgrEl.innerHTML = `
       <div class="grid-stack-item-content">
         <div class="mup-card-header" style="cursor:grab;">
           <span class="mup-name">MUPs</span>
@@ -846,7 +849,7 @@ function renderManagerCard() {
         <div id="managerBreadcrumb">${breadcrumb}</div>
         <div class="manager-list" id="managerList">${listHtml}</div>
       </div>`;
-    managerWidget = grid.addWidget(el);
+    managerWidget = grid.addWidget(mgrEl);
   } else {
     const listEl = managerWidget.querySelector('#managerList');
     if (listEl) listEl.innerHTML = listHtml;

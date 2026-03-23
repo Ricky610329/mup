@@ -27,7 +27,7 @@ export function buildToolDescription(manager: MupManager, port: number): string 
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
     `Actions: checkInteractions, list, history, pipe`,
-    `Multi-instance: call with the same base mupId again to open another instance (auto-assigned _2, _3...).`,
+    `Multi-instance: use { "action": "new-instance", "mupId": "..." } to open another panel. Returns the new instance ID (_2, _3...).`,
   ];
   if (active.length > 0) {
     lines.push(``, `Active MUPs:`);

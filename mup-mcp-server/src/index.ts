@@ -186,7 +186,7 @@ function setupMcpServer(
       inputSchema: {
         type: "object" as const,
         properties: {
-          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "pipe" to manage data pipes. Omit when calling a function.' },
+          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "new-instance" to open another instance of a [multi] MUP, "pipe" to manage data pipes. Omit when calling a function.' },
           mupId: { type: "string", description: "MUP ID (e.g. mup-chess, mup-chart). Auto-activated on first use." },
           functionName: { type: "string", description: "Function to call (e.g. makeMove, renderChart, setPixels)" },
           functionArgs: { type: "object", description: "Arguments for the function. Can be a JSON object or JSON string." },
@@ -212,14 +212,24 @@ function setupMcpServer(
     if (args.action === "checkInteractions") return handleCheckInteractions(manager, args);
     if (args.action === "history") return handleHistory(ws, manager, args);
     if (args.action === "pipe") return handlePipe(pipeline, args);
+    if (args.action === "new-instance") {
+      const baseMupId = args.mupId as string;
+      if (!baseMupId) return { content: [text('Provide "mupId" for the base MUP to create an instance of.')], isError: true };
+      ensureActive(baseMupId);
+      const mup = manager.activateInstance(baseMupId);
+      if (!mup) return { content: [text(`Cannot create instance: "${baseMupId}" not found or does not support multi-instance.`)], isError: true };
+      sendLoadMup(mup.manifest.id, mup);
+      ws.markMetadataDirty();
+      console.error(`[mup-mcp] New instance: ${mup.manifest.name} (${mup.manifest.id})`);
+      return { content: [text(`Created ${mup.manifest.id}\n${buildMupDetail(mup.manifest)}`)] };
+    }
     // --- Call MUP function ---
-    let mupId = args.mupId as string;
+    const mupId = args.mupId as string;
     const fn = args.functionName as string;
     if (!mupId || !fn) return { content: [text('Provide "mupId" and "functionName", or use "action": "list" / "checkInteractions" / "history".')], isError: true };
 
-    const activation: { error?: string; activated?: string; resolvedId?: string } = ensureActive(mupId);
+    const activation = ensureActive(mupId);
     if (activation.error) return { content: [text(activation.error)], isError: true };
-    if (activation.resolvedId) mupId = activation.resolvedId;
 
     const fnArgs = parseArgs(args.functionArgs);
 
@@ -344,18 +354,8 @@ async function main() {
     bridge.sendRaw({ type: "load-mup", mupId: mup.manifest.id, html: mup.html, manifest: mup.manifest, savedState: mup.stateData });
   };
 
-  function ensureActive(mupId: string): { error?: string; activated?: string; resolvedId?: string } {
+  function ensureActive(mupId: string): { error?: string; activated?: string } {
     if (manager.isActive(mupId)) return {};
-    // If base MUP is already active and supports multi-instance, create a new instance
-    const baseId = mupId.replace(/_\d+$/, "");
-    if (manager.isActive(baseId) && manager.isMultiInstance(baseId)) {
-      const mup = manager.activateInstance(baseId);
-      if (!mup) return { error: `Failed to create new instance of "${baseId}".` };
-      sendLoadMup(mup.manifest.id, mup);
-      ws.markMetadataDirty();
-      console.error(`[mup-mcp] New instance: ${mup.manifest.name} (${mup.manifest.id})`);
-      return { activated: buildMupDetail(mup.manifest), resolvedId: mup.manifest.id };
-    }
     const mup = manager.activate(mupId);
     if (!mup) return { error: `MUP "${mupId}" not found. Use { "action": "list" } to see available MUPs.` };
     sendLoadMup(mupId, mup);
@@ -372,7 +372,12 @@ async function main() {
   }
 
   // --- Pipeline ---
-  const pipeline = new PipelineManager((mupId, fn, args) => bridge.callFunction(mupId, fn, args));
+  const pipeline = new PipelineManager(
+    (mupId, fn, args) => bridge.callFunction(mupId, fn, args),
+    (pipeId, sourceMupId, targetMupId, error) => {
+      manager.addEvent(sourceMupId, "pipe-error", `Pipe ${pipeId} failed (\u2192 ${targetMupId}): ${error}`);
+    },
+  );
   bridge.typedOn("state-update", (mupId, _summary, data) => pipeline.onStateUpdate(mupId, data));
   bridge.typedOn("deactivate-mup", (mupId) => pipeline.onMupDeactivated(mupId));
 
