@@ -53,7 +53,8 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 12px; font-weight: 700; color: white;
     }
-    .header-title { font-size: 14px; font-weight: 600; letter-spacing: -0.3px; }
+    .header-title { font-size: 14px; font-weight: 600; letter-spacing: -0.3px; cursor: pointer; border-radius: 6px; padding: 2px 6px; }
+    .header-title:hover { background: rgba(0,0,0,0.04); }
     .header-badge {
       font-size: 11px; color: var(--text-secondary);
       background: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 8px;
@@ -152,7 +153,7 @@
     }
     .manager-file:hover { background: rgba(0,0,0,0.03); }
     .manager-file.active { color: var(--green); }
-    .manager-file.invalid { color: var(--text-tertiary); cursor: default; }
+    .manager-file.non-mup { color: var(--text-tertiary); cursor: default; font-size: 11px; }
     .manager-file.is-folder { color: var(--text-primary); font-weight: 500; }
     .manager-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .manager-folder-path {
@@ -213,7 +214,7 @@
 
 <div class="header">
   <div class="header-logo">M</div>
-  <span class="header-title">MUP Panel</span>
+  <span class="header-title" id="headerTitle" title="Click to rename workspace">MUP Panel</span>
   <span class="header-badge">MCP</span>
   <div class="header-spacer"></div>
   <span class="save-indicator" id="saveIndicator">saved</span>
@@ -478,6 +479,7 @@ function handleServerMessage(msg) {
     case "workspace-restored":
       if (msg.customNames) window._pendingCustomNames = msg.customNames;
       if (msg.gridLayout) window._pendingGridLayout = msg.gridLayout;
+      if (msg.name) setWorkspaceName(msg.name);
       break;
   }
 }
@@ -679,25 +681,35 @@ const BACK_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" s
 let folderTree = []; // [{type:'folder',name,children}, {type:'file',id,name,...}]
 let navStack = []; // navigation stack for folder drill-down
 
+const SKIP_FILES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+
 async function scanDirectoryHandle(dirHandle) {
   const folders = [];
   const files = [];
   for await (const [name, handle] of dirHandle) {
+    if (SKIP_FILES.has(name)) continue;
     if (handle.kind === 'directory' && !name.startsWith('.')) {
       const children = await scanDirectoryHandle(handle);
-      if (children.length > 0) folders.push({ type: 'folder', name, children });
-    } else if (handle.kind === 'file' && name.endsWith('.html')) {
-      try {
-        const file = await handle.getFile();
-        const html = await file.text();
-        const match = html.match(/<script\s+type=["']application\/mup-manifest["']\s*>([\s\S]*?)<\/script>/);
-        if (!match) continue;
-        const raw = JSON.parse(match[1].trim());
-        const id = raw.id || 'mup-' + name.replace('.html', '');
-        browserMupCache.set(id, { html, name, manifest: raw });
-        const isActive = catalog.some(c => c.id === id && c.active);
-        files.push({ type: 'file', id, name: raw.name || name, description: raw.description || '', active: isActive });
-      } catch {}
+      folders.push({ type: 'folder', name, children });
+    } else if (handle.kind === 'file') {
+      const ext = name.includes('.') ? '.' + name.split('.').pop().toLowerCase() : '';
+      if (ext === '.html') {
+        try {
+          const file = await handle.getFile();
+          const html = await file.text();
+          const match = html.match(/<script\s+type=["']application\/mup-manifest["']\s*>([\s\S]*?)<\/script>/);
+          if (match) {
+            const raw = JSON.parse(match[1].trim());
+            const id = raw.id || 'mup-' + name.replace('.html', '');
+            browserMupCache.set(id, { html, name, manifest: raw });
+            const isActive = catalog.some(c => c.id === id && c.active);
+            files.push({ type: 'file', id, name: raw.name || name, description: raw.description || '', active: isActive, isMup: true, ext });
+            continue;
+          }
+        } catch {}
+      }
+      // Non-MUP file (or HTML without manifest)
+      files.push({ type: 'file', name, isMup: false, ext });
     }
   }
   folders.sort((a, b) => a.name.localeCompare(b.name));
@@ -734,6 +746,8 @@ function renderCurrentView() {
   for (const item of items) {
     if (item.type === 'folder') {
       html += `<div class="manager-file is-folder" data-folder="${escapeHtml(item.name)}">${FOLDER_ICON}<span class="manager-file-name">${escapeHtml(item.name)}</span></div>`;
+    } else if (item.isMup === false) {
+      html += `<div class="manager-file non-mup" title="${escapeHtml(item.name)}">${FILE_ICON}<span class="manager-file-name">${escapeHtml(item.name)}</span></div>`;
     } else {
       const catEntry = catalog.find(c => c.id === item.id);
       const isActive = item.active || (catEntry && catEntry.active);
@@ -896,13 +910,37 @@ function bindManagerEvents() {
   });
 }
 
+// ---- Workspace Name ----
+const headerTitle = document.getElementById('headerTitle');
+let workspaceName = '';
+
+function setWorkspaceName(name) {
+  workspaceName = name || '';
+  if (headerTitle) headerTitle.textContent = workspaceName || 'MUP Panel';
+  document.title = workspaceName ? `${workspaceName} — MUP Panel` : 'MUP Panel (MCP)';
+}
+
+if (headerTitle) {
+  headerTitle.addEventListener('click', () => {
+    const name = prompt('Workspace name:', workspaceName);
+    if (name === null) return;
+    setWorkspaceName(name);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "rename-workspace", name }));
+    }
+  });
+}
+
 // ---- Save Button ----
-document.getElementById('flushSaveBtn').addEventListener('click', () => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "flush-save" }));
-    showSaveIndicator();
-  }
-});
+const flushSaveBtn = document.getElementById('flushSaveBtn');
+if (flushSaveBtn) {
+  flushSaveBtn.addEventListener('click', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "flush-save" }));
+      showSaveIndicator();
+    }
+  });
+}
 
 // ---- Start ----
 connect();

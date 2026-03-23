@@ -29,6 +29,7 @@ export class WorkspaceManager {
   callHistory: Record<string, CallHistoryEntry[]> = {};
   customNames: Record<string, string> = {};
   gridLayout: GridLayoutItem[] = [];
+  name = "";
 
   private bridge: UiBridge | null = null;
   private mupsDir: string;
@@ -79,6 +80,7 @@ export class WorkspaceManager {
       this.ensureDirs();
       const meta: WorkspaceMetadata = {
         version: METADATA_VERSION,
+        name: this.name || undefined,
         activeMups: this.manager.getAll().map((m) => m.manifest.id),
         gridLayout: this.gridLayout,
         customNames: { ...this.customNames },
@@ -205,6 +207,7 @@ export class WorkspaceManager {
     if (!meta || meta.activeMups.length === 0) return [];
 
     this.gridLayout = meta.gridLayout || [];
+    if (meta.name) this.name = meta.name;
     if (meta.customNames) Object.assign(this.customNames, meta.customNames);
 
     const restored: string[] = [];
@@ -228,13 +231,12 @@ export class WorkspaceManager {
 
   /** Send restored state to browser on connect */
   sendRestoredState(bridge: UiBridge): void {
-    if (Object.keys(this.customNames).length > 0 || this.gridLayout.length > 0) {
-      bridge.sendRaw({
-        type: "workspace-restored",
-        customNames: { ...this.customNames },
-        gridLayout: this.gridLayout.length > 0 ? this.gridLayout : undefined,
-      });
-    }
+    bridge.sendRaw({
+      type: "workspace-restored",
+      name: this.name || undefined,
+      customNames: { ...this.customNames },
+      gridLayout: this.gridLayout.length > 0 ? this.gridLayout : undefined,
+    });
   }
 
   // ---- Deactivation Cleanup ----

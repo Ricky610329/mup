@@ -132,6 +132,7 @@ function setupBrowserEvents(bridge: UiBridge, manager: MupManager, ws: Workspace
   bridge.typedOn("rename-mup", (mupId, newName) => { if (mupId && newName) { ws.customNames[mupId] = newName; ws.markMetadataDirty(); console.error(`[mup-mcp] Renamed: ${mupId} → ${newName}`); } });
   bridge.typedOn("browser-disconnected", () => { ws.flushSave(); console.error("[mup-mcp] Saved on disconnect"); });
   bridge.typedOn("flush-save", () => { ws.flushSave(); bridge.sendRaw({ type: "auto-saved" }); });
+  bridge.typedOn("rename-workspace", (name) => { ws.name = name; ws.markMetadataDirty(); });
 }
 
 // ---- Hot-Reload File Watching ----

@@ -74,6 +74,33 @@ describe("WorkspaceManager (folder-based)", () => {
       const restored = ws2.restoreFromDisk();
       assert.equal(restored.length, 0);
     });
+
+    it("saves and restores workspace name", () => {
+      mgr.activate("mup-test");
+      ws.name = "My Project";
+      ws.markMetadataDirty();
+      ws.flushSave();
+
+      // Verify name in workspace.json
+      const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, ".mup", "workspace.json"), "utf-8"));
+      assert.equal(meta.name, "My Project");
+
+      // Restore and verify
+      mgr.deactivate("mup-test");
+      const ws2 = new WorkspaceManager(mgr, tmpDir);
+      ws2.restoreFromDisk();
+      assert.equal(ws2.name, "My Project");
+    });
+
+    it("omits name from metadata when empty", () => {
+      mgr.activate("mup-test");
+      ws.name = "";
+      ws.markMetadataDirty();
+      ws.flushSave();
+
+      const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, ".mup", "workspace.json"), "utf-8"));
+      assert.equal(meta.name, undefined);
+    });
   });
 
   // ---- per-MUP state files ----
