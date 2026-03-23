@@ -27,13 +27,20 @@ export function buildToolDescription(manager: MupManager, port: number): string 
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
     `Actions: checkInteractions, list, history, pipe`,
+    `Multi-instance: call with the same base mupId again to open another instance (auto-assigned _2, _3...).`,
   ];
   if (active.length > 0) {
     lines.push(``, `Active MUPs:`);
-    for (const e of active) lines.push(`  ${e.manifest.id}: ${e.manifest.functions.map((f) => f.name).join(", ")}`);
+    for (const e of active) {
+      const multi = e.manifest.multiInstance ? " [multi]" : "";
+      lines.push(`  ${e.manifest.id}${multi}: ${e.manifest.functions.map((f) => f.name).join(", ")}`);
+    }
   }
   if (inactive.length > 0) {
-    lines.push(``, `Available: ${inactive.map((e) => e.manifest.id).join(", ")}`);
+    lines.push(``, `Available: ${inactive.map((e) => {
+      const multi = e.manifest.multiInstance ? " [multi]" : "";
+      return e.manifest.id + multi;
+    }).join(", ")}`);
   }
   return lines.join("\n");
 }

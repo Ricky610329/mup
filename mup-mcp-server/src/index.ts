@@ -213,12 +213,13 @@ function setupMcpServer(
     if (args.action === "history") return handleHistory(ws, manager, args);
     if (args.action === "pipe") return handlePipe(pipeline, args);
     // --- Call MUP function ---
-    const mupId = args.mupId as string;
+    let mupId = args.mupId as string;
     const fn = args.functionName as string;
     if (!mupId || !fn) return { content: [text('Provide "mupId" and "functionName", or use "action": "list" / "checkInteractions" / "history".')], isError: true };
 
-    const activation = ensureActive(mupId);
+    const activation: { error?: string; activated?: string; resolvedId?: string } = ensureActive(mupId);
     if (activation.error) return { content: [text(activation.error)], isError: true };
+    if (activation.resolvedId) mupId = activation.resolvedId;
 
     const fnArgs = parseArgs(args.functionArgs);
 
@@ -343,8 +344,18 @@ async function main() {
     bridge.sendRaw({ type: "load-mup", mupId: mup.manifest.id, html: mup.html, manifest: mup.manifest, savedState: mup.stateData });
   };
 
-  function ensureActive(mupId: string): { error?: string; activated?: string } {
+  function ensureActive(mupId: string): { error?: string; activated?: string; resolvedId?: string } {
     if (manager.isActive(mupId)) return {};
+    // If base MUP is already active and supports multi-instance, create a new instance
+    const baseId = mupId.replace(/_\d+$/, "");
+    if (manager.isActive(baseId) && manager.isMultiInstance(baseId)) {
+      const mup = manager.activateInstance(baseId);
+      if (!mup) return { error: `Failed to create new instance of "${baseId}".` };
+      sendLoadMup(mup.manifest.id, mup);
+      ws.markMetadataDirty();
+      console.error(`[mup-mcp] New instance: ${mup.manifest.name} (${mup.manifest.id})`);
+      return { activated: buildMupDetail(mup.manifest), resolvedId: mup.manifest.id };
+    }
     const mup = manager.activate(mupId);
     if (!mup) return { error: `MUP "${mupId}" not found. Use { "action": "list" } to see available MUPs.` };
     sendLoadMup(mupId, mup);
