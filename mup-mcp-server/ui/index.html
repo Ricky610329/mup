@@ -325,19 +325,18 @@ function applyTheme(theme) {
   const btn = document.getElementById('themeToggleBtn');
   btn.innerHTML = theme === 'dark' ? sunIcon : moonIcon;
   btn.title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
-  // Broadcast theme to darkMode-opted MUPs
-  if (typeof mups !== 'undefined') {
-    for (const [, mup] of mups) {
-      if (mup.manifest.darkMode && mup.port) {
-        mup.port.postMessage({ jsonrpc: "2.0", method: "notifications/theme", params: { theme } });
-      }
-    }
-  }
 }
 applyTheme(localStorage.getItem('mup-theme') || 'light');
 document.getElementById('themeToggleBtn').addEventListener('click', () => {
   const current = document.documentElement.getAttribute('data-theme');
-  applyTheme(current === 'dark' ? 'light' : 'dark');
+  const newTheme = current === 'dark' ? 'light' : 'dark';
+  applyTheme(newTheme);
+  // Broadcast theme to darkMode-opted MUPs
+  for (const [, m] of mups) {
+    if (m.manifest.darkMode && m.port) {
+      m.port.postMessage({ jsonrpc: "2.0", method: "notifications/theme", params: { theme: newTheme } });
+    }
+  }
 });
 
 // ---- State ----
