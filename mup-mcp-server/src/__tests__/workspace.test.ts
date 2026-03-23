@@ -201,4 +201,78 @@ describe("WorkspaceManager (folder-based)", () => {
       assert.equal(meta.version, 1);
     });
   });
+
+  // ---- saveAs ----
+
+  describe("saveAs", () => {
+    it("copies MUP files and state to target folder", () => {
+      mgr.activate("mup-test");
+      mgr.updateState("mup-test", "val=5", { value: 5 });
+      ws.customNames["mup-test"] = "Saved Counter";
+      ws.gridLayout = [{ id: "mup-test", x: 0, y: 0, w: 2, h: 2 }];
+      ws.markMupDirty("mup-test");
+      ws.markMetadataDirty();
+      ws.flushSave();
+
+      // saveAs to a new folder
+      const targetDir = path.join(tmpDir, "exported");
+      const result = ws.saveAs(targetDir);
+
+      assert.equal(result.error, undefined);
+      assert.equal(result.copied.length, 1);
+      assert.ok(result.copied[0].includes("test.html"));
+
+      // Verify files exist in target
+      assert.ok(fs.existsSync(path.join(targetDir, "test.html")));
+      assert.ok(fs.existsSync(path.join(targetDir, ".mup", "workspace.json")));
+      assert.ok(fs.existsSync(path.join(targetDir, ".mup", "state", "mup-test.json")));
+
+      // Verify content
+      const meta = JSON.parse(fs.readFileSync(path.join(targetDir, ".mup", "workspace.json"), "utf-8"));
+      assert.deepEqual(meta.activeMups, ["mup-test"]);
+      assert.equal(meta.customNames["mup-test"], "Saved Counter");
+      assert.equal(meta.gridLayout.length, 1);
+
+      const state = JSON.parse(fs.readFileSync(path.join(targetDir, ".mup", "state", "mup-test.json"), "utf-8"));
+      assert.deepEqual(state.data, { value: 5 });
+    });
+
+    it("switches auto-save target to new folder", () => {
+      mgr.activate("mup-test");
+      mgr.updateState("mup-test", "v=1", { v: 1 });
+
+      const targetDir = path.join(tmpDir, "new-workspace");
+      ws.saveAs(targetDir);
+
+      // Update state and flush — should save to new location
+      mgr.updateState("mup-test", "v=2", { v: 2 });
+      ws.markMupDirty("mup-test");
+      ws.flushSave();
+
+      const state = JSON.parse(fs.readFileSync(path.join(targetDir, ".mup", "state", "mup-test.json"), "utf-8"));
+      assert.deepEqual(state.data, { v: 2 });
+      assert.equal(ws.getMupsDir(), targetDir);
+    });
+
+    it("is restorable from target folder", () => {
+      mgr.activate("mup-test");
+      mgr.updateState("mup-test", "data=42", { data: 42 });
+
+      const targetDir = path.join(tmpDir, "portable");
+      ws.saveAs(targetDir);
+
+      // Deactivate everything
+      mgr.deactivate("mup-test");
+      assert.equal(mgr.getAll().length, 0);
+
+      // Restore from target — need to re-scan MUPs from target dir
+      const mgr2 = new MupManager();
+      mgr2.scanFile(path.join(targetDir, "test.html"));
+      const ws2 = new WorkspaceManager(mgr2, targetDir);
+      const restored = ws2.restoreFromDisk();
+
+      assert.equal(restored.length, 1);
+      assert.deepEqual(mgr2.get("mup-test")!.stateData, { data: 42 });
+    });
+  });
 });
