@@ -241,22 +241,6 @@ export class UiBridge extends EventEmitter {
         this.typedEmit("new-instance", msg.mupId, msg.customName);
         break;
 
-      case "list-workspaces":
-        this.typedEmit("list-workspaces");
-        break;
-
-      case "save-workspace":
-        this.typedEmit("save-workspace", msg.name, msg.description);
-        break;
-
-      case "load-workspace":
-        this.typedEmit("load-workspace", msg.name);
-        break;
-
-      case "delete-workspace":
-        this.typedEmit("delete-workspace", msg.name, msg.isCurrent);
-        break;
-
       case "save-grid-layout":
         this.typedEmit("save-grid-layout", msg.layout);
         break;

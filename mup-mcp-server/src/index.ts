@@ -16,8 +16,7 @@ import { CONFIG } from "./config.js";
 import { scanHtmlFiles, buildFolderTree } from "./scanner.js";
 import {
   text, buildToolDescription, buildMupDetail,
-  handleWorkspaces, handleSave, handleLoad, handleList,
-  handleCheckInteractions, handleHistory, handlePipe,
+  handleList, handleCheckInteractions, handleHistory, handlePipe,
 } from "./handlers.js";
 import type { FolderTreeNode, SendLoadMupFn } from "./types.js";
 
@@ -73,7 +72,7 @@ function parseCliArgs(): CliConfig {
     } else if (arg === "--no-open") {
       config.noOpen = true;
     } else if (arg === "--help" || arg === "-h") {
-      console.error(`\nmup-mcp-server — MCP server with interactive MUP UI panels\n\nUsage:\n  mup-mcp-server [options] [file1.html ...]\n\nOptions:\n  --mups-dir <dir>     Load all .html MUP files from a directory\n  --port <port>        UI panel port (default: ${CONFIG.defaultPort})\n  --no-open            Don't auto-open the browser\n  -h, --help           Show this help\n`);
+      console.error(`\nmup-mcp-server — MCP server with interactive MUP UI panels\n\nUsage:\n  mup-mcp-server [options] [file1.html ...]\n\nOptions:\n  --mups-dir <dir>     Load all .html MUP files from a directory (also used as workspace)\n  --port <port>        UI panel port (default: ${CONFIG.defaultPort})\n  --no-open            Don't auto-open the browser\n  -h, --help           Show this help\n`);
       process.exit(0);
     } else if (arg.endsWith(".html") || arg.endsWith(".htm")) {
       config.mupFiles.push(path.resolve(arg));
@@ -86,30 +85,25 @@ function parseCliArgs(): CliConfig {
 
 function setupBrowserEvents(bridge: UiBridge, manager: MupManager, ws: WorkspaceManager, sendLoadMup: SendLoadMupFn): void {
   bridge.typedOn("browser-connected", () => {
-    if (Object.keys(ws.customNames).length > 0 || ws.gridLayout.length > 0) {
-      bridge.sendRaw({
-        type: "workspace-loaded", name: "",
-        customNames: { ...ws.customNames },
-        gridLayout: ws.gridLayout.length > 0 ? ws.gridLayout : undefined,
-        description: ws.description,
-      });
-    }
+    ws.sendRestoredState(bridge);
   });
 
   bridge.typedOn("activate-mup", (mupId) => {
     const mup = manager.activate(mupId);
-    if (mup) { sendLoadMup(mupId, mup); ws.markDirty(); console.error(`[mup-mcp] Activated: ${mup.manifest.name}`); }
+    if (mup) { sendLoadMup(mupId, mup); ws.markMetadataDirty(); console.error(`[mup-mcp] Activated: ${mup.manifest.name}`); }
   });
 
   bridge.typedOn("deactivate-mup", (mupId) => {
-    manager.deactivate(mupId); ws.markDirty(); console.error(`[mup-mcp] Deactivated: ${mupId}`);
+    manager.deactivate(mupId);
+    ws.onMupDeactivated(mupId);
+    console.error(`[mup-mcp] Deactivated: ${mupId}`);
   });
 
   bridge.typedOn("new-instance", (baseMupId, customName) => {
     const mup = manager.activateInstance(baseMupId);
     if (mup) {
       if (customName) { mup.manifest.name = customName; ws.customNames[mup.manifest.id] = customName; }
-      sendLoadMup(mup.manifest.id, mup); ws.markDirty();
+      sendLoadMup(mup.manifest.id, mup); ws.markMetadataDirty();
       console.error(`[mup-mcp] New instance: ${mup.manifest.name} (${mup.manifest.id})`);
     }
   });
@@ -129,38 +123,14 @@ function setupBrowserEvents(bridge: UiBridge, manager: MupManager, ws: Workspace
       if (!manager.getCatalog().find((e) => e.manifest.id === mupId)) manager.loadFromHtml(html, fileName);
       else manager.activate(mupId);
       const mup = manager.get(mupId);
-      if (mup) { sendLoadMup(mupId, mup); ws.markDirty(); console.error(`[mup-mcp] Registered + activated: ${manifest.name}`); }
+      if (mup) { sendLoadMup(mupId, mup); ws.markMetadataDirty(); console.error(`[mup-mcp] Registered + activated: ${manifest.name}`); }
     } catch (err: unknown) { console.error(`[mup-mcp] Failed to register: ${(err as Error).message}`); }
   });
 
-  bridge.typedOn("state-update", () => ws.markDirty());
-  bridge.typedOn("save-grid-layout", (layout) => { if (Array.isArray(layout)) { ws.gridLayout = layout; ws.markDirty(); } });
-  bridge.typedOn("rename-mup", (mupId, newName) => { if (mupId && newName) { ws.customNames[mupId] = newName; ws.markDirty(); console.error(`[mup-mcp] Renamed: ${mupId} → ${newName}`); } });
+  bridge.typedOn("state-update", (mupId) => ws.markMupDirty(mupId));
+  bridge.typedOn("save-grid-layout", (layout) => { if (Array.isArray(layout)) { ws.gridLayout = layout; ws.markMetadataDirty(); } });
+  bridge.typedOn("rename-mup", (mupId, newName) => { if (mupId && newName) { ws.customNames[mupId] = newName; ws.markMetadataDirty(); console.error(`[mup-mcp] Renamed: ${mupId} → ${newName}`); } });
   bridge.typedOn("browser-disconnected", () => { ws.flushSave(); console.error("[mup-mcp] Saved on disconnect"); });
-}
-
-function setupWorkspaceEvents(bridge: UiBridge, manager: MupManager, ws: WorkspaceManager, sendLoadMup: SendLoadMupFn): void {
-  bridge.typedOn("list-workspaces", () => bridge.sendRaw({ type: "workspace-list", workspaces: ws.list() }));
-
-  bridge.typedOn("save-workspace", (name, desc) => {
-    ws.save(name, desc);
-    ws.currentName = name;
-    bridge.sendRaw({ type: "workspace-saved", name });
-    bridge.sendRaw({ type: "workspace-list", workspaces: ws.list() });
-  });
-
-  bridge.typedOn("load-workspace", (name) => ws.restore(bridge, sendLoadMup, name));
-
-  bridge.typedOn("delete-workspace", (name, isCurrent) => {
-    ws.delete(name);
-    if (isCurrent) {
-      for (const mup of manager.getAll()) manager.deactivate(mup.manifest.id);
-      ws.reset();
-      bridge.sendRaw({ type: "workspace-cleared" });
-      bridge.sendRaw({ type: "mup-catalog", catalog: bridge.buildCatalogSummary() });
-    }
-    bridge.sendRaw({ type: "workspace-list", workspaces: ws.list() });
-  });
 }
 
 // ---- Hot-Reload File Watching ----
@@ -173,6 +143,8 @@ function setupFileWatching(
     try {
       fs.watch(dir, { recursive: true }, (_, filename) => {
         if (!filename || !filename.endsWith(".html")) return;
+        // Ignore files inside .mup/ directory
+        if (filename.startsWith(".mup")) return;
         const filePath = path.join(dir, filename);
         if (!fs.existsSync(filePath)) return;
         try {
@@ -216,8 +188,6 @@ function setupMcpServer(
           mupId: { type: "string", description: "MUP ID (e.g. mup-chess, mup-chart). Auto-activated on first use." },
           functionName: { type: "string", description: "Function to call (e.g. makeMove, renderChart, setPixels)" },
           functionArgs: { type: "object", description: "Arguments for the function. Can be a JSON object or JSON string." },
-          name: { type: "string", description: "Workspace name for save/load/deleteWorkspace actions." },
-          description: { type: "string", description: "Workspace description — what you're working on. Used with save action." },
           since: { type: "number", description: "Unix timestamp (ms). Only return interactions after this time. Used with checkInteractions." },
           subAction: { type: "string", description: 'For pipe action: "create", "list", "delete", "enable", "disable"' },
           pipeId: { type: "string", description: "Pipe ID for delete/enable/disable." },
@@ -236,14 +206,6 @@ function setupMcpServer(
     const args = (request.params.arguments || {}) as Record<string, unknown>;
 
     // Dispatch by action
-    if (args.action === "workspaces") return handleWorkspaces(ws);
-    if (args.action === "save") return handleSave(ws, manager, args);
-    if (args.action === "load") return handleLoad(ws, manager, bridge, sendLoadMup, args);
-    if (args.action === "deleteWorkspace") {
-      const name = args.name as string;
-      if (!name) return { content: [text('Provide "name".')], isError: true };
-      return { content: [text(ws.delete(name) ? `Workspace "${name}" deleted.` : `Workspace "${name}" not found.`)] };
-    }
     if (args.action === "list") return handleList(manager);
     if (args.action === "checkInteractions") return handleCheckInteractions(manager, args);
     if (args.action === "history") return handleHistory(ws, manager, args);
@@ -318,7 +280,7 @@ function setupMcpServer(
       content.push(text(`\n--- User wants your attention ---\n${discuss.map((e) => `[${e.mupName}] ${e.summary}`).join("\n")}`));
     }
 
-    ws.markDirty();
+    ws.markMupDirty(mupId);
     return { content, isError: result.isError };
   });
 
@@ -349,7 +311,7 @@ async function main() {
     }
   }
 
-  // --- Manager & Workspace ---
+  // --- Manager ---
   const manager = new MupManager();
   for (const file of mupFiles) {
     try { const m = manager.scanFile(file); console.error(`[mup-mcp] Scanned: ${m.name} (${m.id})`); }
@@ -366,13 +328,14 @@ async function main() {
   bridge.folderPath = mupsDirs.length > 0 ? mupsDirs[0] : "";
   await bridge.start();
 
-  const ws = new WorkspaceManager(manager);
-  ws.setInstanceId(port);
+  // --- Workspace (folder-based, in-place) ---
+  const primaryDir = mupsDirs.length > 0 ? mupsDirs[0] : path.resolve(".");
+  const ws = new WorkspaceManager(manager, primaryDir);
   ws.setBridge(bridge);
 
-  // --- Auto-restore last session ---
-  const restored = ws.silentRestore();
-  if (restored.length > 0) console.error(`[mup-mcp] Restored last session: ${restored.join(", ")}`);
+  // --- Restore from .mup/ folder ---
+  const restored = ws.restoreFromDisk();
+  if (restored.length > 0) console.error(`[mup-mcp] Restored: ${restored.join(", ")}`);
 
   // --- Helpers ---
   const sendLoadMup: SendLoadMupFn = (mupId, mup) => {
@@ -384,7 +347,7 @@ async function main() {
     const mup = manager.activate(mupId);
     if (!mup) return { error: `MUP "${mupId}" not found. Use { "action": "list" } to see available MUPs.` };
     sendLoadMup(mupId, mup);
-    ws.markDirty();
+    ws.markMetadataDirty();
     console.error(`[mup-mcp] Auto-activated: ${mup.manifest.name}`);
     return { activated: buildMupDetail(mup.manifest) };
   }
@@ -403,7 +366,6 @@ async function main() {
 
   // --- Wire up events ---
   setupBrowserEvents(bridge, manager, ws, sendLoadMup);
-  setupWorkspaceEvents(bridge, manager, ws, sendLoadMup);
   setupFileWatching(mupsDirs, manager, bridge, sendLoadMup, rebuildFolderTree);
   setupLifecycle(ws);
 
@@ -419,7 +381,7 @@ async function main() {
   // --- Start ---
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`[mup-mcp] MCP server running (stdio). UI panel on port ${port}. ${manager.getCatalog().length} MUPs loaded.`);
+  console.error(`[mup-mcp] MCP server running (stdio). UI panel on port ${port}. ${manager.getCatalog().length} MUPs loaded. Workspace: ${primaryDir}`);
 }
 
 main().catch((err) => { console.error("[mup-mcp] Fatal:", err); process.exit(1); });

@@ -48,14 +48,21 @@ export interface CatalogSummary {
   multiInstance: boolean;
 }
 
-// ---- Workspace List Item ----
+// ---- Workspace Metadata (lightweight, written on structure changes) ----
 
-export interface WorkspaceListItem {
-  name: string;
-  displayName: string;
-  description: string;
-  savedAt: number;
+export interface WorkspaceMetadata {
+  version: number;
   activeMups: string[];
+  gridLayout: GridLayoutItem[];
+  customNames: Record<string, string>;
+}
+
+// ---- Per-MUP State File (written individually on state changes) ----
+
+export interface MupStateFile {
+  mupId: string;
+  savedAt: number;
+  data: unknown;
 }
 
 // ---- Browser → Server Messages ----
@@ -71,10 +78,6 @@ export type BrowserMessage =
   | { type: "register-and-activate"; mupId: string; html: string; fileName: string }
   | { type: "load-folder"; mups: Array<{ mupId: string; html: string; fileName: string }> }
   | { type: "new-instance"; mupId: string; customName?: string }
-  | { type: "list-workspaces" }
-  | { type: "save-workspace"; name: string; description?: string }
-  | { type: "load-workspace"; name: string }
-  | { type: "delete-workspace"; name: string; isCurrent?: boolean }
   | { type: "save-grid-layout"; layout: GridLayoutItem[] }
   | { type: "rename-mup"; mupId: string; customName: string };
 
@@ -87,10 +90,7 @@ export type ServerMessage =
   | { type: "call"; callId: string; mupId: string; fn: string; args: Record<string, unknown> }
   | { type: "error"; message: string }
   | { type: "auto-saved" }
-  | { type: "workspace-list"; workspaces: WorkspaceListItem[] }
-  | { type: "workspace-saved"; name: string }
-  | { type: "workspace-loaded"; name: string; customNames: Record<string, string>; gridLayout?: GridLayoutItem[]; description?: string }
-  | { type: "workspace-cleared" };
+  | { type: "workspace-restored"; customNames: Record<string, string>; gridLayout?: GridLayoutItem[] };
 
 // ---- Typed Event Emitter for UiBridge ----
 
@@ -107,32 +107,15 @@ export interface BridgeEvents {
   "interaction": (mupId: string, action: string, summary: string) => void;
   "save-grid-layout": (layout: GridLayoutItem[]) => void;
   "rename-mup": (mupId: string, newName: string) => void;
-  "list-workspaces": () => void;
-  "save-workspace": (name: string, description?: string) => void;
-  "load-workspace": (name: string) => void;
-  "delete-workspace": (name: string, isCurrent?: boolean) => void;
 }
 
-// ---- Call History ----
+// ---- Call History (session-only, not persisted) ----
 
 export interface CallHistoryEntry {
   functionName: string;
   args: Record<string, unknown>;
   result: string;
   timestamp: number;
-}
-
-// ---- Workspace Data ----
-
-export interface WorkspaceData {
-  name: string;
-  description: string;
-  savedAt: number;
-  activeMups: string[];
-  mupStates: Record<string, unknown>;
-  callHistory: Record<string, CallHistoryEntry[]>;
-  customNames: Record<string, string>;
-  gridLayout?: GridLayoutItem[];
 }
 
 // ---- Helper: sendLoadMup callback type ----

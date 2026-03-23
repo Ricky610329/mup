@@ -18,228 +18,187 @@ const SAMPLE_HTML = `<!DOCTYPE html>
 </script>
 </head><body></body></html>`;
 
-const SAMPLE_HTML_B = `<!DOCTYPE html>
-<html><head>
-<script type="application/mup-manifest">
-{
-  "name": "Another MUP",
-  "id": "mup-another",
-  "description": "Another test MUP",
-  "functions": []
-}
-</script>
-</head><body></body></html>`;
-
-// Use a temp directory for workspace files to avoid polluting real data
 let tmpDir: string;
-let origHome: string | undefined;
 
-describe("WorkspaceManager", () => {
+describe("WorkspaceManager (folder-based)", () => {
   let mgr: MupManager;
   let ws: WorkspaceManager;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "mup-test-"));
-    origHome = process.env.HOME || process.env.USERPROFILE;
-    // Override HOME so workspace files go to temp dir
-    process.env.HOME = tmpDir;
-    process.env.USERPROFILE = tmpDir;
+    // Write a sample MUP file into the temp dir
+    fs.writeFileSync(path.join(tmpDir, "test.html"), SAMPLE_HTML);
 
     mgr = new MupManager();
-    ws = new WorkspaceManager(mgr);
-    ws.setInstanceId("test");
+    mgr.scanFile(path.join(tmpDir, "test.html"));
+    ws = new WorkspaceManager(mgr, tmpDir);
   });
 
   afterEach(() => {
-    if (origHome !== undefined) {
-      process.env.HOME = origHome;
-      process.env.USERPROFILE = origHome;
-    }
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  // ---- save / load round-trip ----
+  // ---- metadata save/restore ----
 
-  describe("save / load", () => {
-    it("round-trips workspace data", () => {
-      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
+  describe("metadata save/restore", () => {
+    it("saves and restores active MUPs", () => {
       mgr.activate("mup-test");
       mgr.updateState("mup-test", "count=1", { count: 1 });
       ws.customNames["mup-test"] = "My Counter";
-      ws.description = "Test workspace";
 
-      ws.save("test-ws", "Test workspace");
-      const data = ws.load("test-ws");
+      // Flush saves metadata + state
+      ws.markMetadataDirty();
+      ws.markMupDirty("mup-test");
+      ws.flushSave();
 
-      assert.notEqual(data, null);
-      assert.equal(data!.name, "test-ws");
-      assert.equal(data!.description, "Test workspace");
-      assert.deepEqual(data!.activeMups, ["mup-test"]);
-      assert.deepEqual(data!.mupStates["mup-test"], { count: 1 });
-      assert.equal(data!.customNames!["mup-test"], "My Counter");
+      // Verify .mup/ directory was created
+      assert.ok(fs.existsSync(path.join(tmpDir, ".mup")));
+      assert.ok(fs.existsSync(path.join(tmpDir, ".mup", "workspace.json")));
+      assert.ok(fs.existsSync(path.join(tmpDir, ".mup", "state", "mup-test.json")));
+
+      // Teardown and restore
+      mgr.deactivate("mup-test");
+      assert.equal(mgr.getAll().length, 0);
+
+      const ws2 = new WorkspaceManager(mgr, tmpDir);
+      const restored = ws2.restoreFromDisk();
+
+      assert.equal(restored.length, 1);
+      assert.equal(mgr.getAll().length, 1);
+      assert.deepEqual(mgr.get("mup-test")!.stateData, { count: 1 });
+      assert.equal(ws2.customNames["mup-test"], "My Counter");
     });
 
-    it("returns null for nonexistent workspace", () => {
-      assert.equal(ws.load("nonexistent"), null);
+    it("restores empty when no .mup/ exists", () => {
+      const ws2 = new WorkspaceManager(mgr, tmpDir);
+      const restored = ws2.restoreFromDisk();
+      assert.equal(restored.length, 0);
     });
   });
 
-  // ---- save with multiInstance ----
+  // ---- per-MUP state files ----
 
-  describe("save with instances", () => {
-    it("saves instance IDs", () => {
-      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
+  describe("per-MUP state", () => {
+    it("writes individual state files", () => {
       mgr.activate("mup-test");
-      mgr.activateInstance("mup-test");
-      mgr.updateState("mup-test", "base", { n: 1 });
-      mgr.updateState("mup-test_2", "inst", { n: 2 });
+      mgr.updateState("mup-test", "val=42", { value: 42 });
 
-      ws.save("inst-ws");
-      const data = ws.load("inst-ws");
+      ws.markMupDirty("mup-test");
+      ws.flushSave();
 
-      assert.notEqual(data, null);
-      assert.deepEqual(data!.activeMups.sort(), ["mup-test", "mup-test_2"]);
-      assert.deepEqual(data!.mupStates["mup-test"], { n: 1 });
-      assert.deepEqual(data!.mupStates["mup-test_2"], { n: 2 });
+      const stateFile = path.join(tmpDir, ".mup", "state", "mup-test.json");
+      assert.ok(fs.existsSync(stateFile));
+      const data = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+      assert.equal(data.mupId, "mup-test");
+      assert.deepEqual(data.data, { value: 42 });
+    });
+
+    it("deletes state file on deactivation", () => {
+      mgr.activate("mup-test");
+      mgr.updateState("mup-test", "val=1", { v: 1 });
+      ws.markMupDirty("mup-test");
+      ws.markMetadataDirty();
+      ws.flushSave();
+
+      const stateFile = path.join(tmpDir, ".mup", "state", "mup-test.json");
+      assert.ok(fs.existsSync(stateFile));
+
+      mgr.deactivate("mup-test");
+      ws.onMupDeactivated("mup-test");
+      ws.flushSave();
+
+      assert.ok(!fs.existsSync(stateFile));
     });
   });
 
-  // ---- restore with instances ----
+  // ---- multiInstance ----
 
-  describe("restore with instances", () => {
-    it("silentRestore restores instances with correct IDs", () => {
-      // Setup: activate base + instance, save
-      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
+  describe("multiInstance", () => {
+    it("saves and restores instances", () => {
       mgr.activate("mup-test");
       mgr.activateInstance("mup-test");
       mgr.updateState("mup-test", "base", { n: 1 });
       mgr.updateState("mup-test_2", "inst", { n: 2 });
       ws.customNames["mup-test_2"] = "Second Panel";
-      ws.save("_last_test");
 
-      // Teardown: deactivate all
+      ws.markMetadataDirty();
+      ws.markMupDirty("mup-test");
+      ws.markMupDirty("mup-test_2");
+      ws.flushSave();
+
+      // Teardown
       mgr.deactivate("mup-test_2");
       mgr.deactivate("mup-test");
       assert.equal(mgr.getAll().length, 0);
 
       // Restore
-      const restored = ws.silentRestore();
+      const ws2 = new WorkspaceManager(mgr, tmpDir);
+      const restored = ws2.restoreFromDisk();
+
       assert.equal(restored.length, 2);
-
-      // Verify instances are back
-      const all = mgr.getAll();
-      assert.equal(all.length, 2);
-      const ids = all.map(m => m.manifest.id).sort();
+      const ids = mgr.getAll().map(m => m.manifest.id).sort();
       assert.deepEqual(ids, ["mup-test", "mup-test_2"]);
-
-      // Verify state was restored
       assert.deepEqual(mgr.get("mup-test")!.stateData, { n: 1 });
       assert.deepEqual(mgr.get("mup-test_2")!.stateData, { n: 2 });
     });
   });
 
-  // ---- callHistory ----
+  // ---- callHistory (session-only) ----
 
   describe("callHistory", () => {
-    it("stores and retrieves call history", () => {
+    it("stores call history in session", () => {
       ws.addCallHistory("mup-test", "doThing", { x: 1 }, "done");
       ws.addCallHistory("mup-test", "doThing", { x: 2 }, "done again");
 
       assert.equal(ws.callHistory["mup-test"].length, 2);
       assert.equal(ws.callHistory["mup-test"][0].functionName, "doThing");
-      assert.deepEqual(ws.callHistory["mup-test"][0].args, { x: 1 });
     });
 
-    it("persists through save/load", () => {
-      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
+    it("is NOT persisted to disk", () => {
       mgr.activate("mup-test");
       ws.addCallHistory("mup-test", "fn1", {}, "result1");
-
-      ws.save("hist-ws");
-
-      // Create new workspace manager and load
-      const ws2 = new WorkspaceManager(mgr);
-      ws2.setInstanceId("test");
-      const data = ws2.load("hist-ws");
-
-      assert.notEqual(data, null);
-      assert.equal(data!.callHistory["mup-test"].length, 1);
-      assert.equal(data!.callHistory["mup-test"][0].functionName, "fn1");
-    });
-  });
-
-  // ---- list / delete ----
-
-  describe("list / delete", () => {
-    it("lists saved workspaces excluding _last", () => {
-      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
-      mgr.activate("mup-test");
-
-      ws.save("_last_test");
-      ws.save("my-workspace");
-      ws.save("another-ws");
-
-      const list = ws.list();
-      const names = list.map(w => w.name);
-      assert.ok(names.includes("my-workspace"));
-      assert.ok(names.includes("another-ws"));
-      assert.ok(!names.some(n => n.startsWith("_last")));
-    });
-
-    it("deletes workspace", () => {
-      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
-      mgr.activate("mup-test");
-      ws.save("to-delete");
-
-      assert.equal(ws.delete("to-delete"), true);
-      assert.equal(ws.load("to-delete"), null);
-      assert.equal(ws.delete("to-delete"), false);
-    });
-  });
-
-  // ---- reset ----
-
-  describe("reset", () => {
-    it("clears all workspace state", () => {
-      ws.callHistory["test"] = [{ functionName: "f", args: {}, result: "r", timestamp: 0 }];
-      ws.customNames["test"] = "Custom";
-      ws.description = "Desc";
-      ws.gridLayout = [{ id: "x", x: 0, y: 0, w: 1, h: 1 }];
-      ws.currentName = "ws1";
-
-      ws.reset();
-
-      assert.deepEqual(Object.keys(ws.callHistory), []);
-      assert.deepEqual(Object.keys(ws.customNames), []);
-      assert.equal(ws.description, "");
-      assert.equal(ws.gridLayout.length, 0);
-      assert.equal(ws.currentName, null);
-    });
-  });
-
-  // ---- markDirty / flushSave ----
-
-  describe("markDirty / flushSave", () => {
-    it("flushSave saves immediately when dirty", () => {
-      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
-      mgr.activate("mup-test");
-
-      ws.markDirty();
+      ws.markMetadataDirty();
       ws.flushSave();
 
-      const data = ws.load("_last_test");
-      assert.notEqual(data, null);
-      assert.deepEqual(data!.activeMups, ["mup-test"]);
+      // Check workspace.json does not contain callHistory
+      const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, ".mup", "workspace.json"), "utf-8"));
+      assert.equal(meta.callHistory, undefined);
+    });
+  });
+
+  // ---- gridLayout persistence ----
+
+  describe("gridLayout", () => {
+    it("saves and restores grid layout", () => {
+      mgr.activate("mup-test");
+      ws.gridLayout = [{ id: "mup-test", x: 0, y: 0, w: 2, h: 2 }];
+      ws.markMetadataDirty();
+      ws.flushSave();
+
+      const ws2 = new WorkspaceManager(mgr, tmpDir);
+      ws2.restoreFromDisk();
+      assert.equal(ws2.gridLayout.length, 1);
+      assert.equal(ws2.gridLayout[0].id, "mup-test");
+    });
+  });
+
+  // ---- flushSave ----
+
+  describe("flushSave", () => {
+    it("is no-op when nothing is dirty", () => {
+      ws.flushSave();
+      assert.ok(!fs.existsSync(path.join(tmpDir, ".mup", "workspace.json")));
     });
 
-    it("flushSave is no-op when not dirty", () => {
-      // Ensure no MUPs are active and delete any leftover file
-      for (const m of mgr.getAll()) mgr.deactivate(m.manifest.id);
-      ws.delete("_last_test");
-
+    it("saves metadata immediately when dirty", () => {
+      mgr.activate("mup-test");
+      ws.markMetadataDirty();
       ws.flushSave();
-      // autoSave skips when no active MUPs and not dirty
-      assert.equal(ws.load("_last_test"), null);
+
+      assert.ok(fs.existsSync(path.join(tmpDir, ".mup", "workspace.json")));
+      const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, ".mup", "workspace.json"), "utf-8"));
+      assert.deepEqual(meta.activeMups, ["mup-test"]);
+      assert.equal(meta.version, 1);
     });
   });
 });

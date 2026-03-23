@@ -1,9 +1,8 @@
 import type { MupManager } from "./manager.js";
 import type { WorkspaceManager } from "./workspace.js";
-import type { UiBridge } from "./bridge.js";
 import type { PipelineManager } from "./pipeline.js";
 import { CONFIG } from "./config.js";
-import type { CallHistoryEntry, SendLoadMupFn } from "./types.js";
+import type { CallHistoryEntry } from "./types.js";
 
 // ---- Helpers ----
 
@@ -27,7 +26,7 @@ export function buildToolDescription(manager: MupManager, port: number): string 
   const lines = [
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
-    `Actions: checkInteractions, save, load, workspaces, list, history, pipe`,
+    `Actions: checkInteractions, list, history, pipe`,
   ];
   if (active.length > 0) {
     lines.push(``, `Active MUPs:`);
@@ -40,36 +39,6 @@ export function buildToolDescription(manager: MupManager, port: number): string 
 }
 
 // ---- Action Handlers ----
-
-export function handleWorkspaces(ws: WorkspaceManager) {
-  const workspaces = ws.list();
-  if (workspaces.length === 0) return { content: [text('No saved workspaces. Use { "action": "save", "name": "..." } to save.')] };
-  const lines = workspaces.map((w) => {
-    const time = new Date(w.savedAt).toLocaleString();
-    const desc = w.description ? ` — ${w.description}` : "";
-    return `- ${w.displayName}${desc} (saved ${time}, MUPs: ${w.activeMups.join(", ")})`;
-  });
-  return { content: [text("Saved workspaces:\n" + lines.join("\n"))] };
-}
-
-export function handleSave(ws: WorkspaceManager, manager: MupManager, args: Record<string, unknown>) {
-  const name = args.name as string;
-  if (!name) return { content: [text('Provide "name" for the workspace.')], isError: true };
-  const desc = args.description as string | undefined;
-  ws.save(name, desc);
-  ws.currentName = name;
-  const active = manager.getAll().map((m) => ws.customNames[m.manifest.id] || m.manifest.name);
-  return { content: [text(`Workspace "${name}" saved.${desc ? ` Description: ${desc}` : ""}\nActive MUPs: ${active.join(", ") || "none"}.`)] };
-}
-
-export function handleLoad(ws: WorkspaceManager, manager: MupManager, bridge: UiBridge, sendLoadMup: SendLoadMupFn, args: Record<string, unknown>) {
-  const name = args.name as string;
-  if (!name) return { content: [text('Provide "name" of the workspace to load.')], isError: true };
-  if (!ws.load(name)) return { content: [text(`Workspace "${name}" not found.`)], isError: true };
-  const restored = ws.restore(bridge, sendLoadMup, name);
-  const desc = ws.description ? `\nDescription: ${ws.description}` : "";
-  return { content: [text(`Workspace "${name}" loaded.${desc}\nActive MUPs: ${restored.join(", ") || "none"}.`)] };
-}
 
 export function handleList(manager: MupManager) {
   const sections = manager.getCatalog().map((e) => `${e.active ? "[ACTIVE]" : "[available]"} ${buildMupDetail(e.manifest)}`);

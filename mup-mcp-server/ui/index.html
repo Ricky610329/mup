@@ -306,15 +306,7 @@
   <div class="header-logo">M</div>
   <span class="header-title">MUP Panel</span>
   <span class="header-badge">MCP</span>
-  <span class="header-ws-name" id="headerWsName" title="Click to edit workspace info"></span>
-  <button class="workspace-btn" id="quickSaveBtn" style="display:none;padding:4px 8px;min-width:0" title="Save to current workspace">
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 1h8l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z"/><path d="M5 1v4h5V1"/><path d="M5 10h6"/></svg>
-  </button>
   <div class="header-spacer"></div>
-  <button class="workspace-btn" id="wsBtn">
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>
-    Workspaces
-  </button>
   <span class="save-indicator" id="saveIndicator">saved</span>
   <div class="status-dot connecting" id="statusDot"></div>
 </div>
@@ -607,25 +599,9 @@ function handleServerMessage(msg) {
       callMupFunction(msg.callId, msg.mupId, msg.fn, msg.args);
       break;
     case "auto-saved": showSaveIndicator(); break;
-    case "workspace-list": renderWorkspaceList(msg.workspaces); break;
-    case "workspace-saved": addEventBadge("Workspace", `"${msg.name}" saved`); break;
-    case "workspace-cleared":
-      clearAllMupWidgets();
-      currentWorkspaceName = null;
-      currentWorkspaceDesc = '';
-      updateHeaderWsName();
-      for (const c of catalog) c.active = false;
-      renderManagerCard();
-      addEventBadge("Workspace", "Cleared");
-      break;
-    case "workspace-loaded":
-      clearAllMupWidgets();
-      currentWorkspaceName = msg.name;
-      currentWorkspaceDesc = msg.description || '';
-      updateHeaderWsName();
+    case "workspace-restored":
       if (msg.customNames) window._pendingCustomNames = msg.customNames;
       if (msg.gridLayout) window._pendingGridLayout = msg.gridLayout;
-      addEventBadge("Workspace", `"${msg.name}" loaded`);
       break;
   }
 }
