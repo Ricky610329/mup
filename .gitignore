@@ -5,6 +5,9 @@ dist/
 .env
 .claude/
 
+# MUP runtime state
+examples/.mup/
+
 # MUP Agent build output and user data
 mup-agent/dist/
 mup-agent/node_modules/

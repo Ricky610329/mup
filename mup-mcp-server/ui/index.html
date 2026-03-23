@@ -55,11 +55,6 @@
     }
     .header-title { font-size: 14px; font-weight: 600; letter-spacing: -0.3px; cursor: pointer; border-radius: 6px; padding: 2px 6px; }
     .header-title:hover { background: rgba(0,0,0,0.04); }
-    .header-path {
-      font-size: 11px; color: var(--text-tertiary);
-      max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      direction: rtl; text-align: left;
-    }
     .header-spacer { flex: 1; }
     /* Loading bar */
     .loading-bar {
@@ -157,11 +152,6 @@
     .manager-file.non-mup { color: var(--text-tertiary); cursor: default; font-size: 11px; }
     .manager-file.is-folder { color: var(--text-primary); font-weight: 500; }
     .manager-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .manager-folder-path {
-      padding: 4px 12px; font-size: 10px; color: var(--text-tertiary);
-      border-bottom: 1px solid var(--border);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
     .manager-breadcrumb {
       padding: 4px 12px; font-size: 11px; color: var(--text-tertiary);
       border-bottom: 1px solid var(--border);
@@ -216,7 +206,6 @@
 <div class="header">
   <div class="header-logo">M</div>
   <span class="header-title" id="headerTitle" title="Click to rename workspace">MUP Panel</span>
-  <span class="header-path" id="headerPath"></span>
   <div class="header-spacer"></div>
   <span class="save-indicator" id="saveIndicator">saved</span>
   <button class="workspace-btn" id="flushSaveBtn" title="Save now">Save</button>
@@ -448,8 +437,6 @@ function connect() {
 }
 
 let catalog = [];
-let serverFolderPath = '';
-let browserFolderName = '';
 const loadingBar = document.getElementById('loadingBar');
 
 function clearAllMupWidgets() {
@@ -467,10 +454,8 @@ function handleServerMessage(msg) {
     case "error": addEventBadge("Error", msg.message || "Unknown error"); break;
     case "folder-tree":
       folderTree = msg.tree || [];
-      serverFolderPath = msg.path || '';
       navStack = [];
       renderManagerCard();
-      updateHeaderPath();
       break;
     case "load-mup": loadMup(msg.mupId, msg.html, msg.manifest, msg.savedState); break;
     case "call":
@@ -510,7 +495,7 @@ function loadMup(mupId, html, manifest, savedState) {
         <button class="mup-close-btn" data-mup-id="${mupId}" title="Remove">&times;</button>
       </div>
       <div class="mup-card-body">
-        <iframe sandbox="allow-scripts allow-same-origin" ${
+        <iframe sandbox="allow-scripts allow-same-origin allow-popups" ${
           (manifest.permissions || []).length ? `allow="${manifest.permissions.map(p => p + " 'src'").join('; ')}"` : ''
         }></iframe>
       </div>
@@ -792,52 +777,20 @@ function renderManagerCard() {
     el.setAttribute('gs-x', '0');
     el.setAttribute('gs-y', '0');
     el.setAttribute('gs-id', '__manager__');
-    const folderDisplay = serverFolderPath || browserFolderName || '';
     el.innerHTML = `
       <div class="grid-stack-item-content">
         <div class="mup-card-header" style="cursor:grab;">
           <span class="mup-name">MUPs</span>
-          <button class="mup-close-btn" id="folderPickerBtn" title="Open folder">${FOLDER_ICON}</button>
         </div>
-        ${folderDisplay ? `<div class="manager-folder-path" id="managerFolderPath" title="${escapeHtml(folderDisplay)}">${escapeHtml(folderDisplay)}</div>` : '<div class="manager-folder-path" id="managerFolderPath"></div>'}
         <div id="managerBreadcrumb">${breadcrumb}</div>
         <div class="manager-list" id="managerList">${listHtml}</div>
       </div>`;
     managerWidget = grid.addWidget(el);
-
-    // Folder picker
-    managerWidget.querySelector('#folderPickerBtn').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      try {
-        const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-        browserFolderName = dirHandle.name;
-        folderTree = await scanDirectoryHandle(dirHandle);
-        navStack = [];
-        updateHeaderPath();
-        // Batch-register all valid MUPs to server catalog (without activating)
-        if (ws && ws.readyState === WebSocket.OPEN && browserMupCache.size > 0) {
-          const mups = [];
-          for (const [mupId, cached] of browserMupCache) {
-            mups.push({ mupId, html: cached.html, fileName: cached.name });
-          }
-          ws.send(JSON.stringify({ type: "load-folder", mups }));
-        }
-        renderManagerCard();
-        const count = browserMupCache.size;
-        addEventBadge("MUPs", `Scanned ${count} MUPs from folder`);
-      } catch {}
-    });
   } else {
     const listEl = managerWidget.querySelector('#managerList');
     if (listEl) listEl.innerHTML = listHtml;
     const bcEl = managerWidget.querySelector('#managerBreadcrumb');
     if (bcEl) bcEl.innerHTML = breadcrumb;
-    const pathEl = managerWidget.querySelector('#managerFolderPath');
-    if (pathEl) {
-      const folderDisplay = serverFolderPath || browserFolderName || '';
-      pathEl.textContent = folderDisplay;
-      pathEl.title = folderDisplay;
-    }
   }
 
   bindManagerEvents();
@@ -846,12 +799,10 @@ function renderManagerCard() {
 function bindManagerEvents() {
   if (!managerWidget) return;
 
-  // Empty state "Open Folder" button
+  // Empty state placeholder
   const emptyBtn = managerWidget.querySelector('#emptyOpenFolderBtn');
   if (emptyBtn) {
     emptyBtn.onclick = () => {
-      const pickerBtn = managerWidget.querySelector('#folderPickerBtn');
-      if (pickerBtn) pickerBtn.click();
     };
   }
 
@@ -913,22 +864,14 @@ function bindManagerEvents() {
   });
 }
 
-// ---- Workspace Name & Path ----
+// ---- Workspace Name ----
 const headerTitle = document.getElementById('headerTitle');
-const headerPath = document.getElementById('headerPath');
 let workspaceName = '';
 
 function setWorkspaceName(name) {
   workspaceName = name || '';
   if (headerTitle) headerTitle.textContent = workspaceName || 'MUP Panel';
   document.title = workspaceName ? `${workspaceName} — MUP Panel` : 'MUP Panel (MCP)';
-}
-
-function updateHeaderPath() {
-  if (!headerPath) return;
-  const p = serverFolderPath || browserFolderName || '';
-  headerPath.textContent = p;
-  headerPath.title = p;
 }
 
 if (headerTitle) {

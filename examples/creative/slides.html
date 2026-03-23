@@ -109,7 +109,6 @@
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -222,14 +221,18 @@
 
     /* Print */
     @media print {
-      body { background: white; }
+      body { background: white; overflow: visible; height: auto; }
       .toolbar, .thumbs { display: none !important; }
-      .slide-area { padding: 0; }
+      .slide-area {
+        padding: 0; display: block; height: auto; overflow: visible;
+      }
       .slide {
         max-width: none; width: 100%; height: 100vh;
         border-radius: 0; box-shadow: none;
-        page-break-after: always;
+        page-break-after: always; break-after: page;
+        page-break-inside: avoid; break-inside: avoid;
       }
+      .slide:last-child { page-break-after: auto; break-after: auto; }
     }
   </style>
 </head>
@@ -317,61 +320,55 @@
       if (e.key === 'ArrowRight' && currentIndex < slides.length - 1) { currentIndex++; render(); }
     });
 
-    // Export to PDF via html2pdf.js
-    let exporting = false;
-    document.getElementById('exportBtn').addEventListener('click', async () => {
-      if (slides.length === 0 || exporting) return;
-      exporting = true;
-      const btn = document.getElementById('exportBtn');
-      btn.textContent = 'Exporting...';
-      btn.style.opacity = '0.5';
+    // Export: open a new window with all slides, then trigger print (works from iframe)
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      if (slides.length === 0) return;
 
-      try {
-        // Build off-screen container with all slides at fixed 960x540 (16:9)
-        const container = document.createElement('div');
-        container.style.cssText = 'position:absolute;left:-9999px;top:0;width:960px;';
+      const allSlidesHtml = slides.map((s, i) => renderSlide(s, i)).join('');
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) { alert('Pop-up blocked — please allow pop-ups for this site'); return; }
 
-        for (let i = 0; i < slides.length; i++) {
-          const wrapper = document.createElement('div');
-          wrapper.innerHTML = renderSlide(slides[i], i);
-          const slideEl = wrapper.firstElementChild;
-          slideEl.style.cssText = `width:960px;height:540px;max-width:none;aspect-ratio:auto;border-radius:0;box-shadow:none;font-family:${theme.font};background:${theme.bg};overflow:hidden;`;
-          // Force layout styles that use CSS vars
-          slideEl.querySelectorAll('.slide-title').forEach(el => el.style.color = theme.accent);
-          slideEl.querySelectorAll('.slide-content strong').forEach(el => el.style.color = theme.accent);
-          slideEl.querySelectorAll('.slide-content blockquote').forEach(el => el.style.borderLeftColor = theme.accent);
-          slideEl.querySelectorAll('.slide.layout-content .slide-title').forEach(el => el.style.borderBottomColor = theme.accent);
-          container.appendChild(slideEl);
-        }
-
-        document.body.appendChild(container);
-
-        const opt = {
-          margin: 0,
-          filename: 'slides.pdf',
-          image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 2, width: 960, height: 540, windowWidth: 960, windowHeight: 540 },
-          jsPDF: { unit: 'px', format: [960, 540], orientation: 'landscape', hotfixes: ['px_scaling'] },
-          pagebreak: { mode: ['avoid-all'] }
-        };
-
-        // Render each slide as a separate page
-        const pdf = html2pdf().set(opt);
-        let worker = pdf.from(container.children[0]).toContainer().toCanvas().toPdf();
-        for (let i = 1; i < container.children.length; i++) {
-          worker = worker.get('pdf').then(doc => doc.addPage())
-            .from(container.children[i]).toContainer().toCanvas().toPdf();
-        }
-        await worker.save();
-
-        document.body.removeChild(container);
-      } catch (err) {
-        console.error('PDF export failed:', err);
-      } finally {
-        exporting = false;
-        btn.textContent = 'PDF';
-        btn.style.opacity = '';
-      }
+      printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Slides Export</title>
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script>
+        <style>
+          @page { size: 254mm 142.9mm; margin: 0; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { background: white; font-family: ${JSON.stringify(theme.font)}; }
+          .slide {
+            width: 254mm; height: 142.9mm;
+            background: ${theme.bg};
+            overflow: hidden; display: flex; flex-direction: column;
+            font-family: ${JSON.stringify(theme.font)};
+            position: relative;
+            page-break-after: always; break-after: page;
+            page-break-inside: avoid; break-inside: avoid;
+          }
+          .slide:last-child { page-break-after: auto; break-after: auto; }
+          .slide.layout-title { align-items: center; justify-content: center; text-align: center; padding: 40px; }
+          .slide.layout-title .slide-title { font-size: 32px; font-weight: 700; color: ${theme.accent}; margin-bottom: 12px; }
+          .slide.layout-title .slide-content { font-size: 18px; color: #666; }
+          .slide.layout-content { padding: 28px 40px; }
+          .slide.layout-content .slide-title { font-size: 26px; font-weight: 700; color: ${theme.accent}; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid ${theme.accent}; }
+          .slide.layout-content .slide-content { flex: 1; overflow: hidden; font-size: 16px; line-height: 1.7; color: #333; }
+          .slide.layout-split { padding: 28px 40px; }
+          .slide.layout-split .slide-title { font-size: 24px; font-weight: 700; color: ${theme.accent}; margin-bottom: 14px; }
+          .slide.layout-split .slide-content { flex: 1; display: flex; gap: 24px; font-size: 15px; line-height: 1.6; color: #333; }
+          .slide.layout-split .slide-content > * { flex: 1; }
+          .slide-content ul, .slide-content ol { padding-left: 24px; margin: 6px 0; }
+          .slide-content li { margin: 4px 0; }
+          .slide-content code { background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
+          .slide-content pre { background: rgba(0,0,0,0.04); padding: 10px 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0; }
+          .slide-content pre code { background: none; padding: 0; }
+          .slide-content strong { color: ${theme.accent}; }
+          .slide-content blockquote { border-left: 3px solid ${theme.accent}; padding-left: 12px; color: #666; margin: 8px 0; }
+          .slide-number { position: absolute; bottom: 10px; right: 16px; font-size: 11px; color: rgba(0,0,0,0.2); }
+          @media print {
+            body { background: white; }
+            .slide { box-shadow: none; border-radius: 0; }
+          }
+        </style></head><body>${allSlidesHtml}</body></html>`);
+      printWindow.document.close();
+      printWindow.onload = () => { printWindow.focus(); printWindow.print(); };
     });
 
     function sendState() {

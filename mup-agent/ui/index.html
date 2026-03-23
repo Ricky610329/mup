@@ -397,23 +397,6 @@
       color: var(--text-primary); font-weight: 400;
     }
     .manager-file.invalid .manager-file-name { color: var(--text-tertiary); text-decoration: line-through; }
-    .manager-folder-bar {
-      display: flex; align-items: center; gap: 4px;
-      padding: 4px 8px; border-bottom: 1px solid var(--border);
-      font-size: 10px; color: var(--text-secondary);
-      overflow: hidden;
-    }
-    .manager-folder-path {
-      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      direction: rtl; text-align: left; /* show end of path */
-    }
-    .manager-folder-btn {
-      background: none; border: none; cursor: pointer; padding: 2px;
-      color: var(--text-tertiary); display: flex; align-items: center;
-      border-radius: 4px; transition: color 0.15s, background 0.15s;
-      flex-shrink: 0;
-    }
-    .manager-folder-btn:hover { color: var(--text-primary); background: rgba(0,0,0,0.06); }
 
     .manager-file.is-folder { cursor: pointer; }
     .manager-file.is-folder .manager-file-name { font-weight: 500; }
@@ -1130,19 +1113,16 @@ function connect() {
 
 let catalog = [];
 let folderTree = []; // tree from scan-folder
-let currentFolder = '';
 
 function handleServerMessage(msg) {
   switch (msg.type) {
     case "initial-folder":
-      currentFolder = msg.path;
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "scan-folder", path: msg.path }));
       }
       break;
     case "mup-catalog": catalog = msg.catalog; renderManagerCard(); break;
     case "folder-contents":
-      currentFolder = msg.path;
       folderTree = msg.tree || [];
       if (msg.error) addChatMessage("system", `Folder error: ${msg.error}`);
       renderManagerCard();
@@ -1229,7 +1209,7 @@ function loadMup(mupId, html, manifest, savedState) {
         <button class="mup-close-btn" data-mup-id="${mupId}" title="Remove">&times;</button>
       </div>
       <div class="mup-card-body">
-        <iframe sandbox="allow-scripts allow-same-origin" ${
+        <iframe sandbox="allow-scripts allow-same-origin allow-popups" ${
           (manifest.permissions || []).length ? `allow="${manifest.permissions.map(p => p + " 'src'").join('; ')}"` : ''
         }></iframe>
       </div>
@@ -1516,11 +1496,6 @@ function renderManagerCard() {
   if (!grid) return;
 
   const listHtml = renderCurrentView();
-  const folderBar = `
-    <div class="manager-folder-bar">
-      <span class="manager-folder-path" title="${escapeHtml(currentFolder)}">${escapeHtml(currentFolder || 'No folder')}</span>
-      <button class="manager-folder-btn" id="changeFolderBtn" title="Change folder">${FOLDER_ICON_SM}</button>
-    </div>`;
 
   if (!managerWidget) {
     const el = document.createElement('div');
@@ -1535,18 +1510,12 @@ function renderManagerCard() {
         <div class="mup-card-header" style="cursor:grab;">
           <span class="mup-name">MUPs</span>
         </div>
-        ${folderBar}
         <div class="manager-list" id="managerList">${listHtml}</div>
       </div>`;
     managerWidget = grid.addWidget(el);
   } else {
     const listEl = managerWidget.querySelector('#managerList');
     if (listEl) listEl.innerHTML = listHtml;
-    const barEl = managerWidget.querySelector('.manager-folder-bar');
-    if (barEl) {
-      barEl.querySelector('.manager-folder-path').textContent = currentFolder || 'No folder';
-      barEl.querySelector('.manager-folder-path').title = currentFolder || '';
-    }
   }
 
   bindManagerEvents();
@@ -1596,38 +1565,6 @@ function bindManagerEvents() {
     };
   });
 
-  // Empty state "Open Folder" button
-  const emptyBtn = managerWidget.querySelector('#emptyOpenFolderBtn');
-  if (emptyBtn) {
-    emptyBtn.onclick = () => {
-      const folderBtn2 = managerWidget.querySelector('#changeFolderBtn');
-      if (folderBtn2) folderBtn2.click();
-    };
-  }
-
-  // Change folder button — use File System Access API
-  const folderBtn = managerWidget.querySelector('#changeFolderBtn');
-  if (folderBtn) {
-    folderBtn.onclick = async () => {
-      try {
-        const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-        currentFolder = dirHandle.name;
-        folderTree = await scanDirectoryHandle(dirHandle);
-        navStack = []; // reset navigation
-        // Batch-register all valid MUPs to server catalog (without activating)
-        if (ws && ws.readyState === WebSocket.OPEN && browserMupCache.size > 0) {
-          const mups = [];
-          for (const [mupId, cached] of browserMupCache) {
-            mups.push({ mupId, html: cached.html, fileName: cached.name });
-          }
-          ws.send(JSON.stringify({ type: "load-folder", mups }));
-        }
-        renderManagerCard();
-      } catch (e) {
-        // User cancelled
-      }
-    };
-  }
 }
 
 // ---- Start ----
