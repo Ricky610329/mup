@@ -79,7 +79,8 @@ export type BrowserMessage =
   | { type: "load-folder"; mups: Array<{ mupId: string; html: string; fileName: string }> }
   | { type: "new-instance"; mupId: string; customName?: string }
   | { type: "save-grid-layout"; layout: GridLayoutItem[] }
-  | { type: "rename-mup"; mupId: string; customName: string };
+  | { type: "rename-mup"; mupId: string; customName: string }
+  | { type: "flush-save" };
 
 // ---- Server → Browser Messages ----
 
@@ -107,6 +108,7 @@ export interface BridgeEvents {
   "interaction": (mupId: string, action: string, summary: string) => void;
   "save-grid-layout": (layout: GridLayoutItem[]) => void;
   "rename-mup": (mupId: string, newName: string) => void;
+  "flush-save": () => void;
 }
 
 // ---- Call History (session-only, not persisted) ----

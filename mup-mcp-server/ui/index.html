@@ -59,14 +59,6 @@
       background: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 8px;
     }
     .header-spacer { flex: 1; }
-    .header-ws-name {
-      font-size: 12px; color: var(--text-secondary); cursor: pointer;
-      padding: 2px 8px; border-radius: 6px; max-width: 200px;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .header-ws-name:hover { background: rgba(0,0,0,0.04); color: var(--text-primary); }
-    .header-ws-name:empty { display: none; }
-
     /* Loading bar */
     .loading-bar {
       position: fixed; top: 0; left: 0; right: 0; height: 2px;
@@ -83,31 +75,6 @@
       100% { transform: translateX(400%); }
     }
 
-    /* Edit modal */
-    .edit-modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.3);
-      z-index: 3000; display: none; align-items: center; justify-content: center;
-    }
-    .edit-modal-overlay.open { display: flex; }
-    .edit-modal {
-      background: var(--bg-panel); border-radius: var(--radius-lg);
-      padding: 20px; width: 320px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-    }
-    .edit-modal h3 { font-size: 14px; margin-bottom: 12px; }
-    .edit-modal label { font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px; margin-top: 10px; }
-    .edit-modal input, .edit-modal textarea {
-      width: 100%; border: 1px solid var(--border); border-radius: 8px;
-      padding: 8px 10px; font-size: 13px; font-family: inherit; outline: none;
-    }
-    .edit-modal input:focus, .edit-modal textarea:focus { border-color: var(--text-secondary); }
-    .edit-modal textarea { resize: vertical; min-height: 60px; }
-    .edit-modal-btns { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
-    .edit-modal-btns button {
-      padding: 6px 16px; border-radius: 8px; font-size: 12px; font-weight: 500;
-      cursor: pointer; border: none;
-    }
-    .edit-modal-btns .btn-cancel { background: rgba(0,0,0,0.06); color: var(--text-secondary); }
-    .edit-modal-btns .btn-save { background: var(--text-primary); color: white; }
     .workspace-btn {
       background: none; border: 1px solid var(--border); cursor: pointer;
       color: var(--text-secondary); font-size: 11px; font-weight: 500;
@@ -125,64 +92,6 @@
     }
     .save-indicator.show { opacity: 1; }
 
-    /* Workspace panel */
-    .ws-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.3);
-      z-index: 2000; display: none;
-    }
-    .ws-overlay.open { display: block; }
-    .ws-panel {
-      position: fixed; top: 0; right: -340px; width: 340px; height: 100vh;
-      background: var(--bg-panel); border-left: 1px solid var(--border);
-      z-index: 2001; display: flex; flex-direction: column;
-      transition: right 0.2s ease;
-      box-shadow: -4px 0 20px rgba(0,0,0,0.08);
-    }
-    .ws-panel.open { right: 0; }
-    .ws-panel-header {
-      padding: 14px 16px; border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .ws-panel-header h3 { font-size: 14px; font-weight: 600; }
-    .ws-close-btn {
-      background: none; border: none; cursor: pointer; font-size: 18px;
-      color: var(--text-tertiary); padding: 2px 6px; border-radius: 4px;
-    }
-    .ws-close-btn:hover { background: rgba(0,0,0,0.06); }
-    .ws-save-bar {
-      padding: 10px 16px; border-bottom: 1px solid var(--border);
-      display: flex; gap: 8px;
-    }
-    .ws-save-input {
-      flex: 1; border: 1px solid var(--border); border-radius: 8px;
-      padding: 6px 10px; font-size: 12px; font-family: inherit;
-      outline: none;
-    }
-    .ws-save-input:focus { border-color: var(--text-secondary); }
-    .ws-save-btn {
-      background: var(--text-primary); color: white; border: none;
-      border-radius: 8px; padding: 6px 14px; font-size: 12px;
-      font-weight: 500; cursor: pointer;
-    }
-    .ws-save-btn:hover { opacity: 0.85; }
-    .ws-list { flex: 1; overflow-y: auto; padding: 8px 0; }
-    .ws-item {
-      padding: 10px 16px; cursor: pointer;
-      display: flex; align-items: center; gap: 10px;
-      border-bottom: 1px solid rgba(0,0,0,0.04);
-    }
-    .ws-item:hover { background: rgba(0,0,0,0.03); }
-    .ws-item-info { flex: 1; min-width: 0; }
-    .ws-item-name { font-size: 13px; font-weight: 500; }
-    .ws-item-desc { font-size: 11px; color: var(--text-primary); margin-top: 2px; opacity: 0.7; }
-    .ws-item-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
-    .ws-item-del {
-      background: none; border: none; cursor: pointer;
-      color: var(--text-tertiary); font-size: 14px;
-      padding: 4px 6px; border-radius: 4px; flex-shrink: 0;
-    }
-    .ws-item-del:hover { background: rgba(0,0,0,0.06); color: var(--red); }
-    .ws-empty { padding: 20px 16px; font-size: 12px; color: var(--text-tertiary); text-align: center; }
     .status-dot.connected { background: var(--green); }
     .status-dot.disconnected { background: var(--red); }
     .status-dot.connecting { background: var(--amber); animation: pulse 1.5s ease-in-out infinite; }
@@ -308,22 +217,8 @@
   <span class="header-badge">MCP</span>
   <div class="header-spacer"></div>
   <span class="save-indicator" id="saveIndicator">saved</span>
+  <button class="workspace-btn" id="flushSaveBtn" title="Save now">Save</button>
   <div class="status-dot connecting" id="statusDot"></div>
-</div>
-
-<!-- Edit workspace modal -->
-<div class="edit-modal-overlay" id="editWsOverlay">
-  <div class="edit-modal">
-    <h3>Edit Workspace</h3>
-    <label>Name</label>
-    <input id="editWsName" placeholder="Workspace name" />
-    <label>Description</label>
-    <textarea id="editWsDesc" placeholder="What are you working on?"></textarea>
-    <div class="edit-modal-btns">
-      <button class="btn-cancel" id="editWsCancel">Cancel</button>
-      <button class="btn-save" id="editWsSave">Save</button>
-    </div>
-  </div>
 </div>
 
 <div class="dashboard" id="dashboard">
@@ -331,22 +226,6 @@
 </div>
 
 <div class="event-badges" id="eventBadges"></div>
-
-<!-- Workspace panel -->
-<div class="ws-overlay" id="wsOverlay"></div>
-<div class="ws-panel" id="wsPanel">
-  <div class="ws-panel-header">
-    <h3>Workspaces</h3>
-    <button class="ws-close-btn" id="wsCloseBtn">&times;</button>
-  </div>
-  <div class="ws-save-bar" style="flex-wrap: wrap;">
-    <input class="ws-save-input" id="wsSaveInput" placeholder="Name" style="flex: 1; min-width: 80px;" />
-    <button class="ws-save-btn" id="wsSaveBtn">Save</button>
-    <button class="ws-save-btn" id="wsNewBtn" style="background: var(--text-secondary);">New</button>
-    <input class="ws-save-input" id="wsSaveDesc" placeholder="Description (optional)" style="flex-basis: 100%; margin-top: 6px;" />
-  </div>
-  <div class="ws-list" id="wsList"></div>
-</div>
 
 <script>
 // ---- MUP SDK (injected into each iframe) ----
@@ -567,12 +446,9 @@ function connect() {
 }
 
 let catalog = [];
-let currentWorkspaceName = null;
-let currentWorkspaceDesc = '';
 let serverFolderPath = '';
 let browserFolderName = '';
 const loadingBar = document.getElementById('loadingBar');
-const headerWsName = document.getElementById('headerWsName');
 
 function clearAllMupWidgets() {
   if (grid) {
@@ -1020,173 +896,12 @@ function bindManagerEvents() {
   });
 }
 
-// ---- Workspace UI ----
-const wsBtn = document.getElementById('wsBtn');
-const wsPanel = document.getElementById('wsPanel');
-const wsOverlay = document.getElementById('wsOverlay');
-const wsCloseBtn = document.getElementById('wsCloseBtn');
-const wsSaveBtn = document.getElementById('wsSaveBtn');
-const wsSaveInput = document.getElementById('wsSaveInput');
-const wsList = document.getElementById('wsList');
-
-function openWorkspacePanel() {
-  wsPanel.classList.add('open');
-  wsOverlay.classList.add('open');
+// ---- Save Button ----
+document.getElementById('flushSaveBtn').addEventListener('click', () => {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "list-workspaces" }));
+    ws.send(JSON.stringify({ type: "flush-save" }));
+    showSaveIndicator();
   }
-}
-
-function closeWorkspacePanel() {
-  wsPanel.classList.remove('open');
-  wsOverlay.classList.remove('open');
-}
-
-wsBtn.addEventListener('click', openWorkspacePanel);
-wsCloseBtn.addEventListener('click', closeWorkspacePanel);
-wsOverlay.addEventListener('click', closeWorkspacePanel);
-
-const wsSaveDesc = document.getElementById('wsSaveDesc');
-
-wsSaveBtn.addEventListener('click', () => {
-  const name = wsSaveInput.value.trim();
-  if (!name) return;
-  const description = wsSaveDesc.value.trim() || undefined;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "save-workspace", name, description }));
-  }
-  wsSaveInput.value = '';
-  wsSaveDesc.value = '';
-});
-
-wsSaveInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') wsSaveBtn.click();
-});
-
-document.getElementById('wsNewBtn').addEventListener('click', () => {
-  if (!confirm('Start a new workspace? Active panels will be closed.')) return;
-  // Remove all MUP widgets
-  if (grid) {
-    for (const item of grid.getGridItems()) {
-      if (item.getAttribute('gs-id') !== '__manager__') grid.removeWidget(item);
-    }
-  }
-  // Deactivate all on server
-  for (const [mupId] of mups) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "deactivate-mup", mupId }));
-    }
-  }
-  mups.clear();
-  for (const c of catalog) c.active = false;
-  window._pendingCustomNames = null;
-  currentWorkspaceName = null;
-  currentWorkspaceDesc = '';
-  updateHeaderWsName();
-  renderManagerCard();
-  closeWorkspacePanel();
-});
-
-function renderWorkspaceList(workspaces) {
-  if (!workspaces || workspaces.length === 0) {
-    wsList.innerHTML = '<div class="ws-empty">No saved workspaces yet.<br>Save your current setup above.</div>';
-    return;
-  }
-  wsList.innerHTML = workspaces.map(w => {
-    const time = new Date(w.savedAt).toLocaleString();
-    const mupList = w.activeMups.join(', ');
-    const label = w.displayName || w.name;
-    const desc = w.description ? `<div class="ws-item-desc">${escapeHtml(w.description)}</div>` : '';
-    return `<div class="ws-item" data-name="${escapeHtml(w.name)}">
-      <div class="ws-item-info">
-        <div class="ws-item-name">${escapeHtml(label)}</div>
-        ${desc}
-        <div class="ws-item-meta">${time} &middot; ${mupList || 'no MUPs'}</div>
-      </div>
-      <button class="ws-item-del" data-name="${escapeHtml(w.name)}" title="Delete">&times;</button>
-    </div>`;
-  }).join('');
-
-  // Click to load
-  wsList.querySelectorAll('.ws-item').forEach(el => {
-    el.addEventListener('click', (e) => {
-      if (e.target.classList.contains('ws-item-del')) return;
-      const name = el.dataset.name;
-      if (name && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "load-workspace", name }));
-        closeWorkspacePanel();
-      }
-    });
-  });
-
-  // Delete button
-  wsList.querySelectorAll('.ws-item-del').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const name = btn.dataset.name;
-      if (name && confirm(`Delete workspace "${name}"?`)) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          const isCurrent = name === currentWorkspaceName;
-          ws.send(JSON.stringify({ type: "delete-workspace", name, isCurrent }));
-          if (isCurrent) closeWorkspacePanel();
-        }
-      }
-    });
-  });
-}
-
-// ---- Header workspace name + edit modal ----
-const quickSaveBtn = document.getElementById('quickSaveBtn');
-
-function updateHeaderWsName() {
-  const display = currentWorkspaceName && !currentWorkspaceName.startsWith('_last') ? currentWorkspaceName : '';
-  headerWsName.textContent = display;
-  headerWsName.title = display ? `${display}${currentWorkspaceDesc ? ' — ' + currentWorkspaceDesc : ''}\nClick to edit` : '';
-  quickSaveBtn.style.display = display ? '' : 'none';
-}
-
-quickSaveBtn.addEventListener('click', () => {
-  if (currentWorkspaceName && ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "save-workspace", name: currentWorkspaceName, description: currentWorkspaceDesc }));
-    addEventBadge("Saved", `"${currentWorkspaceName}"`);
-  }
-});
-
-headerWsName.addEventListener('click', () => {
-  if (!currentWorkspaceName || currentWorkspaceName.startsWith('_last')) return;
-  document.getElementById('editWsName').value = currentWorkspaceName;
-  document.getElementById('editWsDesc').value = currentWorkspaceDesc;
-  document.getElementById('editWsOverlay').classList.add('open');
-});
-
-document.getElementById('editWsCancel').addEventListener('click', () => {
-  document.getElementById('editWsOverlay').classList.remove('open');
-});
-
-document.getElementById('editWsOverlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('editWsOverlay')) {
-    document.getElementById('editWsOverlay').classList.remove('open');
-  }
-});
-
-document.getElementById('editWsSave').addEventListener('click', () => {
-  const newName = document.getElementById('editWsName').value.trim();
-  const newDesc = document.getElementById('editWsDesc').value.trim();
-  if (!newName) return;
-
-  // If name changed, delete old and save new
-  if (newName !== currentWorkspaceName && ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "delete-workspace", name: currentWorkspaceName, isCurrent: false }));
-  }
-  currentWorkspaceName = newName;
-  currentWorkspaceDesc = newDesc;
-  updateHeaderWsName();
-
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "save-workspace", name: newName, description: newDesc }));
-  }
-  document.getElementById('editWsOverlay').classList.remove('open');
-  addEventBadge("Workspace", `Updated "${newName}"`);
 });
 
 // ---- Start ----

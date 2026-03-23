@@ -248,6 +248,10 @@ export class UiBridge extends EventEmitter {
       case "rename-mup":
         this.typedEmit("rename-mup", msg.mupId, msg.customName);
         break;
+
+      case "flush-save":
+        this.typedEmit("flush-save");
+        break;
     }
   }
 
