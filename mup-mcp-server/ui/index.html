@@ -55,9 +55,10 @@
     }
     .header-title { font-size: 14px; font-weight: 600; letter-spacing: -0.3px; cursor: pointer; border-radius: 6px; padding: 2px 6px; }
     .header-title:hover { background: rgba(0,0,0,0.04); }
-    .header-badge {
-      font-size: 11px; color: var(--text-secondary);
-      background: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 8px;
+    .header-path {
+      font-size: 11px; color: var(--text-tertiary);
+      max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      direction: rtl; text-align: left;
     }
     .header-spacer { flex: 1; }
     /* Loading bar */
@@ -215,7 +216,7 @@
 <div class="header">
   <div class="header-logo">M</div>
   <span class="header-title" id="headerTitle" title="Click to rename workspace">MUP Panel</span>
-  <span class="header-badge">MCP</span>
+  <span class="header-path" id="headerPath"></span>
   <div class="header-spacer"></div>
   <span class="save-indicator" id="saveIndicator">saved</span>
   <button class="workspace-btn" id="flushSaveBtn" title="Save now">Save</button>
@@ -469,6 +470,7 @@ function handleServerMessage(msg) {
       serverFolderPath = msg.path || '';
       navStack = [];
       renderManagerCard();
+      updateHeaderPath();
       break;
     case "load-mup": loadMup(msg.mupId, msg.html, msg.manifest, msg.savedState); break;
     case "call":
@@ -811,6 +813,7 @@ function renderManagerCard() {
         browserFolderName = dirHandle.name;
         folderTree = await scanDirectoryHandle(dirHandle);
         navStack = [];
+        updateHeaderPath();
         // Batch-register all valid MUPs to server catalog (without activating)
         if (ws && ws.readyState === WebSocket.OPEN && browserMupCache.size > 0) {
           const mups = [];
@@ -910,14 +913,22 @@ function bindManagerEvents() {
   });
 }
 
-// ---- Workspace Name ----
+// ---- Workspace Name & Path ----
 const headerTitle = document.getElementById('headerTitle');
+const headerPath = document.getElementById('headerPath');
 let workspaceName = '';
 
 function setWorkspaceName(name) {
   workspaceName = name || '';
   if (headerTitle) headerTitle.textContent = workspaceName || 'MUP Panel';
   document.title = workspaceName ? `${workspaceName} — MUP Panel` : 'MUP Panel (MCP)';
+}
+
+function updateHeaderPath() {
+  if (!headerPath) return;
+  const p = serverFolderPath || browserFolderName || '';
+  headerPath.textContent = p;
+  headerPath.title = p;
 }
 
 if (headerTitle) {
