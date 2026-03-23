@@ -93,6 +93,7 @@
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -222,7 +223,7 @@
     <span class="page-info" id="pageInfo">0 / 0</span>
     <button class="toolbar-btn" id="nextBtn">▶</button>
     <div class="toolbar-spacer"></div>
-    <button class="toolbar-btn" id="exportBtn">Export</button>
+    <button class="toolbar-btn" id="exportBtn">PDF</button>
   </div>
   <div class="slide-area" id="slideArea">
     <div class="empty">No slides — ask the LLM to create a presentation</div>
@@ -300,42 +301,61 @@
       if (e.key === 'ArrowRight' && currentIndex < slides.length - 1) { currentIndex++; render(); }
     });
 
-    // Export — generate standalone printable HTML and download
-    document.getElementById('exportBtn').addEventListener('click', () => {
-      if (slides.length === 0) return;
-      const allSlides = slides.map((s, i) => renderSlide(s, i)).join('');
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Slides</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:${JSON.stringify(theme.font)},sans-serif;background:#fff}
-.slide{width:100%;height:100vh;display:flex;flex-direction:column;position:relative;background:${theme.bg};page-break-after:always;overflow:hidden}
-.slide.layout-title{align-items:center;justify-content:center;text-align:center;padding:60px}
-.slide.layout-title .slide-title{font-size:42px;font-weight:700;color:${theme.accent};margin-bottom:16px}
-.slide.layout-title .slide-content{font-size:22px;color:#666}
-.slide.layout-content{padding:40px 50px}
-.slide.layout-content .slide-title{font-size:32px;font-weight:700;color:${theme.accent};margin-bottom:20px;padding-bottom:10px;border-bottom:3px solid ${theme.accent}}
-.slide.layout-content .slide-content{flex:1;font-size:20px;line-height:1.7;color:#333}
-.slide.layout-split{padding:40px 50px}
-.slide.layout-split .slide-title{font-size:28px;font-weight:700;color:${theme.accent};margin-bottom:16px}
-.slide.layout-split .slide-content{flex:1;display:flex;gap:30px;font-size:18px;line-height:1.6;color:#333}
-.slide.layout-split .slide-content>*{flex:1}
-.slide-content ul,.slide-content ol{padding-left:24px;margin:6px 0}
-.slide-content li{margin:4px 0}
-.slide-content code{background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;font-size:0.9em}
-.slide-content pre{background:rgba(0,0,0,0.04);padding:12px 16px;border-radius:8px;overflow-x:auto;margin:8px 0}
-.slide-content pre code{background:none;padding:0}
-.slide-content strong{color:${theme.accent}}
-.slide-content blockquote{border-left:4px solid ${theme.accent};padding-left:14px;color:#666;margin:8px 0}
-.slide-number{position:absolute;bottom:12px;right:16px;font-size:14px;color:rgba(0,0,0,0.2)}
-@media print{.slide{height:100vh;page-break-after:always}}
-</style></head><body>${allSlides}<script>window.print()<\/script></body></html>`;
-      const blob = new Blob([html], { type: 'text/html' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'slides.html';
-      a.click();
-      URL.revokeObjectURL(a.href);
+    // Export to PDF via html2pdf.js
+    let exporting = false;
+    document.getElementById('exportBtn').addEventListener('click', async () => {
+      if (slides.length === 0 || exporting) return;
+      exporting = true;
+      const btn = document.getElementById('exportBtn');
+      btn.textContent = 'Exporting...';
+      btn.style.opacity = '0.5';
+
+      try {
+        // Build off-screen container with all slides at fixed 960x540 (16:9)
+        const container = document.createElement('div');
+        container.style.cssText = 'position:absolute;left:-9999px;top:0;width:960px;';
+
+        for (let i = 0; i < slides.length; i++) {
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = renderSlide(slides[i], i);
+          const slideEl = wrapper.firstElementChild;
+          slideEl.style.cssText = `width:960px;height:540px;max-width:none;aspect-ratio:auto;border-radius:0;box-shadow:none;font-family:${theme.font};background:${theme.bg};overflow:hidden;`;
+          // Force layout styles that use CSS vars
+          slideEl.querySelectorAll('.slide-title').forEach(el => el.style.color = theme.accent);
+          slideEl.querySelectorAll('.slide-content strong').forEach(el => el.style.color = theme.accent);
+          slideEl.querySelectorAll('.slide-content blockquote').forEach(el => el.style.borderLeftColor = theme.accent);
+          slideEl.querySelectorAll('.slide.layout-content .slide-title').forEach(el => el.style.borderBottomColor = theme.accent);
+          container.appendChild(slideEl);
+        }
+
+        document.body.appendChild(container);
+
+        const opt = {
+          margin: 0,
+          filename: 'slides.pdf',
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, width: 960, height: 540, windowWidth: 960, windowHeight: 540 },
+          jsPDF: { unit: 'px', format: [960, 540], orientation: 'landscape', hotfixes: ['px_scaling'] },
+          pagebreak: { mode: ['avoid-all'] }
+        };
+
+        // Render each slide as a separate page
+        const pdf = html2pdf().set(opt);
+        let worker = pdf.from(container.children[0]).toContainer().toCanvas().toPdf();
+        for (let i = 1; i < container.children.length; i++) {
+          worker = worker.get('pdf').then(doc => doc.addPage())
+            .from(container.children[i]).toContainer().toCanvas().toPdf();
+        }
+        await worker.save();
+
+        document.body.removeChild(container);
+      } catch (err) {
+        console.error('PDF export failed:', err);
+      } finally {
+        exporting = false;
+        btn.textContent = 'PDF';
+        btn.style.opacity = '';
+      }
     });
 
     function sendState() {
