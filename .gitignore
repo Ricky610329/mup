@@ -13,6 +13,9 @@ mup-agent/dist/
 mup-agent/node_modules/
 .mup-agent/
 
+# npm auth (use ~/.npmrc for local, NPM_TOKEN env for CI)
+.npmrc
+
 # MCP Registry tokens and publisher binary
 .mcpregistry_*
 mcp-publisher.exe
