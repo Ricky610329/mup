@@ -164,6 +164,21 @@
     body.grid-stack-dragging .mup-card-body iframe { pointer-events: none; }
 
     /* Manager card */
+    .mups-path-bar {
+      display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border);
+    }
+    .mups-path-bar input {
+      flex: 1; font-size: 11px; padding: 3px 6px; border: 1px solid var(--border);
+      border-radius: 4px; background: var(--bg-card); color: var(--text-primary);
+      font-family: inherit; outline: none;
+    }
+    .mups-path-bar input:focus { border-color: var(--green); }
+    .mups-path-bar button {
+      font-size: 11px; padding: 3px 8px; border: 1px solid var(--border);
+      border-radius: 4px; background: var(--bg-subtle); color: var(--text-primary);
+      cursor: pointer;
+    }
+    .mups-path-bar button:hover { background: var(--border); }
     .manager-list {
       flex: 1; overflow-y: auto; padding: 4px 0;
     }
@@ -516,6 +531,10 @@ function handleServerMessage(msg) {
     case "folder-tree":
       folderTree = msg.tree || [];
       navStack = [];
+      if (msg.path) {
+        const pathInput = document.getElementById('mupsPathInput');
+        if (pathInput) pathInput.value = msg.path;
+      }
       renderManagerCard();
       break;
     case "load-mup": loadMup(msg.mupId, msg.html, msg.manifest, msg.savedState); break;
@@ -528,6 +547,20 @@ function handleServerMessage(msg) {
       if (msg.customNames) window._pendingCustomNames = msg.customNames;
       if (msg.gridLayout) window._pendingGridLayout = msg.gridLayout;
       if (msg.name) setWorkspaceName(msg.name);
+      break;
+    case "mups-path-changed": {
+      const pathInput = document.getElementById('mupsPathInput');
+      if (pathInput) pathInput.value = msg.path;
+      break;
+    }
+    case "mups-path-error":
+      addEventBadge("Error", (msg.errors || []).join("; "));
+      break;
+    case "mups-path-warnings":
+      addEventBadge("Warning", (msg.warnings || []).join("; "));
+      break;
+    case "mup-deactivated":
+      removeMup(msg.mupId);
       break;
   }
 }
@@ -846,6 +879,10 @@ function renderManagerCard() {
         <div class="mup-card-header" style="cursor:grab;">
           <span class="mup-name">MUPs</span>
         </div>
+        <div class="mups-path-bar" id="mupsPathBar">
+          <input type="text" id="mupsPathInput" placeholder="Enter MUPs folder path..." spellcheck="false">
+          <button id="mupsPathLoadBtn">Load</button>
+        </div>
         <div id="managerBreadcrumb">${breadcrumb}</div>
         <div class="manager-list" id="managerList">${listHtml}</div>
       </div>`;
@@ -863,10 +900,24 @@ function renderManagerCard() {
 function bindManagerEvents() {
   if (!managerWidget) return;
 
-  // Empty state placeholder
+  // Path input bar
+  const pathInput = managerWidget.querySelector('#mupsPathInput');
+  const pathLoadBtn = managerWidget.querySelector('#mupsPathLoadBtn');
+  if (pathInput && pathLoadBtn) {
+    const submitPath = () => {
+      const p = pathInput.value.trim();
+      if (p && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'set-mups-path', path: p }));
+    };
+    pathLoadBtn.onclick = submitPath;
+    pathInput.onkeydown = (e) => { if (e.key === 'Enter') submitPath(); };
+  }
+
+  // Empty state button — focus path input
   const emptyBtn = managerWidget.querySelector('#emptyOpenFolderBtn');
   if (emptyBtn) {
     emptyBtn.onclick = () => {
+      const input = managerWidget.querySelector('#mupsPathInput');
+      if (input) input.focus();
     };
   }
 

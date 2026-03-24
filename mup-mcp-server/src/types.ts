@@ -55,6 +55,7 @@ export interface CatalogSummary {
 export interface WorkspaceMetadata {
   version: number;
   name?: string;
+  mupsPath?: string;
   activeMups: string[];
   gridLayout: GridLayoutItem[];
   customNames: Record<string, string>;
@@ -84,7 +85,8 @@ export type BrowserMessage =
   | { type: "save-grid-layout"; layout: GridLayoutItem[] }
   | { type: "rename-mup"; mupId: string; customName: string }
   | { type: "flush-save" }
-  | { type: "rename-workspace"; name: string };
+  | { type: "rename-workspace"; name: string }
+  | { type: "set-mups-path"; path: string };
 
 // ---- Server → Browser Messages ----
 
@@ -95,7 +97,11 @@ export type ServerMessage =
   | { type: "call"; callId: string; mupId: string; fn: string; args: Record<string, unknown> }
   | { type: "error"; message: string }
   | { type: "auto-saved" }
-  | { type: "workspace-restored"; name?: string; customNames: Record<string, string>; gridLayout?: GridLayoutItem[] };
+  | { type: "workspace-restored"; name?: string; customNames: Record<string, string>; gridLayout?: GridLayoutItem[] }
+  | { type: "mup-deactivated"; mupId: string }
+  | { type: "mups-path-changed"; path: string }
+  | { type: "mups-path-error"; errors: string[] }
+  | { type: "mups-path-warnings"; warnings: string[] };
 
 // ---- Typed Event Emitter for UiBridge ----
 
@@ -114,6 +120,7 @@ export interface BridgeEvents {
   "rename-mup": (mupId: string, newName: string) => void;
   "flush-save": () => void;
   "rename-workspace": (name: string) => void;
+  "set-mups-path": (path: string) => void;
 }
 
 // ---- Call History (session-only, not persisted) ----

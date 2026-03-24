@@ -260,6 +260,10 @@ export class UiBridge extends EventEmitter {
       case "rename-workspace":
         this.typedEmit("rename-workspace", msg.name);
         break;
+
+      case "set-mups-path":
+        this.typedEmit("set-mups-path", msg.path);
+        break;
     }
   }
 

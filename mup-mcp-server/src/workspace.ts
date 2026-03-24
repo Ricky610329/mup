@@ -30,9 +30,9 @@ export class WorkspaceManager {
   customNames: Record<string, string> = {};
   gridLayout: GridLayoutItem[] = [];
   name = "";
+  mupsPath = "";
 
   private bridge: UiBridge | null = null;
-  private mupsDir: string;
   private dotMupDir: string;
   private stateDir: string;
 
@@ -42,9 +42,8 @@ export class WorkspaceManager {
   private _stateTimer: ReturnType<typeof setTimeout> | null = null;
   private _metaTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private manager: MupManager, mupsDir: string) {
-    this.mupsDir = mupsDir;
-    this.dotMupDir = path.join(mupsDir, MUP_DIR_NAME);
+  constructor(private manager: MupManager, workspaceRoot: string) {
+    this.dotMupDir = path.join(workspaceRoot, MUP_DIR_NAME);
     this.stateDir = path.join(this.dotMupDir, STATE_DIR);
   }
 
@@ -88,6 +87,7 @@ export class WorkspaceManager {
       const meta: WorkspaceMetadata = {
         version: METADATA_VERSION,
         name: this.name || undefined,
+        mupsPath: this.mupsPath || undefined,
         activeMups: this.manager.getAll().map((m) => m.manifest.id),
         gridLayout: this.gridLayout,
         customNames: { ...this.customNames },
@@ -217,6 +217,25 @@ export class WorkspaceManager {
     }
   }
 
+  // ---- MUP Source Path ----
+
+  /** Read saved mupsPath from workspace.json (can be called before full restore) */
+  static getSavedMupsPath(workspaceRoot: string): string | undefined {
+    const p = path.join(workspaceRoot, MUP_DIR_NAME, METADATA_FILE);
+    try {
+      if (fs.existsSync(p)) {
+        const meta = JSON.parse(fs.readFileSync(p, "utf-8")) as WorkspaceMetadata;
+        return meta.mupsPath;
+      }
+    } catch { /* ignore */ }
+    return undefined;
+  }
+
+  setMupsPath(p: string): void {
+    this.mupsPath = p;
+    this.markMetadataDirty();
+  }
+
   // ---- Restore on Startup ----
 
   /** Load workspace from .mup/ folder, activate MUPs and restore state */
@@ -226,6 +245,7 @@ export class WorkspaceManager {
 
     this.gridLayout = meta.gridLayout || [];
     if (meta.name) this.name = meta.name;
+    if (meta.mupsPath) this.mupsPath = meta.mupsPath;
     if (meta.customNames) Object.assign(this.customNames, meta.customNames);
 
     const restored: string[] = [];

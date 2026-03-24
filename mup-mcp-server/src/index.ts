@@ -4,7 +4,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as net from "node:net";
 import { exec } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -313,13 +312,16 @@ function setupLifecycle(ws: WorkspaceManager): void {
 async function main() {
   const { mupFiles, mupsDirs, port: requestedPort, noOpen } = parseCliArgs();
 
-  // Default to ../examples if no MUPs specified
+  // Fallback: try saved mupsPath from workspace.json
+  const workspaceRoot = path.resolve(process.cwd());
   if (mupFiles.length === 0 && mupsDirs.length === 0) {
-    const defaultDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "examples");
-    if (fs.existsSync(defaultDir)) {
-      mupFiles.push(...scanHtmlFiles(defaultDir));
-      mupsDirs.push(defaultDir);
-      console.error(`[mup-mcp] No MUPs specified — loading defaults from ${defaultDir}`);
+    const savedPath = WorkspaceManager.getSavedMupsPath(workspaceRoot);
+    if (savedPath && fs.existsSync(savedPath)) {
+      mupFiles.push(...scanHtmlFiles(savedPath));
+      mupsDirs.push(savedPath);
+      console.error(`[mup-mcp] Restored MUP source: ${savedPath}`);
+    } else {
+      console.error(`[mup-mcp] No MUP source configured. Use the browser panel to select a folder.`);
     }
   }
 
@@ -340,9 +342,9 @@ async function main() {
   bridge.folderPath = mupsDirs.length > 0 ? mupsDirs[0] : "";
   await bridge.start();
 
-  // --- Workspace (folder-based, in-place) ---
-  const primaryDir = mupsDirs.length > 0 ? mupsDirs[0] : path.resolve(".");
-  const ws = new WorkspaceManager(manager, primaryDir);
+  // --- Workspace (state at project root .mup/) ---
+  const ws = new WorkspaceManager(manager, workspaceRoot);
+  if (mupsDirs.length > 0) ws.mupsPath = mupsDirs[0];
   ws.setBridge(bridge);
 
   // --- Restore from .mup/ folder ---
@@ -371,6 +373,70 @@ async function main() {
     bridge.sendRaw({ type: "folder-tree", tree: serverFolderTree, path: bridge.folderPath });
   }
 
+  function switchMupsFolder(newPath: string): { ok: boolean; warnings: string[] } {
+    const resolved = path.resolve(newPath);
+    if (!fs.existsSync(resolved)) return { ok: false, warnings: [`Directory not found: ${resolved}`] };
+
+    // Scan new folder
+    const newFiles = scanHtmlFiles(resolved);
+    const newIds = new Set<string>();
+    for (const file of newFiles) {
+      try { const m = manager.parseManifest(fs.readFileSync(file, "utf-8"), file); newIds.add(m.id); }
+      catch { /* skip non-MUP HTML */ }
+    }
+
+    // Check active MUPs against new folder
+    const warnings: string[] = [];
+    const activeMups = manager.getAll();
+    const unsupported = activeMups.filter((m) => !newIds.has(m.manifest.id));
+    if (unsupported.length > 0) {
+      warnings.push(
+        `The following active MUPs are not available in the new folder: ${unsupported.map((m) => m.manifest.name).join(", ")}. ` +
+        `Consider copying their .html files to ${resolved} to keep using them.`
+      );
+      for (const m of unsupported) {
+        manager.deactivate(m.manifest.id);
+        ws.onMupDeactivated(m.manifest.id);
+        bridge.sendRaw({ type: "mup-deactivated", mupId: m.manifest.id });
+        pipeline.onMupDeactivated(m.manifest.id);
+      }
+    }
+
+    // Replace catalog with new folder
+    manager.clearCatalog();
+    for (const file of newFiles) {
+      try { manager.scanFile(file); } catch { /* skip */ }
+    }
+
+    // Re-activate MUPs that exist in both old and new
+    for (const m of activeMups) {
+      if (newIds.has(m.manifest.id)) {
+        const mup = manager.activate(m.manifest.id);
+        if (mup) {
+          mup.stateData = m.stateData;
+          sendLoadMup(m.manifest.id, mup);
+        }
+      }
+    }
+
+    // Update folder tree and paths
+    mupsDirs.length = 0;
+    mupsDirs.push(resolved);
+    bridge.folderPath = resolved;
+    rebuildFolderTree();
+
+    // Re-bind file watcher for new directory
+    setupFileWatching([resolved], manager, bridge, sendLoadMup, rebuildFolderTree);
+
+    // Persist
+    ws.setMupsPath(resolved);
+    bridge.sendRaw({ type: "mup-catalog", catalog: bridge.buildCatalogSummary() });
+    bridge.sendRaw({ type: "mups-path-changed", path: resolved });
+
+    console.error(`[mup-mcp] Switched MUP source to: ${resolved}`);
+    return { ok: true, warnings };
+  }
+
   // --- Pipeline ---
   const pipeline = new PipelineManager(
     (mupId, fn, args) => bridge.callFunction(mupId, fn, args),
@@ -383,6 +449,11 @@ async function main() {
 
   // --- Wire up events ---
   setupBrowserEvents(bridge, manager, ws, sendLoadMup);
+  bridge.typedOn("set-mups-path", (newPath) => {
+    const result = switchMupsFolder(newPath);
+    if (!result.ok) bridge.sendRaw({ type: "mups-path-error", errors: result.warnings });
+    else if (result.warnings.length > 0) bridge.sendRaw({ type: "mups-path-warnings", warnings: result.warnings });
+  });
   setupFileWatching(mupsDirs, manager, bridge, sendLoadMup, rebuildFolderTree);
   setupLifecycle(ws);
 
@@ -398,7 +469,7 @@ async function main() {
   // --- Start ---
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`[mup-mcp] MCP server running (stdio). UI panel on port ${port}. ${manager.getCatalog().length} MUPs loaded. Workspace: ${primaryDir}`);
+  console.error(`[mup-mcp] MCP server running (stdio). UI panel on port ${port}. ${manager.getCatalog().length} MUPs loaded. Workspace: ${workspaceRoot}`);
 }
 
 main().catch((err) => { console.error("[mup-mcp] Fatal:", err); process.exit(1); });

@@ -67,6 +67,10 @@ export class MupManager {
     return Array.from(this.catalog.values());
   }
 
+  clearCatalog(): void {
+    this.catalog.clear();
+  }
+
   activate(mupId: string): LoadedMup | null {
     const entry = this.catalog.get(mupId);
     if (!entry) return null;

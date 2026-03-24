@@ -3,10 +3,12 @@ import * as path from "node:path";
 import type { MupManager } from "./manager.js";
 import type { FolderTreeNode } from "./types.js";
 
+const SKIP_DIRS = new Set(["node_modules", "dist", ".git"]);
+
 export function scanHtmlFiles(dir: string): string[] {
   const results: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory() && !entry.name.startsWith(".")) {
+    if (entry.isDirectory() && !entry.name.startsWith(".") && !SKIP_DIRS.has(entry.name)) {
       results.push(...scanHtmlFiles(path.join(dir, entry.name)));
     } else if (entry.isFile() && entry.name.endsWith(".html")) {
       results.push(path.join(dir, entry.name));
@@ -21,7 +23,7 @@ export function buildFolderTree(dir: string, manager: MupManager): FolderTreeNod
   const files: FolderTreeNode[] = [];
 
   for (const entry of entries) {
-    if (entry.isDirectory() && !entry.name.startsWith(".")) {
+    if (entry.isDirectory() && !entry.name.startsWith(".") && !SKIP_DIRS.has(entry.name)) {
       const children = buildFolderTree(path.join(dir, entry.name), manager);
       folders.push({ type: "folder", name: entry.name, children });
     } else if (entry.isFile()) {
