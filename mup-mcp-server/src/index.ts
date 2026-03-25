@@ -170,13 +170,25 @@ function setupFileWatching(
 
 // ---- MCP Server Setup ----
 
+// Track the mupId currently being called by the LLM (to suppress self-notifications)
+let activeCallMupId: string | null = null;
+
 function setupMcpServer(
   manager: MupManager, bridge: UiBridge, ws: WorkspaceManager,
   port: number, sendLoadMup: SendLoadMupFn,
   ensureActive: (mupId: string) => { error?: string; activated?: string },
   pipeline: PipelineManager
 ): Server {
-  const server = new Server({ name: "mup-mcp-server", version: "0.2.0" }, { capabilities: { tools: {} } });
+  const server = new Server(
+    { name: "mup", version: "0.2.0" },
+    {
+      capabilities: {
+        tools: {},
+        experimental: { "claude/channel": {} },
+      },
+      instructions: `MUP channel events arrive as <channel source="mup" mup_id="..." mup_name="...">. These are real-time user interactions from MUP UI panels in the browser. Respond by calling the mup tool with the mupId and the appropriate function. Use { "action": "setNotificationLevel", "mupId": "...", "level": "immediate" | "notify" | "silent" } to adjust how a MUP notifies you.`,
+    },
+  );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [{
@@ -185,7 +197,8 @@ function setupMcpServer(
       inputSchema: {
         type: "object" as const,
         properties: {
-          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "new-instance" to open another instance of a [multi] MUP, "pipe" to manage data pipes. Omit when calling a function.' },
+          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "new-instance" to open another instance of a [multi] MUP, "pipe" to manage data pipes, "setNotificationLevel" to change a MUP\'s notification level. Omit when calling a function.' },
+          level: { type: "string", description: 'For setNotificationLevel: "immediate" (channel push), "notify" (queued for checkInteractions), or "silent" (no events).' },
           mupId: { type: "string", description: "MUP ID (e.g. mup-chess, mup-chart). Auto-activated on first use." },
           functionName: { type: "string", description: "Function to call (e.g. makeMove, renderChart, setPixels)" },
           functionArgs: { type: "object", description: "Arguments for the function. Can be a JSON object or JSON string." },
@@ -205,12 +218,42 @@ function setupMcpServer(
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const args = (request.params.arguments || {}) as Record<string, unknown>;
+    // Track which MUP is being called to suppress self-notifications
+    activeCallMupId = (args.mupId as string) || null;
+    try {
+      return await handleToolCall(request, manager, bridge, ws, port, sendLoadMup, ensureActive, pipeline);
+    } finally {
+      activeCallMupId = null;
+    }
+  });
+
+  return server;
+}
+
+async function handleToolCall(
+  request: { params: { arguments?: Record<string, unknown> } },
+  manager: MupManager, bridge: UiBridge, ws: WorkspaceManager,
+  port: number, sendLoadMup: SendLoadMupFn,
+  ensureActive: (mupId: string) => { error?: string; activated?: string },
+  pipeline: PipelineManager
+) {
+    const args = (request.params.arguments || {}) as Record<string, unknown>;
 
     // Dispatch by action
     if (args.action === "list") return handleList(manager);
     if (args.action === "checkInteractions") return handleCheckInteractions(manager, args);
     if (args.action === "history") return handleHistory(ws, manager, args);
     if (args.action === "pipe") return handlePipe(pipeline, args);
+    if (args.action === "setNotificationLevel") {
+      const mupId = args.mupId as string;
+      const level = args.level as string;
+      if (!mupId || !level) return { content: [text('Provide "mupId" and "level" ("immediate", "notify", or "silent").')], isError: true };
+      if (!["immediate", "notify", "silent"].includes(level)) return { content: [text(`Invalid level "${level}". Use "immediate", "notify", or "silent".`)], isError: true };
+      const error = manager.setNotificationLevel(mupId, level as "immediate" | "notify" | "silent");
+      if (error) return { content: [text(error)], isError: true };
+      const mup = manager.get(mupId);
+      return { content: [text(`Notification level for "${mup?.manifest.name}" set to "${level}".`)] };
+    }
     if (args.action === "new-instance") {
       const baseMupId = args.mupId as string;
       if (!baseMupId) return { content: [text('Provide "mupId" for the base MUP to create an instance of.')], isError: true };
@@ -280,22 +323,8 @@ function setupMcpServer(
       }
     }
 
-    // "discuss" interactions are delivered immediately (appended to the current
-    // function call result) rather than queued for checkInteractions, ensuring
-    // time-sensitive user input reaches the LLM without polling delay.
-    // See spec: MUP-Spec.md § notifyInteraction → Reserved action: discuss
-    const events = manager.drainEvents();
-    const discuss = events.filter((e) => e.action === "discuss");
-    for (const e of events.filter((e) => e.action !== "discuss")) manager.addEvent(e.mupId, e.action, e.summary, e.data);
-    if (discuss.length > 0) {
-      content.push(text(`\n--- User wants your attention ---\n${discuss.map((e) => `[${e.mupName}] ${e.summary}`).join("\n")}`));
-    }
-
     ws.markMupDirty(mupId);
     return { content, isError: result.isError };
-  });
-
-  return server;
 }
 
 // ---- Lifecycle ----
@@ -459,6 +488,35 @@ async function main() {
 
   // --- MCP Server ---
   const server = setupMcpServer(manager, bridge, ws, port, sendLoadMup, ensureActive, pipeline);
+
+  // --- Log client capabilities on init ---
+  server.oninitialized = () => {
+    const caps = server.getClientCapabilities();
+    console.error(`[mup-mcp] Client capabilities: ${JSON.stringify(caps)}`);
+  };
+
+  // --- Notification routing based on manifest level ---
+  bridge.typedOn("interaction", (mupId, action, summary) => {
+    // Suppress notifications from the MUP currently being called by the LLM
+    if (mupId === activeCallMupId) return;
+
+    const level = manager.getNotificationLevel(mupId);
+    if (level === "silent") return;
+
+    if (level === "immediate") {
+      const mupName = manager.get(mupId)?.manifest.name ?? mupId;
+      server.notification({
+        method: "notifications/claude/channel",
+        params: {
+          content: summary,
+          meta: { mup_id: mupId, mup_name: mupName, action },
+        },
+      }).catch((err) => {
+        console.error(`[mup-mcp] Channel notification failed: ${(err as Error).message}`);
+      });
+    }
+    // level === "notify": already queued via manager.addEvent in bridge.ts
+  });
 
   // --- Browser auto-open ---
   if (!noOpen) {

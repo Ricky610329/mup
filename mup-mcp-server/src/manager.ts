@@ -8,6 +8,13 @@ export interface MupFunction {
   inputSchema: Record<string, unknown>;
 }
 
+export type NotificationLevel = "immediate" | "notify" | "silent";
+
+export interface MupNotifications {
+  level: NotificationLevel;
+  overridable: boolean;
+}
+
 export interface MupManifest {
   protocol: string;
   id: string;
@@ -27,6 +34,7 @@ export interface MupManifest {
   permissions?: string[];
   multiInstance?: boolean;
   darkMode?: boolean;
+  notifications?: MupNotifications;
 }
 
 export interface LoadedMup {
@@ -55,6 +63,29 @@ export interface CatalogEntry {
 export class MupManager {
   private mups = new Map<string, LoadedMup>();
   private catalog = new Map<string, CatalogEntry>();
+  /** Per-MUP notification level overrides set by LLM (session-only) */
+  private notificationOverrides = new Map<string, NotificationLevel>();
+
+  /** Get the effective notification level for a MUP */
+  getNotificationLevel(mupId: string): NotificationLevel {
+    const override = this.notificationOverrides.get(mupId);
+    if (override) return override;
+    const mup = this.mups.get(mupId) ?? this.catalog.get(mupId.replace(/_\d+$/, ""));
+    const manifest = mup && "manifest" in mup ? (mup as LoadedMup).manifest : (mup as CatalogEntry | undefined)?.manifest;
+    return manifest?.notifications?.level ?? "notify";
+  }
+
+  /** Set notification level override. Returns error string if not overridable. */
+  setNotificationLevel(mupId: string, level: NotificationLevel): string | null {
+    const mup = this.mups.get(mupId);
+    if (!mup) return `MUP "${mupId}" not found.`;
+    const notifications = mup.manifest.notifications;
+    if (notifications && notifications.overridable === false) {
+      return `MUP "${mup.manifest.name}" notification level is fixed at "${notifications.level}" and cannot be changed.`;
+    }
+    this.notificationOverrides.set(mupId, level);
+    return null;
+  }
 
   scanFile(filePath: string): MupManifest {
     const html = fs.readFileSync(filePath, "utf-8");
@@ -207,6 +238,10 @@ export class MupManager {
       permissions: raw.permissions,
       multiInstance: raw.multiInstance ?? false,
       darkMode: raw.darkMode ?? false,
+      notifications: raw.notifications ? {
+        level: raw.notifications.level ?? "notify",
+        overridable: raw.notifications.overridable ?? true,
+      } : undefined,
     };
   }
 
@@ -216,14 +251,6 @@ export class MupManager {
 
   get(mupId: string): LoadedMup | undefined {
     return this.mups.get(mupId);
-  }
-
-  getStateSnapshot(): Record<string, unknown> {
-    const states: Record<string, unknown> = {};
-    for (const [id, mup] of this.mups) {
-      if (mup.stateData !== undefined) states[id] = mup.stateData;
-    }
-    return states;
   }
 
   updateState(mupId: string, summary: string, data?: unknown): void {
@@ -272,49 +299,4 @@ export class MupManager {
     return events;
   }
 
-  /** Get MCP-compatible tool definitions */
-  getMcpTools(): Array<{
-    name: string;
-    description: string;
-    inputSchema: Record<string, unknown>;
-    _mupId: string;
-    _functionName: string;
-  }> {
-    const tools: Array<{
-      name: string;
-      description: string;
-      inputSchema: Record<string, unknown>;
-      _mupId: string;
-      _functionName: string;
-    }> = [];
-
-    for (const mup of this.mups.values()) {
-      for (const fn of mup.manifest.functions) {
-        tools.push({
-          name: `${mup.manifest.id.replace(/[^a-zA-Z0-9]/g, "_")}__${fn.name}`,
-          description: `[${mup.manifest.name}] ${fn.description}`,
-          inputSchema: fn.inputSchema,
-          _mupId: mup.manifest.id,
-          _functionName: fn.name,
-        });
-      }
-    }
-
-    return tools;
-  }
-
-  parseToolName(toolName: string): { mupId: string; functionName: string } | null {
-    const sep = toolName.indexOf("__");
-    if (sep === -1) return null;
-
-    const sanitizedId = toolName.substring(0, sep);
-    const functionName = toolName.substring(sep + 2);
-
-    for (const mup of this.mups.values()) {
-      if (mup.manifest.id.replace(/[^a-zA-Z0-9]/g, "_") === sanitizedId) {
-        return { mupId: mup.manifest.id, functionName };
-      }
-    }
-    return null;
-  }
 }

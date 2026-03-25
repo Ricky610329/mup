@@ -9,6 +9,7 @@
     "name": "Chess",
     "description": "A chess board. User plays by clicking pieces, LLM responds with moves. Simple coordinate-based moves like e2e4.",
     "grid": { "minWidth": 1, "minHeight": 1 },
+    "notifications": { "level": "immediate", "overridable": false },
     "functions": [
       {
         "name": "makeMove",
@@ -490,7 +491,7 @@
             updateStatus();
             sendState();
             if (!gameOver) {
-              mup.notifyInteraction('discuss', `Player moved ${moveStr}. Your turn — reply with makeMove().`, { move: moveStr });
+              mup.notifyInteraction('move', `Player moved ${moveStr}. Your turn — reply with makeMove().`, { move: moveStr });
             }
           }
           return;

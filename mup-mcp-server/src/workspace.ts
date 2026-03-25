@@ -8,7 +8,6 @@ import type {
   WorkspaceMetadata,
   MupStateFile,
   GridLayoutItem,
-  CatalogSummary,
   SendLoadMupFn,
 } from "./types.js";
 
@@ -287,17 +286,4 @@ export class WorkspaceManager {
     this.markMetadataDirty();
   }
 
-  // ---- Helpers ----
-
-  buildCatalogSummary(): CatalogSummary[] {
-    return this.manager.getCatalog().map((e) => ({
-      id: e.manifest.id,
-      name: e.manifest.name,
-      description: e.manifest.description,
-      functions: e.manifest.functions.length,
-      active: e.active,
-      grid: e.manifest.grid,
-      multiInstance: e.manifest.multiInstance || false,
-    }));
-  }
 }

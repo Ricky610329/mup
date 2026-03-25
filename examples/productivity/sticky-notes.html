@@ -214,6 +214,7 @@
       const py = Math.min(e.clientY - rect.top, rect.height - 70);
       const color = COLORS[colorIndex++ % COLORS.length];
       const note = createNote('', color, xToPct(Math.max(8, px)), yToPct(Math.max(8, py)));
+      if (notifySettings.add) mup.notifyInteraction('add', `User added a new ${color} note`, { id: note.id, color });
       // Focus for editing
       setTimeout(() => {
         const textEl = note.el.querySelector('.note-text');

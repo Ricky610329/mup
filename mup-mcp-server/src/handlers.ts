@@ -26,14 +26,16 @@ export function buildToolDescription(manager: MupManager, port: number): string 
   const lines = [
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
-    `Actions: checkInteractions, list, history, pipe`,
+    `Actions: checkInteractions, list, history, pipe, setNotificationLevel`,
     `Multi-instance: use { "action": "new-instance", "mupId": "..." } to open another panel. Returns the new instance ID (_2, _3...).`,
   ];
   if (active.length > 0) {
     lines.push(``, `Active MUPs:`);
     for (const e of active) {
       const multi = e.manifest.multiInstance ? " [multi]" : "";
-      lines.push(`  ${e.manifest.id}${multi}: ${e.manifest.functions.map((f) => f.name).join(", ")}`);
+      const level = manager.getNotificationLevel(e.manifest.id);
+      const levelTag = level !== "notify" ? ` [${level}]` : "";
+      lines.push(`  ${e.manifest.id}${multi}${levelTag}: ${e.manifest.functions.map((f) => f.name).join(", ")}`);
     }
   }
   if (inactive.length > 0) {

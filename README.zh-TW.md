@@ -84,10 +84,21 @@ claude mcp add --transport stdio --scope user mup -- npx mup-mcp-server --mups-d
 
 重啟 Claude Code，MUP 面板就會以 tool 的形式出現。瀏覽器會自動開啟 `http://localhost:3200` 顯示 MUP 面板。
 
+#### 即時 Channel 模式
+
+manifest 中宣告 `"notifications": { "level": "immediate" }` 的 MUP 可以即時推送互動到 Claude 的對話中，不需要 polling。啟動時加上 channel flag：
+
+```bash
+claude --dangerously-load-development-channels server:mup
+```
+
+這讓 Chat 和 Chess 等 MUP 可以即時將使用者的操作傳遞給 Claude。不加此 flag 時，所有 MUP 功能仍然正常運作，只是互動會透過 polling 而非即時推送。
+
 試試看：
 - 「用 pixel art 畫一個笑臉」
 - 「做一份關於 MUP 的簡報」
 - 「來下西洋棋」
+- 開啟 Chat MUP，直接在瀏覽器中和 Claude 對話
 
 ### 搭配 Claude Desktop
 

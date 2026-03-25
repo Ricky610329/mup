@@ -84,10 +84,21 @@ claude mcp add --transport stdio --scope user mup -- npx mup-mcp-server --mups-d
 
 Restart Claude Code. MUP panels are now available as tools — just ask Claude to use them. A browser window opens at `http://localhost:3200` showing the MUP panel grid.
 
+#### Real-time channel mode
+
+MUPs with `"notifications": { "level": "immediate" }` can push interactions directly into Claude's conversation — no polling needed. To enable this, start Claude Code with the channel flag:
+
+```bash
+claude --dangerously-load-development-channels server:mup
+```
+
+This lets MUPs like Chat and Chess deliver user actions to Claude in real time. Without this flag, all MUP features still work — interactions are just delivered via polling instead of push.
+
 Try it:
 - "Draw a smiley face with pixel art"
 - "Create a presentation about MUP"
 - "Let's play chess"
+- Open the Chat MUP and talk to Claude directly from the browser
 
 ### With Claude Desktop
 

@@ -331,6 +331,40 @@ mup.notifyInteraction('paint', 'User painted 12 pixels in red', { color: '#ff000
 - `summary`：LLM 可讀的使用者行為描述
 - `data`：選填的結構化資料
 
+#### 通知層級（選用）
+
+MUP 可以在 manifest 中宣告通知層級，控制 host 如何將互動事件傳遞給 LLM：
+
+```json
+{
+  "notifications": {
+    "level": "immediate",
+    "overridable": false
+  }
+}
+```
+
+| 層級 | 行為 | 適用場景 |
+|------|------|---------|
+| `immediate` | Host 即時推送互動給 LLM（例如透過 channel 通知），LLM 應立即回應。 | 聊天、回合制遊戲 |
+| `notify` | 互動排隊等待 LLM 主動查詢（如 `checkInteractions`）。**這是預設值。** | 看板更新、繪圖編輯 |
+| `silent` | `notifyInteraction` 呼叫完全被忽略，只有 `updateState` 有效。 | 滑桿、小幅度 UI 調整 |
+
+`overridable` 控制 LLM 能否在執行期間動態調整層級（例如使用者說「注意我的操作」，LLM 將 MUP 從 `notify` 升級為 `immediate`）。預設為 `true`。設為 `false` 代表層級不可變更（如聊天面板必須永遠是 `immediate`）。
+
+若 manifest 省略 `notifications`，MUP 預設為 `notify`，且 `overridable: true`。
+
+**防止自我通知：** 當 LLM 呼叫某個 MUP 的函式時，該 MUP 在呼叫期間產生的互動事件應被抑制，避免循環通知。
+
+```javascript
+// 聊天 MUP：永遠 immediate，不可覆蓋
+// manifest: { "notifications": { "level": "immediate", "overridable": false } }
+mup.notifyInteraction('message', 'Hello!', { text: 'Hello!' });
+
+// 計數器 MUP：預設（notify），LLM 可升級
+mup.notifyInteraction('increment', 'Counter is now 5', { count: 5 });
+```
+
 ### `mup.system(action, params)`（選用）
 
 請求 host 提供的服務。回傳一個 promise，resolve 為 host 的回應。並非所有 host 都支援 — 請妥善處理錯誤。

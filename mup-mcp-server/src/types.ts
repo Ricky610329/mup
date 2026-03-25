@@ -115,7 +115,7 @@ export interface BridgeEvents {
   "load-folder": (mups: Array<{ mupId: string; html: string; fileName: string }>) => void;
   "mup-loaded": (mupId: string) => void;
   "state-update": (mupId: string, summary: string, data?: unknown) => void;
-  "interaction": (mupId: string, action: string, summary: string) => void;
+  "interaction": (mupId: string, action: string, summary: string, data?: unknown) => void;
   "save-grid-layout": (layout: GridLayoutItem[]) => void;
   "rename-mup": (mupId: string, newName: string) => void;
   "flush-save": () => void;

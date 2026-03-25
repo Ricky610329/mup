@@ -331,17 +331,39 @@ mup.notifyInteraction('paint', 'User painted 12 pixels in red', { color: '#ff000
 - `summary`: LLM-readable description of what the user did
 - `data`: optional structured data
 
-#### Reserved action: `discuss`
+#### Notification levels (optional)
 
-The action name `"discuss"` has special handling in some hosts: instead of being queued for the next `checkInteractions` poll, `discuss` interactions are immediately appended to the result of any currently-executing function call. This ensures the LLM sees time-sensitive user input without delay.
+MUPs can declare a notification level in their manifest to control how the host delivers interactions to the LLM:
 
-Use `discuss` when the user's action requires an immediate LLM response — for example, a chess move that the LLM must reply to.
-
-```javascript
-mup.notifyInteraction('discuss', 'Player moved e2e4. Your turn.', { move: 'e2e4' });
+```json
+{
+  "notifications": {
+    "level": "immediate",
+    "overridable": false
+  }
+}
 ```
 
-Other action names are queued normally and returned via `checkInteractions`.
+| Level | Behavior | Use case |
+|-------|----------|----------|
+| `immediate` | Host pushes interactions to the LLM in real time (e.g., via channel notifications). The LLM is expected to respond. | Chat, turn-based games |
+| `notify` | Interactions are queued and delivered when the LLM polls (e.g., `checkInteractions`). **This is the default.** | Kanban updates, drawing edits |
+| `silent` | `notifyInteraction` calls are suppressed entirely. Only `updateState` is active. | Sliders, minor UI tweaks |
+
+The `overridable` field controls whether the LLM can dynamically change the level at runtime (e.g., a user says "watch what I'm doing" and the LLM upgrades a MUP from `notify` to `immediate`). Defaults to `true` if omitted. Set to `false` for MUPs where the level must not change (e.g., a chat panel must always be `immediate`).
+
+If `notifications` is omitted from the manifest, the MUP defaults to `notify` with `overridable: true`.
+
+**Self-notification prevention:** When the LLM calls a function on a MUP, interactions from that same MUP during the call should be suppressed to avoid circular notifications.
+
+```javascript
+// Chat MUP: always immediate, not overridable
+// manifest: { "notifications": { "level": "immediate", "overridable": false } }
+mup.notifyInteraction('message', 'Hello!', { text: 'Hello!' });
+
+// Counter MUP: default (notify), LLM can upgrade
+mup.notifyInteraction('increment', 'Counter is now 5', { count: 5 });
+```
 
 ### `mup.system(action, params)` (optional)
 

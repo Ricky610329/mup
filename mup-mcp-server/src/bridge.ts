@@ -222,7 +222,7 @@ export class UiBridge extends EventEmitter {
 
       case "interaction":
         this.manager.addEvent(msg.mupId, msg.action, msg.summary, msg.data);
-        this.typedEmit("interaction", msg.mupId, msg.action, msg.summary);
+        this.typedEmit("interaction", msg.mupId, msg.action, msg.summary, msg.data);
         break;
 
       case "activate-mup":

@@ -149,18 +149,12 @@ describe("MupManager", () => {
   // ---- state ----
 
   describe("state management", () => {
-    it("updateState + getStateSnapshot", () => {
+    it("updateState stores state", () => {
       mgr.loadFromHtml(SAMPLE_HTML, "test.html");
       mgr.updateState("mup-test", "counter is 5", { count: 5 });
-
-      const snapshot = mgr.getStateSnapshot();
-      assert.deepEqual(snapshot["mup-test"], { count: 5 });
-    });
-
-    it("getStateSnapshot excludes undefined state", () => {
-      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
-      const snapshot = mgr.getStateSnapshot();
-      assert.equal("mup-test" in snapshot, false);
+      const mup = mgr.get("mup-test");
+      assert.deepEqual(mup?.stateData, { count: 5 });
+      assert.equal(mup?.stateSummary, "counter is 5");
     });
   });
 
