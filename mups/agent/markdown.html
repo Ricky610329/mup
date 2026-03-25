@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Markdown</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Markdown",
+    "description": "Markdown workspace with persistent multi-file storage. Sidebar for file management, Write/Display modes. Editing: setContent, appendContent, insertAt, replaceLines, replaceSelection. Reading: getContent, getOutline, getLines. Files: listFiles, openFile, createFile, renameFile, deleteFile.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "multiInstance": true,
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "setContent",
+        "description": "Replace the entire active document with new markdown content.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "Full markdown content" }
+          },
+          "required": ["markdown"]
+        }
+      },
+      {
+        "name": "getContent",
+        "description": "Get the active document's full content and current selection info.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "replaceSelection",
+        "description": "Replace the user's currently selected text with new content. Only works when the user has an active selection.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "New markdown to replace the selected text" }
+          },
+          "required": ["markdown"]
+        }
+      },
+      {
+        "name": "appendContent",
+        "description": "Append markdown to the end of the active document.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "Markdown to append" }
+          },
+          "required": ["markdown"]
+        }
+      },
+      {
+        "name": "replaceLines",
+        "description": "Replace a range of lines (1-based, inclusive) in the active document.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "from": { "type": "integer", "description": "Start line number (1-based)" },
+            "to": { "type": "integer", "description": "End line number (1-based, inclusive)" },
+            "markdown": { "type": "string", "description": "Replacement text" }
+          },
+          "required": ["from", "to", "markdown"]
+        }
+      },
+      {
+        "name": "insertAt",
+        "description": "Insert markdown at a specific line number (1-based) in the active document.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "line": { "type": "integer", "description": "Line number to insert before (1-based)" },
+            "markdown": { "type": "string", "description": "Markdown to insert" }
+          },
+          "required": ["line", "markdown"]
+        }
+      },
+      {
+        "name": "getOutline",
+        "description": "Get the active document's structure: headings with line numbers, total line count.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "getLines",
+        "description": "Read a specific range of lines (1-based, inclusive) from the active document.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "from": { "type": "integer", "description": "Start line number (1-based)" },
+            "to": { "type": "integer", "description": "End line number (1-based, inclusive)" }
+          },
+          "required": ["from", "to"]
+        }
+      },
+      {
+        "name": "listFiles",
+        "description": "List all files in the workspace with name, ID, line count, and size.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "openFile",
+        "description": "Switch the editor to a different file by ID.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "fileId": { "type": "string", "description": "File ID to open" }
+          },
+          "required": ["fileId"]
+        }
+      },
+      {
+        "name": "createFile",
+        "description": "Create a new markdown file in the workspace.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "File name (e.g. 'notes.md')" },
+            "content": { "type": "string", "description": "Initial content (optional)" }
+          },
+          "required": ["name"]
+        }
+      },
+      {
+        "name": "renameFile",
+        "description": "Rename a file in the workspace.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "fileId": { "type": "string", "description": "File ID to rename" },
+            "name": { "type": "string", "description": "New file name" }
+          },
+          "required": ["fileId", "name"]
+        }
+      },
+      {
+        "name": "deleteFile",
+        "description": "Delete a file from the workspace.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "fileId": { "type": "string", "description": "File ID to delete" }
+          },
+          "required": ["fileId"]
+        }
+      }
+    ]
+  }
+  </script>
+
+  <link rel="stylesheet" id="mdCssLight" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.min.css">
+  <link rel="stylesheet" id="mdCssDark" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-dark.min.css" disabled>
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --bg-sidebar: #f8f9fa;
+      --bg-toolbar: #f8f9fa;
+      --bg-editor: #ffffff;
+      --text: #333333;
+      --text-secondary: #666666;
+      --text-tertiary: #999999;
+      --border: #e0e0e0;
+      --hover: rgba(0,0,0,0.04);
+      --active-bg: #e3f2fd;
+      --active-text: #0066cc;
+      --btn-bg: #ffffff;
+    }
+    body.dark {
+      --bg: #1e1e1e;
+      --bg-sidebar: #252526;
+      --bg-toolbar: #2d2d2d;
+      --bg-editor: #1e1e1e;
+      --text: #d4d4d4;
+      --text-secondary: #858585;
+      --text-tertiary: #5a5a5a;
+      --border: #404040;
+      --hover: rgba(255,255,255,0.06);
+      --active-bg: #37373d;
+      --active-text: #569cd6;
+      --btn-bg: #333333;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* Toolbar */
+    .toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-toolbar);
+      flex-shrink: 0;
+    }
+    .sidebar-toggle {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-secondary); padding: 2px;
+      display: flex; align-items: center;
+    }
+    .sidebar-toggle:hover { color: var(--text); }
+    .mode-toggle {
+      display: flex; border-radius: 6px; overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .mode-btn {
+      padding: 3px 14px; font-size: 12px; border: none; cursor: pointer;
+      background: var(--btn-bg); color: var(--text-secondary);
+      transition: all 0.15s; font-family: inherit;
+    }
+    .mode-btn.active { background: var(--active-text); color: #fff; }
+    .toolbar-spacer { flex: 1; }
+    .save-status {
+      font-size: 10px; color: var(--text-tertiary);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .save-status.show { opacity: 1; }
+    .toolbar-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-secondary); padding: 2px;
+      display: flex; align-items: center;
+    }
+    .toolbar-btn:hover { color: var(--text); }
+    .selection-info {
+      font-size: 11px; color: var(--text-tertiary);
+      max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .selection-info.active { color: var(--active-text); font-weight: 500; }
+
+    /* Main layout */
+    .main {
+      flex: 1; display: flex; overflow: hidden;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 160px; flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: var(--bg-sidebar);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transition: width 0.15s;
+    }
+    .sidebar.collapsed { width: 0; border-right: none; }
+    .sidebar-header {
+      padding: 6px 8px; display: flex; align-items: center;
+      gap: 4px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .sidebar-header span { font-size: 11px; font-weight: 600; color: var(--text-secondary); flex: 1; }
+    .new-file-btn {
+      background: none; border: 1px solid var(--border); cursor: pointer;
+      color: var(--text-secondary); font-size: 11px;
+      padding: 2px 6px; border-radius: 4px; font-family: inherit;
+    }
+    .new-file-btn:hover { background: var(--hover); color: var(--text); }
+    .file-list {
+      flex: 1; overflow-y: auto; padding: 2px 0;
+    }
+    .file-item {
+      padding: 4px 8px; cursor: pointer; font-size: 12px;
+      color: var(--text-secondary); display: flex; align-items: center; gap: 4px;
+      border-left: 2px solid transparent;
+    }
+    .file-item:hover { background: var(--hover); }
+    .file-item.active {
+      background: var(--active-bg); color: var(--active-text);
+      border-left-color: var(--active-text); font-weight: 500;
+    }
+    .file-item-name {
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .file-item-rename {
+      flex: 1; font-size: 12px; padding: 1px 4px;
+      border: 1px solid var(--active-text); border-radius: 3px;
+      outline: none; background: var(--bg); color: var(--text);
+      font-family: inherit;
+    }
+    .file-item-menu {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-tertiary); font-size: 14px;
+      opacity: 0; padding: 0 2px; line-height: 1;
+    }
+    .file-item:hover .file-item-menu { opacity: 1; }
+    .file-item-menu:hover { color: var(--text); }
+
+    /* Context menu */
+    .ctx-menu {
+      position: fixed; background: var(--bg-toolbar); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px 0; z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 120px;
+      display: none;
+    }
+    .ctx-menu.open { display: block; }
+    .ctx-item {
+      padding: 5px 12px; font-size: 12px; cursor: pointer;
+      color: var(--text); font-family: inherit;
+    }
+    .ctx-item:hover { background: var(--hover); }
+    .ctx-item.danger { color: #e53935; }
+    .ctx-item.danger:hover { background: rgba(229,57,53,0.08); }
+
+    /* Editor & preview */
+    .content { flex: 1; overflow: hidden; position: relative; }
+    #editor {
+      width: 100%; height: 100%; resize: none; border: none; outline: none;
+      padding: 16px 20px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 14px; line-height: 1.7;
+      color: var(--text); background: var(--bg-editor);
+      tab-size: 2;
+    }
+    #preview {
+      width: 100%; height: 100%; overflow-y: auto;
+      padding: 16px 20px; display: none;
+    }
+    .markdown-body { background: transparent; color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+    </button>
+    <div class="mode-toggle">
+      <button class="mode-btn active" data-mode="write">Write</button>
+      <button class="mode-btn" data-mode="display">Display</button>
+    </div>
+    <span class="selection-info" id="selInfo"></span>
+    <span class="toolbar-spacer"></span>
+    <span class="save-status" id="saveStatus">Saved</span>
+    <button class="toolbar-btn" id="downloadBtn" title="Download file">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </button>
+  </div>
+
+  <div class="main">
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span>FILES</span>
+        <button class="new-file-btn" id="newFileBtn">+ New</button>
+      </div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+    <div class="content">
+      <textarea id="editor" placeholder="Write markdown here..."></textarea>
+      <div id="preview" class="markdown-body"></div>
+    </div>
+  </div>
+
+  <div class="ctx-menu" id="ctxMenu">
+    <div class="ctx-item" data-action="rename">Rename</div>
+    <div class="ctx-item danger" data-action="delete">Delete</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    const editor = document.getElementById('editor');
+    const preview = document.getElementById('preview');
+    const selInfo = document.getElementById('selInfo');
+    const sidebar = document.getElementById('sidebar');
+    const fileListEl = document.getElementById('fileList');
+    const ctxMenu = document.getElementById('ctxMenu');
+    const modeButtons = document.querySelectorAll('.mode-btn');
+
+    let mode = 'write';
+    let selection = null;
+    let stateTimer = null;
+    let sidebarOpen = true;
+    let ctxTarget = null; // fileId for context menu
+
+    // ---- Workspace data ----
+    let files = {};
+    let activeFileId = null;
+
+    function genId() { return 'file_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6); }
+
+    function getActiveFile() { return activeFileId ? files[activeFileId] : null; }
+
+    function createFile(name, content) {
+      const id = genId();
+      files[id] = { name, content: content || '', createdAt: Date.now(), updatedAt: Date.now() };
+      return id;
+    }
+
+    function switchFile(id) {
+      if (!files[id]) return;
+      // Save current editor content to active file
+      saveEditorToFile();
+      activeFileId = id;
+      editor.value = files[id].content;
+      clearSelection();
+      if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+      renderFileList();
+      broadcastState();
+    }
+
+    function saveEditorToFile() {
+      const f = getActiveFile();
+      if (f) {
+        f.content = editor.value;
+        f.updatedAt = Date.now();
+      }
+    }
+
+    // ---- Sidebar rendering ----
+    function renderFileList() {
+      const sorted = Object.entries(files).sort((a, b) => b[1].updatedAt - a[1].updatedAt);
+      fileListEl.innerHTML = '';
+      for (const [id, f] of sorted) {
+        const item = document.createElement('div');
+        item.className = 'file-item' + (id === activeFileId ? ' active' : '');
+        item.dataset.fileId = id;
+        item.innerHTML = `<span class="file-item-name">${esc(f.name)}</span><button class="file-item-menu">&hellip;</button>`;
+        item.querySelector('.file-item-name').addEventListener('click', () => switchFile(id));
+        item.querySelector('.file-item-name').addEventListener('dblclick', () => startRename(id));
+        item.querySelector('.file-item-menu').addEventListener('click', (e) => {
+          e.stopPropagation();
+          showCtxMenu(e, id);
+        });
+        fileListEl.appendChild(item);
+      }
+    }
+
+    function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    // ---- Inline rename ----
+    function startRename(fileId) {
+      const f = files[fileId];
+      if (!f) return;
+      const items = fileListEl.querySelectorAll('.file-item');
+      for (const item of items) {
+        if (item.dataset.fileId === fileId) {
+          const nameEl = item.querySelector('.file-item-name');
+          const input = document.createElement('input');
+          input.className = 'file-item-rename';
+          input.value = f.name;
+          nameEl.replaceWith(input);
+          input.focus();
+          input.select();
+          const commit = () => {
+            const v = input.value.trim();
+            if (v) { f.name = v; f.updatedAt = Date.now(); }
+            renderFileList();
+            broadcastState();
+          };
+          input.addEventListener('blur', commit);
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') { input.value = f.name; input.blur(); }
+          });
+          break;
+        }
+      }
+    }
+
+    // ---- Context menu ----
+    function showCtxMenu(e, fileId) {
+      ctxTarget = fileId;
+      ctxMenu.style.left = e.clientX + 'px';
+      ctxMenu.style.top = e.clientY + 'px';
+      ctxMenu.classList.add('open');
+    }
+
+    document.addEventListener('click', () => { ctxMenu.classList.remove('open'); ctxTarget = null; });
+
+    ctxMenu.querySelectorAll('.ctx-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const action = item.dataset.action;
+        if (!ctxTarget || !files[ctxTarget]) return;
+        const targetId = ctxTarget;
+        ctxMenu.classList.remove('open');
+        ctxTarget = null;
+        if (action === 'rename') {
+          startRename(targetId);
+        } else if (action === 'delete') {
+          if (Object.keys(files).length <= 1) return;
+          const name = files[targetId].name;
+          delete files[targetId];
+          if (targetId === activeFileId) {
+            const first = Object.keys(files)[0];
+            activeFileId = first;
+            editor.value = files[first].content;
+            clearSelection();
+            if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+          }
+          renderFileList();
+          broadcastState();
+          mup.notifyInteraction('fileDeleted', `Deleted file: ${name}`);
+        }
+      });
+    });
+
+    // ---- Sidebar toggle ----
+    document.getElementById('sidebarToggle').addEventListener('click', () => {
+      sidebarOpen = !sidebarOpen;
+      sidebar.classList.toggle('collapsed', !sidebarOpen);
+      debouncedBroadcast();
+    });
+
+    // ---- New file ----
+    document.getElementById('newFileBtn').addEventListener('click', () => {
+      const id = createFile('Untitled.md');
+      switchFile(id);
+      startRename(id);
+      mup.notifyInteraction('fileCreated', 'Created new file');
+    });
+
+    // ---- Download ----
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      const f = getActiveFile();
+      if (!f) return;
+      const blob = new Blob([f.content], { type: 'text/markdown' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = f.name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    // ---- Save indicator ----
+    const saveStatusEl = document.getElementById('saveStatus');
+    let saveStatusTimer = null;
+    function showSaveStatus() {
+      saveStatusEl.classList.add('show');
+      clearTimeout(saveStatusTimer);
+      saveStatusTimer = setTimeout(() => saveStatusEl.classList.remove('show'), 2000);
+    }
+
+    // ---- Mode switching ----
+    modeButtons.forEach(btn => btn.addEventListener('click', () => switchMode(btn.dataset.mode)));
+
+    function switchMode(newMode) {
+      mode = newMode;
+      modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+      if (mode === 'write') {
+        editor.style.display = '';
+        preview.style.display = 'none';
+        editor.focus();
+      } else {
+        editor.style.display = 'none';
+        preview.style.display = 'block';
+        preview.innerHTML = marked.parse(editor.value);
+      }
+      broadcastState();
+    }
+
+    // ---- Selection tracking ----
+    editor.addEventListener('mouseup', onSelectionChange);
+    editor.addEventListener('keyup', onSelectionChange);
+
+    function onSelectionChange() {
+      const s = editor.selectionStart, e = editor.selectionEnd;
+      if (s !== e) {
+        const text = editor.value.substring(s, e);
+        selection = { text, start: s, end: e };
+        selInfo.textContent = `Selected: "${truncate(text, 60)}"`;
+        selInfo.classList.add('active');
+        mup.notifyInteraction('textSelected', `User marked text for editing: "${truncate(text, 300)}"`, { selectedText: text, start: s, end: e });
+      }
+    }
+
+    editor.addEventListener('input', () => {
+      clearSelection();
+      saveEditorToFile();
+      debouncedBroadcast();
+    });
+
+    function clearSelection() {
+      selection = null;
+      selInfo.textContent = '';
+      selInfo.classList.remove('active');
+    }
+
+    // ---- State (localStorage + summary to server) ----
+    const STORAGE_KEY = 'mup-markdown-data';
+    function debouncedBroadcast() {
+      clearTimeout(stateTimer);
+      stateTimer = setTimeout(broadcastState, 500);
+    }
+
+    function broadcastState() {
+      saveEditorToFile();
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ files, activeFileId, mode, sidebarOpen })); } catch {}
+      const f = getActiveFile();
+      const content = f ? f.content : '';
+      const lines = content.split('\n').length;
+      const fileCount = Object.keys(files).length;
+      let summary = `Markdown workspace (${mode} mode). ${fileCount} file(s). Active: "${f?.name || '?'}" (${lines} lines).`;
+      if (selection) summary += ` Marked: "${truncate(selection.text, 120)}"`;
+      mup.updateState(summary);
+      showSaveStatus();
+    }
+
+    function loadState() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) return JSON.parse(stored);
+      } catch {}
+      return null;
+    }
+
+    function truncate(str, max) { return str.length > max ? str.substring(0, max) + '...' : str; }
+
+    // ---- Theme ----
+    function applyTheme(theme) {
+      const isDark = theme === 'dark';
+      document.body.classList.toggle('dark', isDark);
+      document.getElementById('mdCssLight').disabled = isDark;
+      document.getElementById('mdCssDark').disabled = !isDark;
+    }
+
+    // ---- MUP functions ----
+    mup.registerFunction('setContent', ({ markdown }) => {
+      editor.value = markdown;
+      clearSelection();
+      saveEditorToFile();
+      if (mode === 'display') preview.innerHTML = marked.parse(markdown);
+      broadcastState();
+      return { content: [{ type: 'text', text: `Document set (${markdown.length} chars, ${markdown.split('\n').length} lines).` }], isError: false };
+    });
+
+    mup.registerFunction('getContent', () => {
+      const f = getActiveFile();
+      return {
+        content: [
+          { type: 'text', text: selection ? `Active: "${f?.name}" (${mode} mode). Marked: "${truncate(selection.text, 150)}"` : `Active: "${f?.name}" (${mode} mode). No selection.` },
+          { type: 'data', data: { fileId: activeFileId, fileName: f?.name, markdown: editor.value, mode, selection: selection ? { text: selection.text, start: selection.start, end: selection.end } : null } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('replaceSelection', ({ markdown }) => {
+      if (!selection) return { content: [{ type: 'text', text: 'No active selection. Ask the user to select text first.' }], isError: true };
+      const original = selection.text;
+      editor.value = editor.value.substring(0, selection.start) + markdown + editor.value.substring(selection.end);
+      clearSelection();
+      saveEditorToFile();
+      if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+      broadcastState();
+      return { content: [{ type: 'text', text: `Replaced "${truncate(original, 60)}" -> ${markdown.length} chars.` }], isError: false };
+    });
+
+    mup.registerFunction('appendContent', ({ markdown }) => {
+      editor.value = editor.value + (editor.value.endsWith('\n') ? '' : '\n') + markdown;
+      clearSelection();
+      saveEditorToFile();
+      if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+      broadcastState();
+      return { content: [{ type: 'text', text: `Appended ${markdown.split('\n').length} line(s). Document now ${editor.value.split('\n').length} lines.` }], isError: false };
+    });
+
+    mup.registerFunction('replaceLines', ({ from, to, markdown }) => {
+      const lines = editor.value.split('\n');
+      if (from < 1 || to < from || from > lines.length) return { content: [{ type: 'text', text: `Invalid range: ${from}-${to} (document has ${lines.length} lines)` }], isError: true };
+      const clamped = Math.min(to, lines.length);
+      const replaced = lines.slice(from - 1, clamped);
+      lines.splice(from - 1, clamped - from + 1, ...markdown.split('\n'));
+      editor.value = lines.join('\n');
+      clearSelection();
+      saveEditorToFile();
+      if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+      broadcastState();
+      return { content: [{ type: 'text', text: `Replaced lines ${from}-${clamped} (was ${replaced.length} lines, now ${markdown.split('\n').length}). Document: ${lines.length} lines.` }], isError: false };
+    });
+
+    mup.registerFunction('insertAt', ({ line, markdown }) => {
+      const lines = editor.value.split('\n');
+      const idx = Math.max(0, Math.min(line - 1, lines.length));
+      const newLines = markdown.split('\n');
+      lines.splice(idx, 0, ...newLines);
+      editor.value = lines.join('\n');
+      clearSelection();
+      saveEditorToFile();
+      if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+      broadcastState();
+      return { content: [{ type: 'text', text: `Inserted ${newLines.length} line(s) at line ${idx + 1}. Document: ${lines.length} lines.` }], isError: false };
+    });
+
+    mup.registerFunction('getOutline', () => {
+      const lines = editor.value.split('\n');
+      const headings = [];
+      lines.forEach((line, i) => {
+        const m = line.match(/^(#{1,6})\s+(.+)/);
+        if (m) headings.push({ line: i + 1, level: m[1].length, text: m[2].trim() });
+      });
+      const summary = headings.length > 0 ? headings.map(h => `${'  '.repeat(h.level - 1)}L${h.line}: ${'#'.repeat(h.level)} ${h.text}`).join('\n') : '(no headings)';
+      return { content: [{ type: 'text', text: `${lines.length} lines, ${headings.length} heading(s):\n${summary}` }, { type: 'data', data: { totalLines: lines.length, headings } }], isError: false };
+    });
+
+    mup.registerFunction('getLines', ({ from, to }) => {
+      const lines = editor.value.split('\n');
+      if (from < 1 || from > lines.length) return { content: [{ type: 'text', text: `Line ${from} out of range (document has ${lines.length} lines)` }], isError: true };
+      const clamped = Math.min(to, lines.length);
+      const slice = lines.slice(from - 1, clamped);
+      return { content: [{ type: 'text', text: slice.map((l, i) => `${from + i}: ${l}`).join('\n') }, { type: 'data', data: { from, to: clamped, lines: slice } }], isError: false };
+    });
+
+    // ---- File management functions ----
+    mup.registerFunction('listFiles', () => {
+      const list = Object.entries(files).map(([id, f]) => ({
+        id, name: f.name,
+        lines: f.content.split('\n').length,
+        chars: f.content.length,
+        updatedAt: f.updatedAt
+      }));
+      list.sort((a, b) => b.updatedAt - a.updatedAt);
+      const summary = list.map(f => `${f.id === activeFileId ? '* ' : '  '}${f.name} (${f.lines} lines)`).join('\n');
+      return { content: [{ type: 'text', text: `${list.length} file(s):\n${summary}` }, { type: 'data', data: { files: list, activeFileId } }], isError: false };
+    });
+
+    mup.registerFunction('openFile', ({ fileId }) => {
+      if (!files[fileId]) return { content: [{ type: 'text', text: `File not found: ${fileId}` }], isError: true };
+      switchFile(fileId);
+      return { content: [{ type: 'text', text: `Opened "${files[fileId].name}" (${files[fileId].content.split('\n').length} lines).` }], isError: false };
+    });
+
+    mup.registerFunction('createFile', ({ name, content }) => {
+      const id = createFile(name, content || '');
+      switchFile(id);
+      mup.notifyInteraction('fileCreated', `Created file: ${name}`);
+      return { content: [{ type: 'text', text: `Created "${name}" (${id}).` }], isError: false };
+    });
+
+    mup.registerFunction('renameFile', ({ fileId, name }) => {
+      if (!files[fileId]) return { content: [{ type: 'text', text: `File not found: ${fileId}` }], isError: true };
+      const old = files[fileId].name;
+      files[fileId].name = name;
+      files[fileId].updatedAt = Date.now();
+      renderFileList();
+      broadcastState();
+      return { content: [{ type: 'text', text: `Renamed "${old}" -> "${name}".` }], isError: false };
+    });
+
+    mup.registerFunction('deleteFile', ({ fileId }) => {
+      if (!files[fileId]) return { content: [{ type: 'text', text: `File not found: ${fileId}` }], isError: true };
+      if (Object.keys(files).length <= 1) return { content: [{ type: 'text', text: 'Cannot delete the last file.' }], isError: true };
+      const name = files[fileId].name;
+      delete files[fileId];
+      if (fileId === activeFileId) {
+        const first = Object.keys(files)[0];
+        activeFileId = first;
+        editor.value = files[first].content;
+        clearSelection();
+        if (mode === 'display') preview.innerHTML = marked.parse(editor.value);
+        renderFileList();
+      }
+      broadcastState();
+      return { content: [{ type: 'text', text: `Deleted "${name}".` }], isError: false };
+    });
+
+    // ---- Init ----
+    mup.onThemeChange(applyTheme);
+
+    mup.onReady((params) => {
+      if (params?.theme) applyTheme(params.theme);
+
+      const state = loadState();
+      if (state?.files && Object.keys(state.files).length > 0) {
+        files = state.files;
+        activeFileId = state.activeFileId || Object.keys(files)[0];
+        if (!files[activeFileId]) activeFileId = Object.keys(files)[0];
+        sidebarOpen = state.sidebarOpen !== false;
+        if (state.mode === 'display') mode = 'display';
+      } else {
+        activeFileId = createFile('Untitled.md');
+      }
+
+      editor.value = files[activeFileId].content;
+      sidebar.classList.toggle('collapsed', !sidebarOpen);
+      renderFileList();
+      if (mode === 'display') switchMode('display');
+      broadcastState();
+    });
+  </script>
+</body>
+</html>
