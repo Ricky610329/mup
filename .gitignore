@@ -13,6 +13,9 @@ mup-agent/dist/
 mup-agent/node_modules/
 .mup-agent/
 
+# MUP archive (moved out of tracking)
+archive/
+
 # npm auth (use ~/.npmrc for local, NPM_TOKEN env for CI)
 .npmrc
 
