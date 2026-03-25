@@ -149,11 +149,10 @@ describe("MupManager", () => {
   // ---- state ----
 
   describe("state management", () => {
-    it("updateState stores state", () => {
+    it("updateState stores summary", () => {
       mgr.loadFromHtml(SAMPLE_HTML, "test.html");
-      mgr.updateState("mup-test", "counter is 5", { count: 5 });
+      mgr.updateState("mup-test", "counter is 5");
       const mup = mgr.get("mup-test");
-      assert.deepEqual(mup?.stateData, { count: 5 });
       assert.equal(mup?.stateSummary, "counter is 5");
     });
   });

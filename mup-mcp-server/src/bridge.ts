@@ -15,9 +15,6 @@ import type {
   FolderTreeNode,
 } from "./types.js";
 
-// Re-export for backwards compatibility
-export type { FunctionResult };
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface PendingCall {
@@ -96,7 +93,6 @@ export class UiBridge extends EventEmitter {
           mupId: mup.manifest.id,
           html: mup.html,
           manifest: mup.manifest,
-          savedState: mup.stateData,
         });
       }
     });
@@ -216,7 +212,7 @@ export class UiBridge extends EventEmitter {
       }
 
       case "state":
-        this.manager.updateState(msg.mupId, msg.summary, msg.data);
+        this.manager.updateState(msg.mupId, msg.summary);
         this.typedEmit("state-update", msg.mupId, msg.summary, msg.data);
         break;
 

@@ -61,14 +61,6 @@ export interface WorkspaceMetadata {
   customNames: Record<string, string>;
 }
 
-// ---- Per-MUP State File (written individually on state changes) ----
-
-export interface MupStateFile {
-  mupId: string;
-  savedAt: number;
-  data: unknown;
-}
-
 // ---- Browser → Server Messages ----
 
 export type BrowserMessage =
@@ -93,7 +85,7 @@ export type BrowserMessage =
 export type ServerMessage =
   | { type: "mup-catalog"; catalog: CatalogSummary[] }
   | { type: "folder-tree"; tree: FolderTreeNode[]; path: string }
-  | { type: "load-mup"; mupId: string; html: string; manifest: MupManifest; savedState?: unknown }
+  | { type: "load-mup"; mupId: string; html: string; manifest: MupManifest }
   | { type: "call"; callId: string; mupId: string; fn: string; args: Record<string, unknown> }
   | { type: "error"; message: string }
   | { type: "auto-saved" }

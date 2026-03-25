@@ -584,7 +584,7 @@ window.addEventListener('load', () => {
     initGrid();
     renderManagerCard();
     renderChatCard();
-    for (const p of pendingMups) loadMup(p.mupId, p.html, p.manifest, p.savedState);
+    for (const p of pendingMups) loadMup(p.mupId, p.html, p.manifest);
     pendingMups.length = 0;
   }, 100);
 });
@@ -662,7 +662,7 @@ function handleServerMessage(msg) {
       }
       renderManagerCard();
       break;
-    case "load-mup": loadMup(msg.mupId, msg.html, msg.manifest, msg.savedState); break;
+    case "load-mup": loadMup(msg.mupId, msg.html, msg.manifest); break;
     case "call":
       loadingBar.classList.add('active');
       callMupFunction(msg.callId, msg.mupId, msg.fn, msg.args);
@@ -693,9 +693,9 @@ function handleServerMessage(msg) {
 // ---- MUP Loading ----
 const pendingMups = [];
 
-function loadMup(mupId, html, manifest, savedState) {
-  if (mupId === 'mup-chat') { initChatWidget(savedState); return; }
-  if (!grid) { pendingMups.push({ mupId, html, manifest, savedState }); return; }
+function loadMup(mupId, html, manifest) {
+  if (mupId === 'mup-chat') { initChatWidget(); return; }
+  if (!grid) { pendingMups.push({ mupId, html, manifest }); return; }
 
   // Check for custom name from workspace restore
   const displayName = (window._pendingCustomNames && window._pendingCustomNames[mupId]) || manifest.name;
@@ -747,10 +747,10 @@ function loadMup(mupId, html, manifest, savedState) {
   const widget = grid.makeWidget(el);
   debouncedSaveGrid();
   const iframe = widget.querySelector('iframe');
-  setupMupIframe(mupId, manifest, iframe, html, savedState);
+  setupMupIframe(mupId, manifest, iframe, html);
 }
 
-function setupMupIframe(mupId, manifest, iframe, html, savedState) {
+function setupMupIframe(mupId, manifest, iframe, html) {
   const sdkScript = `<script>${MUP_SDK_SOURCE}<\/script>`;
   let injected = html;
   if (injected.includes("</head>")) {
@@ -780,7 +780,6 @@ function setupMupIframe(mupId, manifest, iframe, html, savedState) {
       gridAllocation: { width: 1, height: 1 },
       theme: document.documentElement.getAttribute('data-theme') || 'light',
     };
-    if (savedState) initParams.savedState = savedState;
     port.postMessage({ jsonrpc: "2.0", id: initId, method: "initialize", params: initParams });
   };
   iframe.onerror = () => {
@@ -950,8 +949,8 @@ function renderCurrentView() {
   if (items.length === 0 && navStack.length === 0) {
     return `<div class="manager-empty">
       <svg class="manager-empty-icon" width="36" height="36" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>
-      <span>No MUPs loaded</span>
-      <button class="manager-empty-btn" id="emptyOpenFolderBtn">${FOLDER_ICON} Open Folder</button>
+      <span>Enter a MUPs folder path above<br>and click <b>Load</b> to get started</span>
+      <button class="manager-empty-btn" id="emptyOpenFolderBtn">${FOLDER_ICON} Select Folder</button>
     </div>`;
   }
 
@@ -1177,13 +1176,17 @@ function chatArchiveCurrent() {
   if (chatHistory.length > CHAT_MAX_HISTORY) chatHistory.length = CHAT_MAX_HISTORY;
 }
 
+const CHAT_STORAGE_KEY = 'mup-chat-data';
 function chatSyncState() {
+  // Persist to localStorage
+  try { localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ messages: chatMessages, history: chatHistory })); } catch {}
+  // Send summary only to server (no data)
   const last = chatMessages[chatMessages.length - 1];
   const summary = chatMessages.length === 0
     ? 'Chat: empty'
     : `Chat: ${chatMessages.length} messages, last: ${last.role} — ${last.text.slice(0, 60)}`;
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "state", mupId: "mup-chat", summary, data: { messages: chatMessages, history: chatHistory } }));
+    ws.send(JSON.stringify({ type: "state", mupId: "mup-chat", summary }));
   }
 }
 
@@ -1516,13 +1519,20 @@ function renderChatCard() {
   histCloseBtn.addEventListener('click', () => histPanel.classList.remove('open'));
 }
 
-function initChatWidget(savedState) {
-  if (savedState?.history) chatHistory = savedState.history;
-  if (savedState?.messages?.length > 0) {
-    chatMessages = savedState.messages;
-    chatArchiveCurrent();
-    chatMessages = [];
-  }
+function initChatWidget() {
+  // Load from localStorage
+  try {
+    const stored = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (stored) {
+      const data = JSON.parse(stored);
+      if (data.history) chatHistory = data.history;
+      if (data.messages?.length > 0) {
+        chatMessages = data.messages;
+        chatArchiveCurrent();
+        chatMessages = [];
+      }
+    }
+  } catch {}
   if (!chatWidget) renderChatCard();
   chatRenderFull();
   chatSyncState();

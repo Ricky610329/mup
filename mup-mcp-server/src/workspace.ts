@@ -6,19 +6,13 @@ import { CONFIG } from "./config.js";
 import type {
   CallHistoryEntry,
   WorkspaceMetadata,
-  MupStateFile,
   GridLayoutItem,
-  SendLoadMupFn,
 } from "./types.js";
-
-// Re-export for backwards compatibility
-export type { CallHistoryEntry, GridLayoutItem };
 
 // ---- Constants ----
 
 const MUP_DIR_NAME = ".mup";
 const METADATA_FILE = "workspace.json";
-const STATE_DIR = "state";
 const METADATA_VERSION = 1;
 
 // ---- WorkspaceManager (folder-based, in-place) ----
@@ -33,17 +27,12 @@ export class WorkspaceManager {
 
   private bridge: UiBridge | null = null;
   private dotMupDir: string;
-  private stateDir: string;
 
-  // Per-MUP dirty tracking
-  private dirtyMups = new Set<string>();
   private metadataDirty = false;
-  private _stateTimer: ReturnType<typeof setTimeout> | null = null;
   private _metaTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private manager: MupManager, workspaceRoot: string) {
     this.dotMupDir = path.join(workspaceRoot, MUP_DIR_NAME);
-    this.stateDir = path.join(this.dotMupDir, STATE_DIR);
   }
 
   /** Set bridge reference for auto-save notifications */
@@ -55,7 +44,6 @@ export class WorkspaceManager {
 
   private ensureDirs(): void {
     if (!fs.existsSync(this.dotMupDir)) fs.mkdirSync(this.dotMupDir, { recursive: true });
-    if (!fs.existsSync(this.stateDir)) fs.mkdirSync(this.stateDir, { recursive: true });
   }
 
   /** Write JSON atomically: write to .tmp then rename over target */
@@ -111,65 +99,6 @@ export class WorkspaceManager {
     return null;
   }
 
-  // ---- Per-MUP State Persistence ----
-
-  private saveMupState(mupId: string): void {
-    try {
-      this.ensureDirs();
-      const mup = this.manager.get(mupId);
-      if (!mup || mup.stateData === undefined) return;
-      const stateFile: MupStateFile = {
-        mupId,
-        savedAt: Date.now(),
-        data: mup.stateData,
-      };
-      const filePath = path.join(this.stateDir, `${mupId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
-      this.atomicWriteJson(filePath, stateFile);
-    } catch (err) {
-      console.error(`[mup-mcp] Failed to save state for ${mupId}:`, err);
-    }
-  }
-
-  private loadMupState(mupId: string): unknown | undefined {
-    const filePath = path.join(this.stateDir, `${mupId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
-    try {
-      if (fs.existsSync(filePath)) {
-        const stateFile = JSON.parse(fs.readFileSync(filePath, "utf-8")) as MupStateFile;
-        return stateFile.data;
-      }
-    } catch (err) {
-      console.error(`[mup-mcp] State corrupted for ${mupId}, trying .tmp fallback:`, err);
-      try {
-        const tmp = filePath + ".tmp";
-        if (fs.existsSync(tmp)) {
-          const stateFile = JSON.parse(fs.readFileSync(tmp, "utf-8")) as MupStateFile;
-          return stateFile.data;
-        }
-      } catch { /* both corrupted */ }
-    }
-    return undefined;
-  }
-
-  private deleteMupState(mupId: string): void {
-    try {
-      const filePath = path.join(this.stateDir, `${mupId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    } catch { /* ignore */ }
-  }
-
-  // ---- Dirty Tracking + Debounced Saves ----
-
-  /** Mark a MUP's state as dirty */
-  markMupDirty(mupId: string): void {
-    this.dirtyMups.add(mupId);
-    if (!this._stateTimer) {
-      this._stateTimer = setTimeout(() => {
-        this._stateTimer = null;
-        this.flushDirtyStates();
-      }, CONFIG.autoSaveDebounceMs);
-    }
-  }
-
   /** Mark workspace metadata as dirty */
   markMetadataDirty(): void {
     this.metadataDirty = true;
@@ -185,31 +114,18 @@ export class WorkspaceManager {
     }
   }
 
-  private flushDirtyStates(): void {
-    if (this.dirtyMups.size === 0) return;
-    for (const mupId of this.dirtyMups) {
-      this.saveMupState(mupId);
-    }
-    this.dirtyMups.clear();
-    if (this.bridge) this.bridge.sendRaw({ type: "auto-saved" });
-  }
-
   /** Flush all pending saves immediately (for shutdown/disconnect) */
   flushSave(): void {
-    if (this._stateTimer) clearTimeout(this._stateTimer);
     if (this._metaTimer) clearTimeout(this._metaTimer);
-    this._stateTimer = null;
     this._metaTimer = null;
-    this.flushDirtyStates();
     if (this.metadataDirty) {
       this.metadataDirty = false;
       this.saveMetadata();
     }
   }
 
-  /** Periodic auto-save: flush any dirty state */
+  /** Periodic auto-save: flush metadata if dirty */
   autoSave(): void {
-    this.flushDirtyStates();
     if (this.metadataDirty) {
       this.metadataDirty = false;
       this.saveMetadata();
@@ -257,8 +173,6 @@ export class WorkspaceManager {
         mup = this.manager.activate(mupId);
       }
       if (mup) {
-        const savedData = this.loadMupState(mupId);
-        if (savedData !== undefined) mup.stateData = savedData;
         if (meta.customNames[mupId]) mup.manifest.name = meta.customNames[mupId];
         restored.push(this.customNames[mupId] || mup.manifest.name);
       }
@@ -279,10 +193,8 @@ export class WorkspaceManager {
   // ---- Deactivation Cleanup ----
 
   onMupDeactivated(mupId: string): void {
-    this.deleteMupState(mupId);
     delete this.callHistory[mupId];
     delete this.customNames[mupId];
-    this.dirtyMups.delete(mupId);
     this.markMetadataDirty();
   }
 

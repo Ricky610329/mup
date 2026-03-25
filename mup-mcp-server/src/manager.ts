@@ -42,7 +42,6 @@ export interface LoadedMup {
   html: string;
   filePath: string;
   stateSummary: string;
-  stateData: unknown;
   pendingEvents: MupEvent[];
 }
 
@@ -112,7 +111,6 @@ export class MupManager {
       html: entry.html,
       filePath: entry.filePath,
       stateSummary: "",
-      stateData: undefined,
       pendingEvents: [],
     };
     this.mups.set(mupId, loaded);
@@ -136,7 +134,6 @@ export class MupManager {
       html: entry.html,
       filePath: entry.filePath,
       stateSummary: "",
-      stateData: undefined,
       pendingEvents: [],
     };
     this.mups.set(instanceId, loaded);
@@ -158,7 +155,6 @@ export class MupManager {
       html: entry.html,
       filePath: entry.filePath,
       stateSummary: "",
-      stateData: undefined,
       pendingEvents: [],
     };
     this.mups.set(instanceId, loaded);
@@ -209,7 +205,7 @@ export class MupManager {
     }
     this.mups.set(manifest.id, {
       manifest, html, filePath,
-      stateSummary: "", stateData: undefined, pendingEvents: [],
+      stateSummary: "", pendingEvents: [],
     });
     return manifest;
   }
@@ -258,7 +254,6 @@ export class MupManager {
       html: "",
       filePath: "__system__",
       stateSummary: "",
-      stateData: undefined,
       pendingEvents: [],
     });
   }
@@ -275,11 +270,10 @@ export class MupManager {
     return this.mups.get(mupId);
   }
 
-  updateState(mupId: string, summary: string, data?: unknown): void {
+  updateState(mupId: string, summary: string): void {
     const mup = this.mups.get(mupId);
     if (mup) {
       mup.stateSummary = summary;
-      if (data !== undefined) mup.stateData = data;
     }
   }
 

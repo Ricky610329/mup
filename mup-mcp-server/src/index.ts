@@ -63,7 +63,7 @@ function parseCliArgs(): CliConfig {
     const arg = cliArgs[i];
     if (arg === "--mups-dir" && cliArgs[i + 1]) {
       const dir = path.resolve(cliArgs[++i]);
-      if (!fs.existsSync(dir)) { console.error(`[mup-mcp] Directory not found: ${dir}`); process.exit(1); }
+      if (!fs.existsSync(dir)) { console.error(`[mup-mcp] Directory not found (skipped): ${dir}`); continue; }
       config.mupFiles.push(...scanHtmlFiles(dir));
       config.mupsDirs.push(dir);
     } else if (arg === "--port" && cliArgs[i + 1]) {
@@ -126,7 +126,7 @@ function setupBrowserEvents(bridge: UiBridge, manager: MupManager, ws: Workspace
     } catch (err: unknown) { console.error(`[mup-mcp] Failed to register: ${(err as Error).message}`); }
   });
 
-  bridge.typedOn("state-update", (mupId) => ws.markMupDirty(mupId));
+  // State updates only update summary in manager (no persistence)
   bridge.typedOn("save-grid-layout", (layout) => { if (Array.isArray(layout)) { ws.gridLayout = layout; ws.markMetadataDirty(); } });
   bridge.typedOn("rename-mup", (mupId, newName) => { if (mupId && newName) { ws.customNames[mupId] = newName; ws.markMetadataDirty(); console.error(`[mup-mcp] Renamed: ${mupId} → ${newName}`); } });
   bridge.typedOn("browser-disconnected", () => { ws.flushSave(); console.error("[mup-mcp] Saved on disconnect"); });
@@ -206,7 +206,7 @@ function setupMcpServer(
           subAction: { type: "string", description: 'For pipe action: "create", "list", "delete", "enable", "disable"' },
           pipeId: { type: "string", description: "Pipe ID for delete/enable/disable." },
           sourceMupId: { type: "string", description: "Pipe source MUP ID." },
-          sourceFunction: { type: "string", description: "Optional: call this function on source to get data (else uses stateData)." },
+          sourceFunction: { type: "string", description: "Optional: call this function on source to get data." },
           targetMupId: { type: "string", description: "Pipe target MUP ID." },
           targetFunction: { type: "string", description: "Function to call on target MUP." },
           transform: { type: "object", description: 'Key mapping: { targetArgName: "source.path" }. Use "." for entire data, "\'literal\'" for strings.' },
@@ -325,7 +325,7 @@ async function handleToolCall(
       }
     }
 
-    ws.markMupDirty(mupId);
+    ws.markMetadataDirty();
     return { content, isError: result.isError };
 }
 
@@ -403,7 +403,7 @@ async function main() {
 
   // --- Helpers ---
   const sendLoadMup: SendLoadMupFn = (mupId, mup) => {
-    bridge.sendRaw({ type: "load-mup", mupId: mup.manifest.id, html: mup.html, manifest: mup.manifest, savedState: mup.stateData });
+    bridge.sendRaw({ type: "load-mup", mupId: mup.manifest.id, html: mup.html, manifest: mup.manifest });
   };
 
   function ensureActive(mupId: string): { error?: string; activated?: string } {
@@ -438,7 +438,7 @@ async function main() {
     // Check active MUPs against new folder
     const warnings: string[] = [];
     const activeMups = manager.getAll();
-    const unsupported = activeMups.filter((m) => !newIds.has(m.manifest.id));
+    const unsupported = activeMups.filter((m) => !newIds.has(m.manifest.id) && !manager.isSystemMup(m.manifest.id));
     if (unsupported.length > 0) {
       warnings.push(
         `The following active MUPs are not available in the new folder: ${unsupported.map((m) => m.manifest.name).join(", ")}. ` +
@@ -463,7 +463,6 @@ async function main() {
       if (newIds.has(m.manifest.id)) {
         const mup = manager.activate(m.manifest.id);
         if (mup) {
-          mup.stateData = m.stateData;
           sendLoadMup(m.manifest.id, mup);
         }
       }
@@ -517,6 +516,8 @@ async function main() {
   };
 
   // --- Notification routing based on manifest level ---
+  const channelDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   bridge.typedOn("interaction", (mupId, action, summary, data) => {
     // Suppress notifications from the MUP currently being called by the LLM
     if (mupId === activeCallMupId) return;
@@ -525,18 +526,24 @@ async function main() {
     if (level === "silent") return;
 
     if (level === "immediate") {
-      const mupName = manager.get(mupId)?.manifest.name ?? mupId;
+      // Debounce per-MUP to batch rapid interactions (500ms)
+      const existing = channelDebounceTimers.get(mupId);
+      if (existing) clearTimeout(existing);
 
-      // Always send text summary as channel notification
-      server.notification({
-        method: "notifications/claude/channel",
-        params: {
-          content: summary,
-          meta: { mup_id: mupId, mup_name: mupName, action },
-        },
-      }).catch((err) => {
-        console.error(`[mup-mcp] Channel notification failed: ${(err as Error).message}`);
-      });
+      channelDebounceTimers.set(mupId, setTimeout(() => {
+        channelDebounceTimers.delete(mupId);
+        const mupName = manager.get(mupId)?.manifest.name ?? mupId;
+
+        server.notification({
+          method: "notifications/claude/channel",
+          params: {
+            content: summary,
+            meta: { mup_id: mupId, mup_name: mupName, action },
+          },
+        }).catch((err) => {
+          console.error(`[mup-mcp] Channel notification failed: ${(err as Error).message}`);
+        });
+      }, 500));
     }
     // level === "notify": already queued via manager.addEvent in bridge.ts
   });

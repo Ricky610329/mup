@@ -43,18 +43,16 @@ describe("WorkspaceManager (folder-based)", () => {
   describe("metadata save/restore", () => {
     it("saves and restores active MUPs", () => {
       mgr.activate("mup-test");
-      mgr.updateState("mup-test", "count=1", { count: 1 });
+      mgr.updateState("mup-test", "count=1");
       ws.customNames["mup-test"] = "My Counter";
 
-      // Flush saves metadata + state
+      // Flush saves metadata
       ws.markMetadataDirty();
-      ws.markMupDirty("mup-test");
       ws.flushSave();
 
       // Verify .mup/ directory was created
       assert.ok(fs.existsSync(path.join(tmpDir, ".mup")));
       assert.ok(fs.existsSync(path.join(tmpDir, ".mup", "workspace.json")));
-      assert.ok(fs.existsSync(path.join(tmpDir, ".mup", "state", "mup-test.json")));
 
       // Teardown and restore
       mgr.deactivate("mup-test");
@@ -65,7 +63,6 @@ describe("WorkspaceManager (folder-based)", () => {
 
       assert.equal(restored.length, 1);
       assert.equal(mgr.getAll().length, 1);
-      assert.deepEqual(mgr.get("mup-test")!.stateData, { count: 1 });
       assert.equal(ws2.customNames["mup-test"], "My Counter");
     });
 
@@ -103,38 +100,17 @@ describe("WorkspaceManager (folder-based)", () => {
     });
   });
 
-  // ---- per-MUP state files ----
+  // ---- deactivation cleanup ----
 
-  describe("per-MUP state", () => {
-    it("writes individual state files", () => {
+  describe("deactivation", () => {
+    it("cleans up metadata on deactivation", () => {
       mgr.activate("mup-test");
-      mgr.updateState("mup-test", "val=42", { value: 42 });
-
-      ws.markMupDirty("mup-test");
-      ws.flushSave();
-
-      const stateFile = path.join(tmpDir, ".mup", "state", "mup-test.json");
-      assert.ok(fs.existsSync(stateFile));
-      const data = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
-      assert.equal(data.mupId, "mup-test");
-      assert.deepEqual(data.data, { value: 42 });
-    });
-
-    it("deletes state file on deactivation", () => {
-      mgr.activate("mup-test");
-      mgr.updateState("mup-test", "val=1", { v: 1 });
-      ws.markMupDirty("mup-test");
+      ws.customNames["mup-test"] = "Custom";
       ws.markMetadataDirty();
       ws.flushSave();
 
-      const stateFile = path.join(tmpDir, ".mup", "state", "mup-test.json");
-      assert.ok(fs.existsSync(stateFile));
-
-      mgr.deactivate("mup-test");
       ws.onMupDeactivated("mup-test");
-      ws.flushSave();
-
-      assert.ok(!fs.existsSync(stateFile));
+      assert.equal(ws.customNames["mup-test"], undefined);
     });
   });
 
@@ -144,13 +120,11 @@ describe("WorkspaceManager (folder-based)", () => {
     it("saves and restores instances", () => {
       mgr.activate("mup-test");
       mgr.activateInstance("mup-test");
-      mgr.updateState("mup-test", "base", { n: 1 });
-      mgr.updateState("mup-test_2", "inst", { n: 2 });
+      mgr.updateState("mup-test", "base");
+      mgr.updateState("mup-test_2", "inst");
       ws.customNames["mup-test_2"] = "Second Panel";
 
       ws.markMetadataDirty();
-      ws.markMupDirty("mup-test");
-      ws.markMupDirty("mup-test_2");
       ws.flushSave();
 
       // Teardown
@@ -165,8 +139,6 @@ describe("WorkspaceManager (folder-based)", () => {
       assert.equal(restored.length, 2);
       const ids = mgr.getAll().map(m => m.manifest.id).sort();
       assert.deepEqual(ids, ["mup-test", "mup-test_2"]);
-      assert.deepEqual(mgr.get("mup-test")!.stateData, { n: 1 });
-      assert.deepEqual(mgr.get("mup-test_2")!.stateData, { n: 2 });
     });
   });
 
