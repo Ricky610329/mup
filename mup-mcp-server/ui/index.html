@@ -584,8 +584,13 @@ window.addEventListener('load', () => {
     initGrid();
     renderManagerCard();
     renderChatCard();
+    // Process any MUPs that arrived before grid init
     for (const p of pendingMups) loadMup(p.mupId, p.html, p.manifest);
     pendingMups.length = 0;
+    // Signal server that grid is ready — server will now send active MUPs
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ready" }));
+    }
   }, 100);
 });
 
@@ -622,7 +627,9 @@ function connect() {
     statusDot.className = "status-dot connected";
     _reconnectDelay = 1000; // reset on success
     callMap.clear(); // discard stale pending calls from previous connection
-    ws.send(JSON.stringify({ type: "ready" }));
+    // If grid is already initialized (reconnect), send ready immediately
+    // Otherwise, window.load handler will send ready after grid init
+    if (grid) ws.send(JSON.stringify({ type: "ready" }));
   };
   ws.onclose = () => {
     statusDot.className = "status-dot disconnected";
@@ -694,6 +701,12 @@ function handleServerMessage(msg) {
 const pendingMups = [];
 
 function loadMup(mupId, html, manifest) {
+  // Deduplicate: if widget already exists for this mupId, skip
+  if (grid) {
+    for (const item of grid.getGridItems()) {
+      if (item.getAttribute('gs-id') === mupId) return;
+    }
+  }
   if (mupId === 'mup-chat') { initChatWidget(); return; }
   if (!grid) { pendingMups.push({ mupId, html, manifest }); return; }
 

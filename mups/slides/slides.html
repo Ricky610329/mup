@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Slides</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Slides",
+    "description": "Professional presentation editor. Layouts: title, content, two-column, image, blank. Themes: light, dark, blue, green. Export to PDF (print) or standalone HTML. Functions: createPresentation, addSlide, updateSlide, removeSlide, getSlides, setTheme, exportHTML.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "createPresentation",
+        "description": "Create a new presentation, replacing all existing slides.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string", "description": "Presentation title (used on auto-created title slide)" },
+            "subtitle": { "type": "string", "description": "Subtitle for the title slide" },
+            "theme": { "type": "string", "enum": ["light", "dark", "blue", "green"], "description": "Color theme (default: light)" }
+          },
+          "required": ["title"]
+        }
+      },
+      {
+        "name": "addSlide",
+        "description": "Add a slide to the end of the presentation.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "layout": { "type": "string", "enum": ["title", "content", "two-column", "image", "blank"], "description": "Slide layout type" },
+            "content": {
+              "type": "object",
+              "description": "Content fields depend on layout. title: {title, subtitle}. content: {title, body}. two-column: {title, left, right}. image: {title, imageUrl, caption}. blank: {html}.",
+              "properties": {
+                "title": { "type": "string" },
+                "subtitle": { "type": "string" },
+                "body": { "type": "string", "description": "Markdown supported" },
+                "left": { "type": "string", "description": "Left column markdown" },
+                "right": { "type": "string", "description": "Right column markdown" },
+                "imageUrl": { "type": "string" },
+                "caption": { "type": "string" },
+                "html": { "type": "string" }
+              }
+            }
+          },
+          "required": ["layout", "content"]
+        }
+      },
+      {
+        "name": "updateSlide",
+        "description": "Update a slide's content by index (0-based).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "index": { "type": "integer", "description": "Slide index (0-based)" },
+            "layout": { "type": "string", "enum": ["title", "content", "two-column", "image", "blank"] },
+            "content": { "type": "object", "description": "Same content fields as addSlide" }
+          },
+          "required": ["index"]
+        }
+      },
+      {
+        "name": "removeSlide",
+        "description": "Remove a slide by index (0-based).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "index": { "type": "integer", "description": "Slide index (0-based)" }
+          },
+          "required": ["index"]
+        }
+      },
+      {
+        "name": "getSlides",
+        "description": "Get all slides with their layout and content.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setTheme",
+        "description": "Change the presentation theme.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "theme": { "type": "string", "enum": ["light", "dark", "blue", "green"], "description": "Color theme" }
+          },
+          "required": ["theme"]
+        }
+      },
+      {
+        "name": "exportHTML",
+        "description": "Get the full presentation as a self-contained HTML string for download.",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --editor-bg: #fff; --editor-toolbar: #f8f9fa; --editor-text: #333;
+      --editor-sec: #666; --editor-ter: #999; --editor-border: #e0e0e0;
+      --editor-hover: rgba(0,0,0,0.04); --editor-accent: #0066cc;
+      --editor-active-bg: #e3f2fd;
+      /* Slide theme (overridden by setTheme) */
+      --slide-bg: #ffffff; --slide-text: #1a1a1a; --slide-heading: #0d0d0d;
+      --slide-accent: #0066cc; --slide-muted: #666666; --slide-code-bg: #f5f5f5;
+    }
+    body.editor-dark {
+      --editor-bg: #1e1e1e; --editor-toolbar: #2d2d2d; --editor-text: #d4d4d4;
+      --editor-sec: #858585; --editor-ter: #5a5a5a; --editor-border: #404040;
+      --editor-hover: rgba(255,255,255,0.06); --editor-accent: #569cd6;
+      --editor-active-bg: #37373d;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: 100vh; display: flex; flex-direction: column;
+      background: var(--editor-bg); color: var(--editor-text);
+    }
+    /* ---- Toolbar ---- */
+    .toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-bottom: 1px solid var(--editor-border);
+      background: var(--editor-toolbar); flex-shrink: 0;
+    }
+    .toolbar-title { font-size: 11px; font-weight: 600; color: var(--editor-sec); }
+    .toolbar-spacer { flex: 1; }
+    .toolbar-btn {
+      background: none; border: 1px solid var(--editor-border); cursor: pointer;
+      color: var(--editor-sec); font-size: 10px; padding: 3px 7px;
+      border-radius: 4px; font-family: inherit; display: flex; align-items: center; gap: 3px;
+    }
+    .toolbar-btn:hover { background: var(--editor-hover); color: var(--editor-text); }
+    .toolbar-select {
+      border: 1px solid var(--editor-border); border-radius: 4px;
+      font-size: 10px; padding: 2px 4px; background: var(--editor-bg);
+      color: var(--editor-text); font-family: inherit; outline: none;
+    }
+    .toolbar-info { font-size: 10px; color: var(--editor-ter); }
+    /* ---- Main ---- */
+    .main { flex: 1; display: flex; overflow: hidden; }
+    /* ---- Sidebar ---- */
+    .sidebar {
+      width: 140px; flex-shrink: 0; border-right: 1px solid var(--editor-border);
+      background: var(--editor-toolbar); display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 6px 8px; display: flex; align-items: center;
+      border-bottom: 1px solid var(--editor-border); flex-shrink: 0;
+    }
+    .sidebar-header span { font-size: 10px; font-weight: 600; color: var(--editor-ter); flex: 1; }
+    .slide-list { flex: 1; overflow-y: auto; padding: 4px; }
+    .slide-thumb {
+      position: relative; border: 2px solid transparent; border-radius: 4px;
+      margin-bottom: 4px; cursor: pointer; padding: 2px;
+      aspect-ratio: 16/9; overflow: hidden; background: var(--editor-bg);
+    }
+    .slide-thumb:hover { border-color: var(--editor-border); }
+    .slide-thumb.active { border-color: var(--editor-accent); }
+    .slide-thumb-num {
+      position: absolute; top: 2px; left: 4px; font-size: 8px;
+      color: var(--editor-ter); font-weight: 600;
+    }
+    .slide-thumb-preview {
+      width: 100%; height: 100%; transform-origin: 0 0;
+      pointer-events: none; overflow: hidden;
+      font-size: 4px; padding: 4px; line-height: 1.2;
+      color: var(--slide-text);
+    }
+    .slide-thumb-delete {
+      position: absolute; top: 1px; right: 3px; background: none; border: none;
+      color: var(--editor-ter); font-size: 10px; cursor: pointer;
+      opacity: 0; line-height: 1;
+    }
+    .slide-thumb:hover .slide-thumb-delete { opacity: 1; }
+    .slide-thumb-delete:hover { color: #e53935; }
+    /* ---- Canvas ---- */
+    .canvas-area {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 16px; overflow: hidden; background: var(--editor-hover);
+    }
+    .slide-frame {
+      width: 100%; max-width: 800px; aspect-ratio: 16/9;
+      background: var(--slide-bg); border-radius: 4px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      position: relative; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    /* ---- Slide Content ---- */
+    .slide-inner {
+      flex: 1; padding: 40px 48px; display: flex; flex-direction: column;
+      justify-content: center; font-family: 'Inter', sans-serif;
+      color: var(--slide-text); overflow: hidden;
+    }
+    .slide-inner h1 {
+      font-size: 32px; font-weight: 700; color: var(--slide-heading);
+      margin-bottom: 12px; line-height: 1.2;
+    }
+    .slide-inner h2 {
+      font-size: 22px; font-weight: 600; color: var(--slide-heading);
+      margin-bottom: 16px; line-height: 1.3;
+      border-bottom: 2px solid var(--slide-accent); padding-bottom: 8px;
+    }
+    .slide-inner h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .slide-inner p { font-size: 16px; line-height: 1.6; margin-bottom: 8px; color: var(--slide-text); }
+    .slide-inner ul, .slide-inner ol { font-size: 16px; line-height: 1.7; padding-left: 1.5em; margin-bottom: 8px; }
+    .slide-inner li { margin-bottom: 4px; }
+    .slide-inner code {
+      background: var(--slide-code-bg); padding: 2px 5px; border-radius: 3px;
+      font-size: 14px; font-family: 'SFMono-Regular', Consolas, monospace;
+    }
+    .slide-inner pre {
+      background: var(--slide-code-bg); padding: 12px 16px; border-radius: 6px;
+      overflow-x: auto; margin: 8px 0; font-size: 13px;
+    }
+    .slide-inner pre code { background: none; padding: 0; }
+    .slide-inner a { color: var(--slide-accent); }
+    .slide-inner .subtitle {
+      font-size: 20px; font-weight: 300; color: var(--slide-muted);
+      margin-top: 4px;
+    }
+    /* Title layout */
+    .layout-title .slide-inner { justify-content: center; align-items: center; text-align: center; }
+    .layout-title h1 { font-size: 40px; margin-bottom: 16px; }
+    .layout-title .subtitle { font-size: 22px; }
+    /* Two column */
+    .layout-two-column .slide-columns {
+      display: flex; gap: 32px; flex: 1;
+    }
+    .layout-two-column .slide-col { flex: 1; overflow: hidden; }
+    /* Image */
+    .layout-image .slide-inner { padding: 24px 48px; }
+    .layout-image img {
+      max-width: 100%; max-height: 60%; object-fit: contain;
+      border-radius: 6px; margin: 8px auto; display: block;
+    }
+    .layout-image .caption { font-size: 13px; color: var(--slide-muted); text-align: center; margin-top: 8px; }
+    /* Footer */
+    .slide-footer {
+      padding: 6px 48px; display: flex; justify-content: space-between;
+      font-size: 10px; color: var(--slide-muted); flex-shrink: 0;
+    }
+    .slide-progress {
+      position: absolute; bottom: 0; left: 0; height: 3px;
+      background: var(--slide-accent); transition: width 0.3s;
+    }
+    /* ---- Edit panel ---- */
+    .edit-panel {
+      width: 220px; flex-shrink: 0; border-left: 1px solid var(--editor-border);
+      background: var(--editor-toolbar); display: flex; flex-direction: column;
+      overflow-y: auto; padding: 8px;
+    }
+    .edit-group { margin-bottom: 10px; }
+    .edit-label { font-size: 10px; font-weight: 600; color: var(--editor-ter); margin-bottom: 3px; }
+    .edit-input {
+      width: 100%; border: 1px solid var(--editor-border); border-radius: 4px;
+      padding: 4px 6px; font-size: 11px; font-family: inherit;
+      background: var(--editor-bg); color: var(--editor-text); outline: none;
+      margin-bottom: 4px;
+    }
+    .edit-input:focus { border-color: var(--editor-accent); }
+    .edit-textarea {
+      width: 100%; border: 1px solid var(--editor-border); border-radius: 4px;
+      padding: 4px 6px; font-size: 11px; font-family: 'SFMono-Regular', Consolas, monospace;
+      background: var(--editor-bg); color: var(--editor-text); outline: none;
+      resize: none; min-height: 80px; line-height: 1.5;
+    }
+    .edit-textarea:focus { border-color: var(--editor-accent); }
+    /* ---- Print / PDF ---- */
+    @media print {
+      body, .toolbar, .sidebar, .edit-panel, .canvas-area { all: unset !important; }
+      .slide-frame { box-shadow: none !important; border-radius: 0 !important; }
+      .print-container { display: block !important; }
+      .print-slide {
+        width: 100vw; height: 100vh; page-break-after: always;
+        display: flex; flex-direction: column; overflow: hidden;
+        position: relative;
+      }
+      .print-slide:last-child { page-break-after: auto; }
+    }
+    @page { size: landscape; margin: 0; }
+    .print-container { display: none; }
+    /* ---- Empty state ---- */
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 8px; color: var(--editor-ter);
+      font-size: 13px; text-align: center; flex: 1; padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span class="toolbar-title">Slides</span>
+    <span class="toolbar-info" id="slideInfo">0 slides</span>
+    <span class="toolbar-spacer"></span>
+    <select class="toolbar-select" id="layoutSelect">
+      <option value="title">Title</option>
+      <option value="content" selected>Content</option>
+      <option value="two-column">Two Column</option>
+      <option value="image">Image</option>
+      <option value="blank">Blank</option>
+    </select>
+    <button class="toolbar-btn" id="addSlideBtn">+ Slide</button>
+    <select class="toolbar-select" id="themeSelect">
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+      <option value="blue">Blue</option>
+      <option value="green">Green</option>
+    </select>
+    <button class="toolbar-btn" id="presentBtn">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> Present
+    </button>
+    <button class="toolbar-btn" id="pdfBtn">PDF</button>
+    <button class="toolbar-btn" id="htmlBtn">HTML</button>
+  </div>
+  <div class="main">
+    <div class="sidebar">
+      <div class="slide-list" id="slideList"></div>
+    </div>
+    <div class="canvas-area" id="canvasArea">
+      <div class="empty-state" id="emptyState">
+        <span>No slides yet</span>
+        <span style="font-size:11px">Click <b>+ Slide</b> or let the agent create a presentation</span>
+      </div>
+    </div>
+    <div class="edit-panel" id="editPanel" style="display:none;"></div>
+  </div>
+  <div class="print-container" id="printContainer"></div>
+
+  <script>
+    // ---- State ----
+    let slides = [];
+    let currentIndex = 0;
+    let theme = 'light';
+    let presentationTitle = '';
+    let stateTimer = null;
+    const STORAGE_KEY = 'mup-slides-data';
+
+    const themes = {
+      light:  { bg:'#ffffff', text:'#1a1a1a', heading:'#0d0d0d', accent:'#0066cc', muted:'#666666', codeBg:'#f5f5f5' },
+      dark:   { bg:'#1e1e1e', text:'#e0e0e0', heading:'#ffffff', accent:'#60a5fa', muted:'#999999', codeBg:'#2d2d2d' },
+      blue:   { bg:'#0f172a', text:'#e2e8f0', heading:'#ffffff', accent:'#38bdf8', muted:'#94a3b8', codeBg:'#1e293b' },
+      green:  { bg:'#f0fdf4', text:'#1a3a1a', heading:'#14532d', accent:'#16a34a', muted:'#6b7280', codeBg:'#dcfce7' },
+    };
+
+    function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function md(s) {
+      if (!s) return '';
+      try { return marked.parse(s); } catch { return esc(s); }
+    }
+
+    // ---- Theme ----
+    function applySlideTheme(t) {
+      const th = themes[t] || themes.light;
+      const r = document.documentElement.style;
+      r.setProperty('--slide-bg', th.bg);
+      r.setProperty('--slide-text', th.text);
+      r.setProperty('--slide-heading', th.heading);
+      r.setProperty('--slide-accent', th.accent);
+      r.setProperty('--slide-muted', th.muted);
+      r.setProperty('--slide-code-bg', th.codeBg);
+    }
+
+    function applyEditorTheme(t) {
+      document.body.classList.toggle('editor-dark', t === 'dark');
+    }
+
+    // ---- Render slide HTML ----
+    function renderSlideHTML(slide, index, total) {
+      const c = slide.content || {};
+      let inner = '';
+      switch (slide.layout) {
+        case 'title':
+          inner = `<h1>${esc(c.title || '')}</h1>${c.subtitle ? `<div class="subtitle">${esc(c.subtitle)}</div>` : ''}`;
+          break;
+        case 'content':
+          inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${md(c.body || '')}`;
+          break;
+        case 'two-column':
+          inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}<div class="slide-columns"><div class="slide-col">${md(c.left || '')}</div><div class="slide-col">${md(c.right || '')}</div></div>`;
+          break;
+        case 'image':
+          inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${c.imageUrl ? `<img src="${esc(c.imageUrl)}" alt="">` : ''}<div class="caption">${esc(c.caption || '')}</div>`;
+          break;
+        case 'blank':
+          inner = c.html || '';
+          break;
+      }
+      const progress = total > 1 ? ((index + 1) / total * 100) : 100;
+      return `<div class="slide-inner">${inner}</div>
+        <div class="slide-footer"><span>${esc(presentationTitle)}</span><span>${index + 1} / ${total}</span></div>
+        <div class="slide-progress" style="width:${progress}%"></div>`;
+    }
+
+    // ---- Render UI ----
+    function render() {
+      applySlideTheme(theme);
+      document.getElementById('themeSelect').value = theme;
+      document.getElementById('slideInfo').textContent = `${slides.length} slide${slides.length !== 1 ? 's' : ''}`;
+
+      // Sidebar thumbnails
+      const listEl = document.getElementById('slideList');
+      listEl.innerHTML = '';
+      slides.forEach((s, i) => {
+        const thumb = document.createElement('div');
+        thumb.className = 'slide-thumb' + (i === currentIndex ? ' active' : '');
+        const previewText = (s.content?.title || s.content?.body || s.layout).slice(0, 40);
+        thumb.innerHTML = `<span class="slide-thumb-num">${i + 1}</span>
+          <div class="slide-thumb-preview">${esc(previewText)}</div>
+          <button class="slide-thumb-delete">&times;</button>`;
+        thumb.addEventListener('click', () => { currentIndex = i; render(); });
+        thumb.querySelector('.slide-thumb-delete').addEventListener('click', (e) => {
+          e.stopPropagation();
+          slides.splice(i, 1);
+          if (currentIndex >= slides.length) currentIndex = Math.max(0, slides.length - 1);
+          render(); debouncedSave();
+        });
+        listEl.appendChild(thumb);
+      });
+
+      // Canvas
+      const canvasArea = document.getElementById('canvasArea');
+      const editPanel = document.getElementById('editPanel');
+
+      if (slides.length === 0) {
+        canvasArea.innerHTML = `<div class="empty-state"><span>No slides yet</span><span style="font-size:11px">Click <b>+ Slide</b> or let the agent create a presentation</span></div>`;
+        editPanel.style.display = 'none';
+        return;
+      }
+      editPanel.style.display = 'flex';
+
+      const slide = slides[currentIndex];
+      // Ensure canvas has a slide frame
+      let frame = canvasArea.querySelector('.slide-frame');
+      if (!frame) {
+        canvasArea.innerHTML = '';
+        frame = document.createElement('div');
+        frame.className = 'slide-frame';
+        canvasArea.appendChild(frame);
+      }
+      frame.className = `slide-frame layout-${slide.layout}`;
+      frame.style.background = themes[theme]?.bg || '#fff';
+      frame.innerHTML = renderSlideHTML(slide, currentIndex, slides.length);
+
+      // Edit panel
+      renderEditPanel(slide);
+    }
+
+    function renderEditPanel(slide) {
+      const panel = document.getElementById('editPanel');
+      const c = slide.content || {};
+      let html = `<div class="edit-group"><div class="edit-label">LAYOUT</div>
+        <select class="edit-input" id="editLayout">
+          ${['title','content','two-column','image','blank'].map(l => `<option value="${l}"${l===slide.layout?' selected':''}>${l}</option>`).join('')}
+        </select></div>`;
+
+      if (slide.layout !== 'blank') {
+        html += `<div class="edit-group"><div class="edit-label">TITLE</div>
+          <input class="edit-input" id="editTitle" value="${esc(c.title||'')}" placeholder="Slide title..."></div>`;
+      }
+      if (slide.layout === 'title') {
+        html += `<div class="edit-group"><div class="edit-label">SUBTITLE</div>
+          <input class="edit-input" id="editSubtitle" value="${esc(c.subtitle||'')}" placeholder="Subtitle..."></div>`;
+      }
+      if (slide.layout === 'content') {
+        html += `<div class="edit-group"><div class="edit-label">BODY (markdown)</div>
+          <textarea class="edit-textarea" id="editBody" rows="8" placeholder="Slide content...">${esc(c.body||'')}</textarea></div>`;
+      }
+      if (slide.layout === 'two-column') {
+        html += `<div class="edit-group"><div class="edit-label">LEFT (markdown)</div>
+          <textarea class="edit-textarea" id="editLeft" rows="5">${esc(c.left||'')}</textarea></div>
+          <div class="edit-group"><div class="edit-label">RIGHT (markdown)</div>
+          <textarea class="edit-textarea" id="editRight" rows="5">${esc(c.right||'')}</textarea></div>`;
+      }
+      if (slide.layout === 'image') {
+        html += `<div class="edit-group"><div class="edit-label">IMAGE URL</div>
+          <input class="edit-input" id="editImageUrl" value="${esc(c.imageUrl||'')}" placeholder="https://..."></div>
+          <div class="edit-group"><div class="edit-label">CAPTION</div>
+          <input class="edit-input" id="editCaption" value="${esc(c.caption||'')}" placeholder="Image caption..."></div>`;
+      }
+      if (slide.layout === 'blank') {
+        html += `<div class="edit-group"><div class="edit-label">HTML</div>
+          <textarea class="edit-textarea" id="editHtml" rows="8">${esc(c.html||'')}</textarea></div>`;
+      }
+      panel.innerHTML = html;
+
+      // Bind events
+      const bind = (id, field) => {
+        const el = panel.querySelector('#' + id);
+        if (el) el.addEventListener('input', () => {
+          slide.content[field] = el.value;
+          render(); debouncedSave();
+        });
+      };
+      const layoutEl = panel.querySelector('#editLayout');
+      if (layoutEl) layoutEl.addEventListener('change', () => {
+        slide.layout = layoutEl.value;
+        if (!slide.content) slide.content = {};
+        render(); debouncedSave();
+      });
+      bind('editTitle', 'title');
+      bind('editSubtitle', 'subtitle');
+      bind('editBody', 'body');
+      bind('editLeft', 'left');
+      bind('editRight', 'right');
+      bind('editImageUrl', 'imageUrl');
+      bind('editCaption', 'caption');
+      bind('editHtml', 'html');
+    }
+
+    // ---- Toolbar events ----
+    document.getElementById('addSlideBtn').addEventListener('click', () => {
+      const layout = document.getElementById('layoutSelect').value;
+      slides.push({ layout, content: {} });
+      currentIndex = slides.length - 1;
+      render(); debouncedSave();
+    });
+
+    document.getElementById('themeSelect').addEventListener('change', (e) => {
+      theme = e.target.value;
+      render(); debouncedSave();
+    });
+
+    document.getElementById('presentBtn').addEventListener('click', startPresentation);
+    document.getElementById('pdfBtn').addEventListener('click', exportPDF);
+    document.getElementById('htmlBtn').addEventListener('click', downloadHTML);
+
+    // ---- Presentation mode ----
+    function startPresentation() {
+      if (slides.length === 0) return;
+      const win = window.open('', '_blank');
+      if (!win) return;
+      const th = themes[theme] || themes.light;
+      const slidesHtml = slides.map((s, i) =>
+        `<div class="slide layout-${s.layout}" style="background:${th.bg};">
+          ${renderSlideHTML(s, i, slides.length)}
+        </div>`
+      ).join('');
+      win.document.write(buildPresentationHTML(slidesHtml, th));
+      win.document.close();
+    }
+
+    function buildPresentationHTML(slidesHtml, th) {
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        <style>
+          *{margin:0;padding:0;box-sizing:border-box}
+          body{background:#000;overflow:hidden;font-family:'Inter',sans-serif}
+          .slide{width:100vw;height:100vh;display:none;flex-direction:column;position:relative;overflow:hidden;color:${th.text}}
+          .slide.active{display:flex}
+          .slide-inner{flex:1;padding:6vh 6vw;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+          .slide-inner h1{font-size:4vw;font-weight:700;color:${th.heading};margin-bottom:1.5vh;line-height:1.2}
+          .slide-inner h2{font-size:2.8vw;font-weight:600;color:${th.heading};margin-bottom:2vh;border-bottom:3px solid ${th.accent};padding-bottom:1vh}
+          .slide-inner h3{font-size:2vw;font-weight:600;margin-bottom:1vh}
+          .slide-inner p{font-size:1.8vw;line-height:1.6;margin-bottom:1vh}
+          .slide-inner ul,.slide-inner ol{font-size:1.8vw;line-height:1.7;padding-left:1.5em;margin-bottom:1vh}
+          .slide-inner li{margin-bottom:0.5vh}
+          .slide-inner code{background:${th.codeBg};padding:2px 6px;border-radius:3px;font-size:1.5vw;font-family:Consolas,monospace}
+          .slide-inner pre{background:${th.codeBg};padding:2vh 2vw;border-radius:8px;overflow-x:auto;margin:1vh 0;font-size:1.4vw}
+          .slide-inner pre code{background:none;padding:0}
+          .slide-inner a{color:${th.accent}}
+          .subtitle{font-size:2.2vw;font-weight:300;color:${th.muted};margin-top:0.5vh}
+          .layout-title .slide-inner{justify-content:center;align-items:center;text-align:center}
+          .layout-title h1{font-size:5vw;margin-bottom:2vh}
+          .layout-title .subtitle{font-size:2.5vw}
+          .slide-columns{display:flex;gap:4vw;flex:1}.slide-col{flex:1;overflow:hidden}
+          .layout-image img{max-width:80%;max-height:55vh;object-fit:contain;border-radius:8px;margin:1vh auto;display:block}
+          .caption{font-size:1.3vw;color:${th.muted};text-align:center;margin-top:1vh}
+          .slide-footer{padding:1vh 6vw;display:flex;justify-content:space-between;font-size:1.2vw;color:${th.muted};flex-shrink:0}
+          .slide-progress{position:absolute;bottom:0;left:0;height:4px;background:${th.accent};transition:width 0.3s}
+        </style></head><body>
+        ${slidesHtml}
+        <script>
+          let idx=0;const ss=document.querySelectorAll('.slide');
+          function show(i){ss.forEach((s,j)=>s.classList.toggle('active',j===i));}
+          show(0);
+          document.addEventListener('keydown',e=>{
+            if(e.key==='ArrowRight'||e.key===' '){idx=Math.min(idx+1,ss.length-1);show(idx);}
+            else if(e.key==='ArrowLeft'){idx=Math.max(idx-1,0);show(idx);}
+            else if(e.key==='Escape')window.close();
+          });
+          document.addEventListener('click',()=>{idx=Math.min(idx+1,ss.length-1);show(idx);});
+        <\/script></body></html>`;
+    }
+
+    // ---- Export PDF (print) ----
+    function exportPDF() {
+      if (slides.length === 0) return;
+      const th = themes[theme] || themes.light;
+      const printWin = window.open('', '_blank');
+      if (!printWin) return;
+      const slidesHtml = slides.map((s, i) =>
+        `<div class="print-slide" style="background:${th.bg};color:${th.text};">
+          <div class="slide-inner" style="flex:1;padding:6vh 6vw;display:flex;flex-direction:column;justify-content:center;">${renderSlideHTML(s, i, slides.length).replace(/<div class="slide-footer">.*?<\/div>/s, '').replace(/<div class="slide-progress".*?<\/div>/s, '')}</div>
+          <div style="padding:1vh 6vw;font-size:10px;color:${th.muted};display:flex;justify-content:space-between;"><span>${esc(presentationTitle)}</span><span>${i+1} / ${slides.length}</span></div>
+        </div>`
+      ).join('');
+      printWin.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        <style>
+          @page{size:landscape;margin:0}*{margin:0;padding:0;box-sizing:border-box}
+          body{font-family:'Inter',sans-serif}
+          .print-slide{width:100vw;height:100vh;page-break-after:always;display:flex;flex-direction:column;overflow:hidden;position:relative}
+          .print-slide:last-child{page-break-after:auto}
+          .slide-inner h1{font-size:36pt;font-weight:700;color:${th.heading};margin-bottom:12px}
+          .slide-inner h2{font-size:24pt;font-weight:600;color:${th.heading};margin-bottom:16px;border-bottom:2px solid ${th.accent};padding-bottom:8px}
+          .slide-inner p{font-size:16pt;line-height:1.6;margin-bottom:8px}
+          .slide-inner ul,.slide-inner ol{font-size:16pt;line-height:1.7;padding-left:1.5em}
+          .slide-inner li{margin-bottom:4px}
+          .slide-inner code{background:${th.codeBg};padding:2px 5px;border-radius:3px;font-size:13pt}
+          .slide-inner pre{background:${th.codeBg};padding:12px;border-radius:6px;font-size:12pt}
+          .subtitle{font-size:18pt;font-weight:300;color:${th.muted}}
+          .layout-title .slide-inner{justify-content:center;align-items:center;text-align:center}
+          .slide-columns{display:flex;gap:32px;flex:1}.slide-col{flex:1}
+          .caption{font-size:11pt;color:${th.muted};text-align:center}
+          img{max-width:80%;max-height:50vh;object-fit:contain;margin:8px auto;display:block;border-radius:6px}
+        </style></head><body>${slidesHtml}</body></html>`);
+      printWin.document.close();
+      setTimeout(() => { printWin.print(); }, 500);
+    }
+
+    // ---- Export HTML download ----
+    function downloadHTML() {
+      if (slides.length === 0) return;
+      const th = themes[theme] || themes.light;
+      const slidesHtml = slides.map((s, i) =>
+        `<div class="slide layout-${s.layout}" style="background:${th.bg};">
+          ${renderSlideHTML(s, i, slides.length)}
+        </div>`
+      ).join('');
+      const html = buildPresentationHTML(slidesHtml, th);
+      const blob = new Blob([html], { type: 'text/html' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${presentationTitle || 'presentation'}.html`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // ---- Keyboard nav ----
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        if (currentIndex < slides.length - 1) { currentIndex++; render(); }
+      } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        if (currentIndex > 0) { currentIndex--; render(); }
+      }
+    });
+
+    // ---- State ----
+    function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 500); }
+    function save() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ slides, theme, presentationTitle, currentIndex })); } catch {}
+      const summary = slides.length === 0
+        ? 'Slides: empty'
+        : `Slides: "${presentationTitle || 'Untitled'}" — ${slides.length} slide(s), theme: ${theme}`;
+      mup.updateState(summary);
+    }
+    function loadState() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) return JSON.parse(stored);
+      } catch {}
+      return null;
+    }
+
+    // ---- MUP functions ----
+    mup.registerFunction('createPresentation', ({ title, subtitle, theme: t }) => {
+      presentationTitle = title;
+      if (t) theme = t;
+      slides = [{ layout: 'title', content: { title, subtitle: subtitle || '' } }];
+      currentIndex = 0;
+      render(); save();
+      return { content: [{ type: 'text', text: `Created presentation "${title}" with title slide. Theme: ${theme}.` }], isError: false };
+    });
+
+    mup.registerFunction('addSlide', ({ layout, content }) => {
+      slides.push({ layout, content: content || {} });
+      currentIndex = slides.length - 1;
+      render(); save();
+      return { content: [{ type: 'text', text: `Added ${layout} slide (index ${currentIndex}). Total: ${slides.length}.` }], isError: false };
+    });
+
+    mup.registerFunction('updateSlide', ({ index, layout, content }) => {
+      if (index < 0 || index >= slides.length) return { content: [{ type: 'text', text: `Index ${index} out of range (0-${slides.length - 1}).` }], isError: true };
+      if (layout) slides[index].layout = layout;
+      if (content) Object.assign(slides[index].content, content);
+      currentIndex = index;
+      render(); save();
+      return { content: [{ type: 'text', text: `Updated slide ${index}.` }], isError: false };
+    });
+
+    mup.registerFunction('removeSlide', ({ index }) => {
+      if (index < 0 || index >= slides.length) return { content: [{ type: 'text', text: `Index ${index} out of range.` }], isError: true };
+      slides.splice(index, 1);
+      if (currentIndex >= slides.length) currentIndex = Math.max(0, slides.length - 1);
+      render(); save();
+      return { content: [{ type: 'text', text: `Removed slide ${index}. ${slides.length} remaining.` }], isError: false };
+    });
+
+    mup.registerFunction('getSlides', () => {
+      if (slides.length === 0) return { content: [{ type: 'text', text: 'No slides.' }], isError: false };
+      const lines = slides.map((s, i) => `[${i}] ${s.layout}: ${s.content?.title || s.content?.body?.slice(0,50) || '(empty)'}`);
+      return { content: [{ type: 'text', text: `"${presentationTitle}" (${theme} theme, ${slides.length} slides):\n${lines.join('\n')}` }], isError: false };
+    });
+
+    mup.registerFunction('setTheme', ({ theme: t }) => {
+      theme = t;
+      render(); save();
+      return { content: [{ type: 'text', text: `Theme set to "${t}".` }], isError: false };
+    });
+
+    mup.registerFunction('exportHTML', () => {
+      if (slides.length === 0) return { content: [{ type: 'text', text: 'No slides to export.' }], isError: true };
+      downloadHTML();
+      return { content: [{ type: 'text', text: `Exported "${presentationTitle || 'presentation'}.html" (${slides.length} slides).` }], isError: false };
+    });
+
+    // ---- Init ----
+    mup.onThemeChange(applyEditorTheme);
+    mup.onReady((params) => {
+      if (params?.theme) applyEditorTheme(params.theme);
+      const state = loadState();
+      if (state) {
+        slides = state.slides || [];
+        theme = state.theme || 'light';
+        presentationTitle = state.presentationTitle || '';
+        currentIndex = state.currentIndex || 0;
+        if (currentIndex >= slides.length) currentIndex = 0;
+      }
+      render(); save();
+    });
+  </script>
+</body>
+</html>

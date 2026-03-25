@@ -99,6 +99,7 @@ export type ServerMessage =
 
 export interface BridgeEvents {
   "browser-connected": () => void;
+  "browser-ready": () => void;
   "browser-disconnected": () => void;
   "activate-mup": (mupId: string) => void;
   "deactivate-mup": (mupId: string) => void;

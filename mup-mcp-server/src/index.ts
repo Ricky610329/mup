@@ -83,7 +83,8 @@ function parseCliArgs(): CliConfig {
 // ---- Browser Event Wiring ----
 
 function setupBrowserEvents(bridge: UiBridge, manager: MupManager, ws: WorkspaceManager, sendLoadMup: SendLoadMupFn): void {
-  bridge.typedOn("browser-connected", () => {
+  // Send restored workspace state after browser grid is ready (not on connect)
+  bridge.typedOn("browser-ready", () => {
     ws.sendRestoredState(bridge);
   });
 

@@ -80,21 +80,12 @@ export class UiBridge extends EventEmitter {
         this.typedEmit("browser-disconnected");
       });
 
-      // Send catalog + folder tree on connect
+      // Send catalog + folder tree immediately (lightweight, no grid needed)
       this.sendRaw({ type: "mup-catalog", catalog: this.buildCatalogSummary() });
       if (this.folderTree.length > 0) {
         this.sendRaw({ type: "folder-tree", tree: this.folderTree, path: this.folderPath });
       }
-
-      // Send already-active MUPs with saved state
-      for (const mup of this.manager.getAll()) {
-        this.sendRaw({
-          type: "load-mup",
-          mupId: mup.manifest.id,
-          html: mup.html,
-          manifest: mup.manifest,
-        });
-      }
+      // Active MUPs are sent after browser signals "browser-ready" (grid initialized)
     });
   }
 
@@ -192,6 +183,16 @@ export class UiBridge extends EventEmitter {
     switch (msg.type) {
       case "ready":
         console.error("[mup-mcp] Browser panel ready");
+        // Grid is initialized — now safe to send active MUPs
+        for (const mup of this.manager.getAll()) {
+          this.sendRaw({
+            type: "load-mup",
+            mupId: mup.manifest.id,
+            html: mup.html,
+            manifest: mup.manifest,
+          });
+        }
+        this.typedEmit("browser-ready");
         break;
 
       case "mup-loaded":
