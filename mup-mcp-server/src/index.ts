@@ -305,21 +305,23 @@ async function handleToolCall(
     const resultText = result.content.map((c) => c.text || "").join(" ").trim();
     ws.addCallHistory(mupId, fn, fnArgs, resultText);
 
-    const content: Array<{ type: "text"; text: string }> = [];
+    const content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> = [];
     if (activation.activated) content.push(text(`[Auto-activated] ${activation.activated}`));
 
     for (const c of result.content) {
-      if (c.data !== undefined) {
+      if (c.type === "image" && c.data && c.mimeType) {
+        content.push({ type: "image", data: c.data as string, mimeType: c.mimeType as string });
+      } else if (c.data !== undefined && c.type !== "image") {
         const json = JSON.stringify(c.data);
         if (json.length > CONFIG.maxDataResponseLength) {
-          content.push({ type: "text" as const, text: `[data truncated, ${json.length} chars. Use specific queries instead of full data dumps.]` });
+          content.push({ type: "text", text: `[data truncated, ${json.length} chars. Use specific queries instead of full data dumps.]` });
         } else {
-          content.push({ type: "text" as const, text: json });
+          content.push({ type: "text", text: json });
         }
       } else {
         let t = c.text || "";
         if (t.length > CONFIG.maxResponseLength) t = t.slice(0, CONFIG.maxResponseLength) + `\n... (truncated, ${t.length} chars total)`;
-        content.push({ type: "text" as const, text: t });
+        content.push({ type: "text", text: t });
       }
     }
 
@@ -356,6 +358,25 @@ async function main() {
 
   // --- Manager ---
   const manager = new MupManager();
+
+  // Register built-in system MUPs
+  manager.registerSystemMup({
+    protocol: "mup/2026-03-17",
+    id: "mup-chat",
+    name: "Chat",
+    version: "1.0.0",
+    description: "Chat with the LLM. User types messages, LLM responds via sendMessage. Supports markdown rendering in assistant messages.",
+    functions: [
+      { name: "sendMessage", description: "Send a message to display in the chat as the assistant. Supports markdown formatting.", inputSchema: { type: "object", properties: { text: { type: "string", description: "Message text to display (supports markdown)" } }, required: ["text"] } },
+      { name: "getHistory", description: "Get the full chat message history for the current session", inputSchema: { type: "object", properties: {} } },
+      { name: "clearHistory", description: "Archive current messages and clear the chat", inputSchema: { type: "object", properties: {} } },
+      { name: "resume", description: "Resume the most recent archived chat session, restoring its messages to the display", inputSchema: { type: "object", properties: {} } },
+      { name: "listHistory", description: "List archived chat sessions with date, preview, and message count", inputSchema: { type: "object", properties: {} } },
+      { name: "loadSession", description: "Load a specific archived chat session by its ID", inputSchema: { type: "object", properties: { id: { type: "string", description: "The session ID to load" } }, required: ["id"] } },
+    ],
+    notifications: { level: "immediate", overridable: false },
+  });
+
   for (const file of mupFiles) {
     try { const m = manager.scanFile(file); console.error(`[mup-mcp] Scanned: ${m.name} (${m.id})`); }
     catch (err: unknown) { console.error(`[mup-mcp] Skip ${file}: ${(err as Error).message}`); }
@@ -496,7 +517,7 @@ async function main() {
   };
 
   // --- Notification routing based on manifest level ---
-  bridge.typedOn("interaction", (mupId, action, summary) => {
+  bridge.typedOn("interaction", (mupId, action, summary, data) => {
     // Suppress notifications from the MUP currently being called by the LLM
     if (mupId === activeCallMupId) return;
 
@@ -505,6 +526,8 @@ async function main() {
 
     if (level === "immediate") {
       const mupName = manager.get(mupId)?.manifest.name ?? mupId;
+
+      // Always send text summary as channel notification
       server.notification({
         method: "notifications/claude/channel",
         params: {

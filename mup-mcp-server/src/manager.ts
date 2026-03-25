@@ -103,6 +103,7 @@ export class MupManager {
   }
 
   activate(mupId: string): LoadedMup | null {
+    if (this.systemMups.has(mupId)) return this.mups.get(mupId) ?? null;
     const entry = this.catalog.get(mupId);
     if (!entry) return null;
     entry.active = true;
@@ -165,6 +166,7 @@ export class MupManager {
   }
 
   deactivate(mupId: string): void {
+    if (this.systemMups.has(mupId)) return; // system MUPs can't be deactivated
     this.mups.delete(mupId);
     // Only mark catalog entry inactive if no instances remain
     const baseId = mupId.replace(/_\d+$/, "");
@@ -243,6 +245,26 @@ export class MupManager {
         overridable: raw.notifications.overridable ?? true,
       } : undefined,
     };
+  }
+
+  /** IDs of system MUPs (always active, can't be overwritten by catalog) */
+  private systemMups = new Set<string>();
+
+  /** Register a built-in system MUP (always active, no HTML file needed) */
+  registerSystemMup(manifest: MupManifest): void {
+    this.systemMups.add(manifest.id);
+    this.mups.set(manifest.id, {
+      manifest,
+      html: "",
+      filePath: "__system__",
+      stateSummary: "",
+      stateData: undefined,
+      pendingEvents: [],
+    });
+  }
+
+  isSystemMup(mupId: string): boolean {
+    return this.systemMups.has(mupId);
   }
 
   getAll(): LoadedMup[] {

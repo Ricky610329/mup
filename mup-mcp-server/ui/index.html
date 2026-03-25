@@ -6,8 +6,10 @@
   <title>MUP Panel (MCP)</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='white'/%3E%3Crect x='5' y='5' width='9' height='22' rx='2' fill='%231a1a1a'/%3E%3Crect x='17' y='5' width='10' height='12' rx='2' fill='%231a1a1a'/%3E%3Crect x='17' y='20' width='10' height='7' rx='2' fill='%231a1a1a'/%3E%3C/svg%3E">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/gridstack/dist/gridstack.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/gridstack/dist/gridstack-all.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/gridstack@11/dist/gridstack.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/gridstack@11/dist/gridstack-extra.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/gridstack@11/dist/gridstack-all.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     :root {
       --bg-base: #f5f5f5;
@@ -123,7 +125,7 @@
     .dashboard { padding: 10px; }
 
     .grid-stack { margin: 0 auto; }
-    .grid-stack-item-content {
+    .grid-stack > .grid-stack-item > .grid-stack-item-content {
       border-radius: var(--radius-lg);
       border: 1px solid var(--border);
       background: var(--bg-panel);
@@ -172,7 +174,7 @@
       border-radius: 4px; background: var(--bg-card); color: var(--text-primary);
       font-family: inherit; outline: none;
     }
-    .mups-path-bar input:focus { border-color: var(--green); }
+    .mups-path-bar input:focus { border-color: #007aff; }
     .mups-path-bar button {
       font-size: 11px; padding: 3px 8px; border: 1px solid var(--border);
       border-radius: 4px; background: var(--bg-subtle); color: var(--text-primary);
@@ -188,7 +190,7 @@
       font-size: 12px; color: var(--text-secondary);
     }
     .manager-file:hover { background: var(--bg-subtle); }
-    .manager-file.active { color: var(--green); }
+    .manager-file.active { color: #007aff; }
     .manager-file.non-mup { color: var(--text-tertiary); cursor: default; font-size: 11px; }
     .manager-file.is-folder { color: var(--text-primary); font-weight: 500; }
     .manager-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -236,6 +238,127 @@
       10% { opacity: 1; transform: translateY(0); }
       80% { opacity: 1; }
       100% { opacity: 0; }
+    }
+
+    /* ---- Built-in Chat Widget ---- */
+    .chat-messages {
+      flex: 1; overflow-y: auto; padding: 8px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .chat-msg-row {
+      display: flex; flex-direction: column; max-width: 85%; min-width: 0;
+    }
+    .chat-msg-row.user { align-self: flex-end; align-items: flex-end; }
+    .chat-msg-row.assistant { align-self: flex-start; align-items: flex-start; }
+    .chat-msg {
+      padding: 6px 10px; border-radius: 10px;
+      font-size: 12px; line-height: 1.4; word-wrap: break-word;
+      overflow-wrap: anywhere; min-width: 0;
+    }
+    .chat-msg.user {
+      background: #007aff; color: #fff;
+      border-bottom-right-radius: 4px; white-space: pre-wrap;
+    }
+    .chat-msg.assistant {
+      background: var(--bg-hover); color: var(--text-primary);
+      border-bottom-left-radius: 4px;
+    }
+    .chat-msg.assistant p { margin: 0 0 0.3em; }
+    .chat-msg.assistant p:last-child { margin-bottom: 0; }
+    .chat-msg.assistant ul, .chat-msg.assistant ol { margin: 3px 0; padding-left: 1.4em; }
+    .chat-msg.assistant li { margin: 1px 0; }
+    .chat-msg.assistant code {
+      background: var(--bg-active); padding: 1px 3px; border-radius: 3px; font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+    .chat-msg.assistant pre {
+      background: var(--bg-active); padding: 6px; border-radius: 6px;
+      margin: 3px 0; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+    .chat-msg.assistant pre code { background: none; padding: 0; }
+    .chat-msg.assistant a { color: #007aff; text-decoration: underline; }
+    .chat-meta {
+      font-size: 9px; color: var(--text-tertiary); margin-top: 2px; padding: 0 4px;
+    }
+    .chat-msg img {
+      max-width: 100%; border-radius: 6px; display: block; cursor: pointer;
+    }
+    .chat-img-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-secondary); padding: 4px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .chat-img-btn:hover { color: var(--text-primary); }
+    .chat-empty {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      color: var(--text-tertiary); font-size: 12px;
+    }
+    .chat-input-bar {
+      display: flex; gap: 4px; padding: 6px 8px;
+      border-top: 1px solid var(--border); background: var(--bg-subtle);
+      align-items: center; flex-shrink: 0;
+    }
+    .chat-input-bar textarea {
+      flex: 1; border: 1px solid var(--border); border-radius: 8px;
+      padding: 5px 8px; font-size: 12px; font-family: inherit; outline: none;
+      background: var(--bg-panel); color: var(--text-primary);
+      resize: none; min-height: 28px; max-height: 40vh; line-height: 1.3;
+      overflow-y: hidden;
+    }
+    .chat-input-bar textarea:focus { border-color: var(--text-secondary); }
+    .chat-input-bar button#chatSendBtn {
+      border: 1px solid var(--border); background: var(--bg-subtle); color: var(--text-primary);
+      border-radius: 4px; padding: 5px 8px; font-size: 11px; font-weight: 500; cursor: pointer;
+      font-family: inherit; flex-shrink: 0; line-height: 1;
+    }
+    .chat-input-bar button#chatSendBtn:hover { background: var(--border); }
+    .chat-img-preview {
+      padding: 4px 8px; border-top: 1px solid var(--border); display: flex;
+      align-items: center; gap: 6px; flex-shrink: 0; background: var(--bg-subtle);
+    }
+    .chat-img-preview img {
+      max-height: 48px; max-width: 80px; border-radius: 4px; object-fit: cover;
+    }
+    .chat-img-preview-name {
+      flex: 1; font-size: 11px; color: var(--text-secondary);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .chat-img-preview-remove {
+      background: none; border: none; cursor: pointer; color: var(--text-tertiary);
+      font-size: 14px; width: 20px; height: 20px; display: flex;
+      align-items: center; justify-content: center; border-radius: 4px; flex-shrink: 0;
+    }
+    .chat-img-preview-remove:hover { background: var(--bg-active); color: var(--red); }
+    /* Chat history panel */
+    .chat-history-panel {
+      display: none; flex-direction: column;
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--bg-panel); z-index: 5;
+    }
+    .chat-history-panel.open { display: flex; }
+    .chat-history-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+    .chat-history-item {
+      padding: 6px 12px; cursor: pointer; transition: background 0.12s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .chat-history-item:hover { background: var(--bg-hover); }
+    .chat-history-item-info { flex: 1; overflow: hidden; }
+    .chat-history-item-date { font-size: 10px; color: var(--text-tertiary); }
+    .chat-history-item-preview {
+      font-size: 12px; color: var(--text-primary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .chat-history-item-count { font-size: 10px; color: var(--text-secondary); }
+    .chat-history-delete {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-tertiary); font-size: 14px;
+      width: 22px; height: 22px; border-radius: 4px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .chat-history-delete:hover { background: var(--bg-active); color: var(--red); }
+    .chat-history-empty {
+      color: var(--text-tertiary); font-size: 12px; text-align: center; padding: 24px 0;
     }
   </style>
 </head>
@@ -397,10 +520,10 @@ function initGrid() {
     margin: GS_MARGIN,
     float: false,
     animate: false,
+    sizeToContent: false,
     draggable: { handle: '.mup-card-header' },
     resizable: { handles: 'se' },
     minRow: 1,
-    disableOneColumnMode: true,
   }, '#grid');
   grid.on('dragstart resizestart', () => document.body.classList.add('grid-stack-dragging'));
   grid.on('dragstop resizestop', () => {
@@ -420,7 +543,7 @@ function saveGridLayout() {
   const layout = [];
   for (const item of grid.getGridItems()) {
     const id = item.getAttribute('gs-id');
-    if (id && id !== '__manager__') {
+    if (id && id !== '__manager__' && id !== 'mup-chat') {
       layout.push({
         id,
         x: parseInt(item.getAttribute('gs-x') || '0'),
@@ -460,6 +583,7 @@ window.addEventListener('load', () => {
   setTimeout(() => {
     initGrid();
     renderManagerCard();
+    renderChatCard();
     for (const p of pendingMups) loadMup(p.mupId, p.html, p.manifest, p.savedState);
     pendingMups.length = 0;
   }, 100);
@@ -518,7 +642,8 @@ const loadingBar = document.getElementById('loadingBar');
 function clearAllMupWidgets() {
   if (grid) {
     for (const item of grid.getGridItems()) {
-      if (item.getAttribute('gs-id') !== '__manager__') grid.removeWidget(item);
+      const gid = item.getAttribute('gs-id');
+        if (gid !== '__manager__' && gid !== 'mup-chat') grid.removeWidget(item);
     }
   }
   mups.clear();
@@ -569,6 +694,7 @@ function handleServerMessage(msg) {
 const pendingMups = [];
 
 function loadMup(mupId, html, manifest, savedState) {
+  if (mupId === 'mup-chat') { initChatWidget(savedState); return; }
   if (!grid) { pendingMups.push({ mupId, html, manifest, savedState }); return; }
 
   // Check for custom name from workspace restore
@@ -582,6 +708,7 @@ function loadMup(mupId, html, manifest, savedState) {
   el.setAttribute('gs-min-w', '1');
   el.setAttribute('gs-min-h', '1');
   el.setAttribute('gs-auto-position', 'true');
+
   el.setAttribute('gs-id', mupId);
   el.innerHTML = `
     <div class="grid-stack-item-content">
@@ -590,7 +717,7 @@ function loadMup(mupId, html, manifest, savedState) {
         <button class="mup-close-btn" data-mup-id="${mupId}" title="Remove">&times;</button>
       </div>
       <div class="mup-card-body"${manifest.darkMode ? ' data-dark-mode' : ''}>
-        <iframe sandbox="allow-scripts allow-same-origin allow-popups"${allowAttr}></iframe>
+        <iframe sandbox="allow-scripts allow-same-origin allow-popups allow-downloads"${allowAttr}></iframe>
       </div>
     </div>`;
 
@@ -617,7 +744,7 @@ function loadMup(mupId, html, manifest, savedState) {
     }
   });
 
-  const widget = grid.addWidget(el);
+  const widget = grid.makeWidget(el);
   debouncedSaveGrid();
   const iframe = widget.querySelector('iframe');
   setupMupIframe(mupId, manifest, iframe, html, savedState);
@@ -719,6 +846,12 @@ function handleMupMessage(mupId, mupName, data) {
 }
 
 function callMupFunction(callId, mupId, fn, args) {
+  if (mupId === 'mup-chat') {
+    const result = handleChatFunctionCall(fn, args || {});
+    loadingBar.classList.remove('active');
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "result", callId, result }));
+    return;
+  }
   const mup = mups.get(mupId);
   if (!mup) {
     loadingBar.classList.remove('active');
@@ -886,7 +1019,7 @@ function renderManagerCard() {
         <div id="managerBreadcrumb">${breadcrumb}</div>
         <div class="manager-list" id="managerList">${listHtml}</div>
       </div>`;
-    managerWidget = grid.addWidget(mgrEl);
+    managerWidget = grid.makeWidget(mgrEl);
   } else {
     const listEl = managerWidget.querySelector('#managerList');
     if (listEl) listEl.innerHTML = listHtml;
@@ -1009,6 +1142,392 @@ if (flushSaveBtn) {
       showSaveIndicator();
     }
   });
+}
+
+// ---- Built-in Chat Widget ----
+const CHAT_MAX_HISTORY = 20;
+let chatMessages = [];
+let chatHistory = [];
+let chatRenderedCount = 0;
+let chatWidget = null;
+
+function chatFormatTime(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function chatFormatDate(ts) {
+  return new Date(ts).toLocaleString([], {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+function chatAutoLink(text) {
+  return text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+}
+
+function chatArchiveCurrent() {
+  if (chatMessages.length === 0) return;
+  const first = chatMessages[0];
+  chatHistory.unshift({
+    id: String(first.timestamp),
+    date: new Date(first.timestamp).toISOString(),
+    preview: first.text.slice(0, 50),
+    messageCount: chatMessages.length,
+    messages: [...chatMessages]
+  });
+  if (chatHistory.length > CHAT_MAX_HISTORY) chatHistory.length = CHAT_MAX_HISTORY;
+}
+
+function chatSyncState() {
+  const last = chatMessages[chatMessages.length - 1];
+  const summary = chatMessages.length === 0
+    ? 'Chat: empty'
+    : `Chat: ${chatMessages.length} messages, last: ${last.role} — ${last.text.slice(0, 60)}`;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "state", mupId: "mup-chat", summary, data: { messages: chatMessages, history: chatHistory } }));
+  }
+}
+
+function chatNotifyInteraction(action, summary, data) {
+  addEventBadge("Chat", summary);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "interaction", mupId: "mup-chat", action, summary, data }));
+  }
+}
+
+function chatCreateMsgEl(m) {
+  const row = document.createElement('div');
+  row.className = `chat-msg-row ${m.role}`;
+  const bubble = document.createElement('div');
+  bubble.className = `chat-msg ${m.role}`;
+  if (m.image) {
+    const img = document.createElement('img');
+    img.src = m.image;
+    img.alt = m.text || 'image';
+    img.addEventListener('click', () => window.open(m.image, '_blank'));
+    bubble.appendChild(img);
+    if (m.text) {
+      const caption = document.createElement('div');
+      caption.style.marginTop = '4px';
+      if (m.role === 'assistant') {
+        try { caption.innerHTML = marked.parse(m.text); } catch { caption.textContent = m.text; }
+      } else {
+        caption.innerHTML = chatAutoLink(escapeHtml(m.text));
+      }
+      bubble.appendChild(caption);
+    }
+  } else if (m.role === 'assistant') {
+    const content = document.createElement('div');
+    try { content.innerHTML = marked.parse(m.text); } catch { content.textContent = m.text; }
+    content.querySelectorAll('a').forEach(a => { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); });
+    bubble.appendChild(content);
+  } else {
+    const content = document.createElement('div');
+    content.innerHTML = chatAutoLink(escapeHtml(m.text));
+    content.querySelectorAll('a').forEach(a => { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); });
+    bubble.appendChild(content);
+  }
+  row.appendChild(bubble);
+  const meta = document.createElement('div');
+  meta.className = 'chat-meta';
+  meta.textContent = chatFormatTime(m.timestamp);
+  row.appendChild(meta);
+  return row;
+}
+
+function chatRenderIncremental() {
+  if (!chatWidget) return;
+  const msgsEl = chatWidget.querySelector('#chatMessages');
+  const emptyEl = chatWidget.querySelector('#chatEmpty');
+  if (!msgsEl) return;
+  if (emptyEl) emptyEl.style.display = chatMessages.length === 0 ? 'flex' : 'none';
+  for (let i = chatRenderedCount; i < chatMessages.length; i++) {
+    msgsEl.appendChild(chatCreateMsgEl(chatMessages[i]));
+  }
+  chatRenderedCount = chatMessages.length;
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+function chatRenderFull() {
+  if (!chatWidget) return;
+  const msgsEl = chatWidget.querySelector('#chatMessages');
+  if (!msgsEl) return;
+  msgsEl.querySelectorAll('.chat-msg-row').forEach(el => el.remove());
+  chatRenderedCount = 0;
+  chatRenderIncremental();
+}
+
+function chatRenderHistoryPanel() {
+  if (!chatWidget) return;
+  const listEl = chatWidget.querySelector('#chatHistoryList');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  if (chatHistory.length === 0) {
+    listEl.innerHTML = '<div class="chat-history-empty">No archived sessions</div>';
+    return;
+  }
+  chatHistory.forEach((session, idx) => {
+    const item = document.createElement('div');
+    item.className = 'chat-history-item';
+    item.innerHTML = `
+      <div class="chat-history-item-info">
+        <div class="chat-history-item-date">${chatFormatDate(new Date(session.date).getTime())}</div>
+        <div class="chat-history-item-preview">${escapeHtml(session.preview)}</div>
+        <div class="chat-history-item-count">${session.messageCount} messages</div>
+      </div>
+      <button class="chat-history-delete" title="Delete">&times;</button>
+    `;
+    item.querySelector('.chat-history-item-info').addEventListener('click', () => {
+      chatMessages = [...session.messages];
+      chatRenderFull();
+      chatSyncState();
+      chatWidget.querySelector('#chatHistoryPanel').classList.remove('open');
+    });
+    item.querySelector('.chat-history-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      chatHistory.splice(idx, 1);
+      chatSyncState();
+      chatRenderHistoryPanel();
+    });
+    listEl.appendChild(item);
+  });
+}
+
+let chatStagedImage = null; // { dataUrl, fileName }
+
+function chatStageImage(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    chatStagedImage = { dataUrl: reader.result, fileName: file.name };
+    chatRenderImagePreview();
+  };
+  reader.readAsDataURL(file);
+}
+
+function chatRenderImagePreview() {
+  if (!chatWidget) return;
+  const preview = chatWidget.querySelector('#chatImgPreview');
+  if (!chatStagedImage) {
+    preview.style.display = 'none';
+    preview.innerHTML = '';
+    return;
+  }
+  preview.style.display = 'flex';
+  preview.innerHTML = `
+    <img src="${chatStagedImage.dataUrl}" alt="preview">
+    <span class="chat-img-preview-name">${escapeHtml(chatStagedImage.fileName)}</span>
+    <button class="chat-img-preview-remove" title="Remove">&times;</button>
+  `;
+  preview.querySelector('.chat-img-preview-remove').addEventListener('click', () => {
+    chatStagedImage = null;
+    chatRenderImagePreview();
+  });
+}
+
+function chatSendUserMessage() {
+  if (!chatWidget) return;
+  const input = chatWidget.querySelector('#chatInput');
+  const text = input.value.trim();
+  if (!text && !chatStagedImage) return;
+  input.value = '';
+  chatAutoResize(input);
+
+  if (chatStagedImage) {
+    const msg = { role: 'user', text: text || chatStagedImage.fileName, image: chatStagedImage.dataUrl, timestamp: Date.now() };
+    chatMessages.push(msg);
+    chatRenderIncremental();
+    chatSyncState();
+    chatNotifyInteraction('image', text || `[image] ${chatStagedImage.fileName}`, { image: chatStagedImage.dataUrl, fileName: chatStagedImage.fileName, text });
+    chatStagedImage = null;
+    chatRenderImagePreview();
+  } else {
+    chatMessages.push({ role: 'user', text, timestamp: Date.now() });
+    chatRenderIncremental();
+    chatSyncState();
+    chatNotifyInteraction('message', text, { text });
+  }
+}
+
+function chatAutoResize(el) {
+  el.style.height = 'auto';
+  const maxH = 120;
+  el.style.height = Math.min(el.scrollHeight, maxH) + 'px';
+  el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+}
+
+function handleChatFunctionCall(fn, args) {
+  switch (fn) {
+    case 'sendMessage': {
+      chatMessages.push({ role: 'assistant', text: args.text, timestamp: Date.now() });
+      chatRenderIncremental();
+      chatSyncState();
+      return { content: [{ type: 'text', text: `Message sent: ${args.text.slice(0, 100)}` }], isError: false };
+    }
+    case 'getHistory': {
+      const content = [];
+      if (chatMessages.length === 0) {
+        content.push({ type: 'text', text: 'No messages yet.' });
+      } else {
+        content.push({ type: 'text', text: chatMessages.map(m => `[${m.role}] ${m.text}`).join('\n') });
+        for (const m of chatMessages) {
+          if (m.image) {
+            const match = m.image.match(/^data:(image\/[^;]+);base64,(.+)$/);
+            if (match) {
+              content.push({ type: 'text', text: `[image from ${m.role}: ${m.text}]` });
+              content.push({ type: 'image', data: match[2], mimeType: match[1] });
+            }
+          }
+        }
+      }
+      return { content, isError: false };
+    }
+    case 'clearHistory': {
+      const count = chatMessages.length;
+      chatArchiveCurrent();
+      chatMessages = [];
+      chatRenderFull();
+      chatSyncState();
+      return { content: [{ type: 'text', text: count > 0 ? `Archived and cleared ${count} messages.` : 'Chat already empty.' }], isError: false };
+    }
+    case 'resume': {
+      if (chatHistory.length === 0) return { content: [{ type: 'text', text: 'No archived sessions to resume.' }], isError: false };
+      const session = chatHistory[0];
+      chatMessages = [...session.messages];
+      chatRenderFull();
+      chatSyncState();
+      return { content: [{ type: 'text', text: `Resumed session from ${chatFormatDate(new Date(session.date).getTime())} with ${session.messageCount} messages.` }], isError: false };
+    }
+    case 'listHistory': {
+      if (chatHistory.length === 0) return { content: [{ type: 'text', text: 'No archived sessions.' }], isError: false };
+      const list = chatHistory.map(s =>
+        `[${s.id}] ${chatFormatDate(new Date(s.date).getTime())} — ${s.messageCount} msgs — ${s.preview}`
+      ).join('\n');
+      return { content: [{ type: 'text', text: list }, { type: 'data', data: { sessions: chatHistory.map(({ messages: _, ...rest }) => rest) } }], isError: false };
+    }
+    case 'loadSession': {
+      const session = chatHistory.find(s => s.id === args.id);
+      if (!session) return { content: [{ type: 'text', text: `Session ${args.id} not found.` }], isError: true };
+      chatMessages = [...session.messages];
+      chatRenderFull();
+      chatSyncState();
+      return { content: [{ type: 'text', text: `Loaded session from ${chatFormatDate(new Date(session.date).getTime())} with ${session.messageCount} messages.` }], isError: false };
+    }
+    default:
+      return { content: [{ type: 'text', text: `Unknown function: ${fn}` }], isError: true };
+  }
+}
+
+function renderChatCard() {
+  if (!grid || chatWidget) return;
+  const el = document.createElement('div');
+  el.classList.add('grid-stack-item');
+  el.setAttribute('gs-w', '1');
+  el.setAttribute('gs-h', '1');
+  el.setAttribute('gs-x', '1');
+  el.setAttribute('gs-y', '0');
+  el.setAttribute('gs-id', 'mup-chat');
+
+  el.innerHTML = `
+    <div class="grid-stack-item-content">
+      <div class="mup-card-header" style="cursor:grab;">
+        <span class="mup-name">Chat</span>
+        <button class="mup-close-btn" id="chatHistoryBtn" title="Chat history" style="color:var(--text-secondary);font-size:14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+      </div>
+      <div class="chat-history-panel" id="chatHistoryPanel">
+        <div class="mup-card-header" style="cursor:default;">
+          <span class="mup-name">History</span>
+          <button class="mup-close-btn" id="chatHistoryCloseBtn" title="Close" style="color:var(--text-secondary);">&times;</button>
+        </div>
+        <div class="chat-history-list" id="chatHistoryList"></div>
+      </div>
+      <div class="chat-messages" id="chatMessages">
+        <div class="chat-empty" id="chatEmpty">Send a message to start chatting</div>
+      </div>
+      <div class="chat-img-preview" id="chatImgPreview" style="display:none;"></div>
+      <div class="chat-input-bar">
+        <button class="chat-img-btn" id="chatImgBtn" title="Send image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button>
+        <input type="file" id="chatImgInput" accept="image/*" style="display:none">
+        <textarea id="chatInput" placeholder="Type a message..." rows="1" autocomplete="off"></textarea>
+        <button id="chatSendBtn">Send</button>
+      </div>
+    </div>`;
+
+  chatWidget = grid.makeWidget(el);
+
+  // Bind events
+  const input = chatWidget.querySelector('#chatInput');
+  const sendBtn = chatWidget.querySelector('#chatSendBtn');
+  const histBtn = chatWidget.querySelector('#chatHistoryBtn');
+  const histCloseBtn = chatWidget.querySelector('#chatHistoryCloseBtn');
+  const histPanel = chatWidget.querySelector('#chatHistoryPanel');
+  const imgBtn = chatWidget.querySelector('#chatImgBtn');
+  const imgInput = chatWidget.querySelector('#chatImgInput');
+
+  input.addEventListener('input', () => chatAutoResize(input));
+
+  imgBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  imgBtn.addEventListener('click', () => imgInput.click());
+  imgInput.addEventListener('change', () => {
+    for (const file of imgInput.files) chatStageImage(file);
+    imgInput.value = '';
+  });
+
+  let composing = false;
+  input.addEventListener('compositionstart', () => { composing = true; });
+  input.addEventListener('compositionend', () => { composing = false; });
+
+  sendBtn.addEventListener('click', chatSendUserMessage);
+  sendBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  input.addEventListener('pointerdown', (e) => e.stopPropagation());
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !composing && !e.isComposing) {
+      e.preventDefault();
+      chatSendUserMessage();
+    }
+  });
+
+  // Paste image from clipboard
+  input.addEventListener('paste', (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        chatStageImage(item.getAsFile());
+        return;
+      }
+    }
+  });
+
+  // Drag & drop images
+  const msgsEl = chatWidget.querySelector('#chatMessages');
+  msgsEl.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  msgsEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    for (const file of e.dataTransfer.files) {
+      if (file.type.startsWith('image/')) chatStageImage(file);
+    }
+  });
+
+  histBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  histBtn.addEventListener('click', () => {
+    const isOpen = histPanel.classList.toggle('open');
+    if (isOpen) chatRenderHistoryPanel();
+  });
+  histCloseBtn.addEventListener('click', () => histPanel.classList.remove('open'));
+}
+
+function initChatWidget(savedState) {
+  if (savedState?.history) chatHistory = savedState.history;
+  if (savedState?.messages?.length > 0) {
+    chatMessages = savedState.messages;
+    chatArchiveCurrent();
+    chatMessages = [];
+  }
+  if (!chatWidget) renderChatCard();
+  chatRenderFull();
+  chatSyncState();
+  // Notify server that chat is loaded
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "mup-loaded", mupId: "mup-chat" }));
 }
 
 // ---- Start ----
