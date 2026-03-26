@@ -264,24 +264,36 @@ export class UiBridge extends EventEmitter {
     }
   }
 
-  // ---- HTTP ----
+  // ---- HTTP (static file serving from ui/) ----
+
+  private static CONTENT_TYPES: Record<string, string> = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+  };
 
   private handleHttp(req: http.IncomingMessage, res: http.ServerResponse): void {
-    if (req.url === "/" || req.url === "/index.html") {
-      const uiPath = path.join(__dirname, "..", "ui", "index.html");
-      try {
-        let content = fs.readFileSync(uiPath, "utf-8");
-        content = content.replace(/__WS_PORT__/g, String(this.port));
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
-        res.end(content);
-      } catch (err) {
-        console.error("[mup-mcp] UI file not found:", uiPath, err);
-        res.writeHead(500);
-        res.end("UI file not found. Check installation.");
-      }
-    } else {
-      res.writeHead(404);
-      res.end("Not found");
+    const url = (req.url || "/").split("?")[0];
+    const filePath = url === "/" ? "index.html" : url.replace(/^\//, "");
+
+    if (filePath.includes("..") || path.isAbsolute(filePath)) {
+      res.writeHead(403); res.end("Forbidden"); return;
+    }
+
+    const fullPath = path.join(__dirname, "..", "ui", filePath);
+    try {
+      const content = fs.readFileSync(fullPath, "utf-8");
+      const ext = path.extname(fullPath).toLowerCase();
+      res.writeHead(200, {
+        "Content-Type": UiBridge.CONTENT_TYPES[ext] || "application/octet-stream",
+        "Cache-Control": "no-cache",
+      });
+      res.end(content);
+    } catch {
+      res.writeHead(404); res.end("Not found");
     }
   }
 }

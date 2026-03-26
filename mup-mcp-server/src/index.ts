@@ -13,11 +13,7 @@ import { WorkspaceManager } from "./workspace.js";
 import { PipelineManager } from "./pipeline.js";
 import { CONFIG } from "./config.js";
 import { scanHtmlFiles, buildFolderTree } from "./scanner.js";
-import {
-  text, buildToolDescription, buildMupDetail,
-  handleList, handleCheckInteractions, handleHistory, handlePipe,
-} from "./handlers.js";
-import type { FunctionResult } from "./types.js";
+import { buildToolDescription, buildMupDetail, handleToolCall } from "./handlers.js";
 import type { FolderTreeNode, SendLoadMupFn } from "./types.js";
 
 // ---- Utilities ----
@@ -25,13 +21,6 @@ import type { FolderTreeNode, SendLoadMupFn } from "./types.js";
 function openBrowser(url: string): void {
   const cmd = process.platform === "win32" ? `start "" "${url}"` : process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;
   exec(cmd, () => {});
-}
-
-function parseArgs(raw: unknown): Record<string, unknown> {
-  if (!raw) return {};
-  if (typeof raw === "string") { try { return JSON.parse(raw); } catch { return {}; } }
-  if (typeof raw === "object") return raw as Record<string, unknown>;
-  return {};
 }
 
 async function findAvailablePort(startPort: number): Promise<number> {
@@ -232,110 +221,6 @@ function setupMcpServer(
   return server;
 }
 
-async function handleToolCall(
-  request: { params: { arguments?: Record<string, unknown> } },
-  manager: MupManager, bridge: UiBridge, ws: WorkspaceManager,
-  port: number, sendLoadMup: SendLoadMupFn,
-  ensureActive: (mupId: string) => { error?: string; activated?: string },
-  pipeline: PipelineManager
-) {
-    const args = (request.params.arguments || {}) as Record<string, unknown>;
-
-    // Dispatch by action
-    if (args.action === "list") return handleList(manager);
-    if (args.action === "checkInteractions") return handleCheckInteractions(manager, args);
-    if (args.action === "history") return handleHistory(ws, manager, args);
-    if (args.action === "pipe") return handlePipe(pipeline, args);
-    if (args.action === "setNotificationLevel") {
-      const mupId = args.mupId as string;
-      const level = args.level as string;
-      if (!mupId || !level) return { content: [text('Provide "mupId" and "level" ("immediate", "notify", or "silent").')], isError: true };
-      if (!["immediate", "notify", "silent"].includes(level)) return { content: [text(`Invalid level "${level}". Use "immediate", "notify", or "silent".`)], isError: true };
-      const error = manager.setNotificationLevel(mupId, level as "immediate" | "notify" | "silent");
-      if (error) return { content: [text(error)], isError: true };
-      const mup = manager.get(mupId);
-      return { content: [text(`Notification level for "${mup?.manifest.name}" set to "${level}".`)] };
-    }
-    if (args.action === "new-instance") {
-      const baseMupId = args.mupId as string;
-      if (!baseMupId) return { content: [text('Provide "mupId" for the base MUP to create an instance of.')], isError: true };
-      ensureActive(baseMupId);
-      const mup = manager.activateInstance(baseMupId);
-      if (!mup) return { content: [text(`Cannot create instance: "${baseMupId}" not found or does not support multi-instance.`)], isError: true };
-      sendLoadMup(mup.manifest.id, mup);
-      ws.markMetadataDirty();
-      console.error(`[mup-mcp] New instance: ${mup.manifest.name} (${mup.manifest.id})`);
-      return { content: [text(`Created ${mup.manifest.id}\n${buildMupDetail(mup.manifest)}`)] };
-    }
-    // --- Call MUP function ---
-    const mupId = args.mupId as string;
-    const fn = args.functionName as string;
-    if (!mupId || !fn) return { content: [text('Provide "mupId" and "functionName", or use "action": "list" / "checkInteractions" / "history".')], isError: true };
-
-    const activation = ensureActive(mupId);
-    if (activation.error) return { content: [text(activation.error)], isError: true };
-
-    const fnArgs = parseArgs(args.functionArgs);
-
-    // Lightweight schema validation: check required fields and basic types
-    const mup = manager.get(mupId);
-    const fnDef = mup?.manifest.functions.find(f => f.name === fn);
-    if (fnDef?.inputSchema) {
-      const schema = fnDef.inputSchema;
-      const required = (schema.required || []) as string[];
-      const properties = (schema.properties || {}) as Record<string, Record<string, unknown>>;
-      const missing = required.filter(r => fnArgs[r] === undefined);
-      if (missing.length > 0) {
-        return { content: [text(`Missing required field(s): ${missing.join(", ")}`)], isError: true };
-      }
-      for (const [key, val] of Object.entries(fnArgs)) {
-        const prop = properties[key];
-        if (prop?.type && val !== undefined && val !== null) {
-          const actual = Array.isArray(val) ? "array" : typeof val;
-          if (prop.type === "integer" && (typeof val !== "number" || !Number.isInteger(val as number))) {
-            return { content: [text(`Field "${key}" must be an integer, got ${typeof val}`)], isError: true };
-          } else if (prop.type !== "integer" && prop.type !== actual && !(prop.type === "number" && actual === "number")) {
-            return { content: [text(`Field "${key}" must be ${prop.type}, got ${actual}`)], isError: true };
-          }
-        }
-      }
-    }
-
-    if (!mup?.stateSummary && manager.isActive(mupId)) await bridge.waitForMupLoaded(mupId);
-
-    let result: FunctionResult;
-    try {
-      result = await bridge.callFunction(mupId, fn, fnArgs);
-    } catch (err) {
-      return { content: [text(`Function call failed: ${(err as Error).message}`)], isError: true };
-    }
-    const resultText = result.content.map((c) => c.text || "").join(" ").trim();
-    ws.addCallHistory(mupId, fn, fnArgs, resultText);
-
-    const content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> = [];
-    if (activation.activated) content.push(text(`[Auto-activated] ${activation.activated}`));
-
-    for (const c of result.content) {
-      if (c.type === "image" && c.data && c.mimeType) {
-        content.push({ type: "image", data: c.data as string, mimeType: c.mimeType as string });
-      } else if (c.data !== undefined && c.type !== "image") {
-        const json = JSON.stringify(c.data);
-        if (json.length > CONFIG.maxDataResponseLength) {
-          content.push({ type: "text", text: `[data truncated, ${json.length} chars. Use specific queries instead of full data dumps.]` });
-        } else {
-          content.push({ type: "text", text: json });
-        }
-      } else {
-        let t = c.text || "";
-        if (t.length > CONFIG.maxResponseLength) t = t.slice(0, CONFIG.maxResponseLength) + `\n... (truncated, ${t.length} chars total)`;
-        content.push({ type: "text", text: t });
-      }
-    }
-
-    ws.markMetadataDirty();
-    return { content, isError: result.isError };
-}
-
 // ---- Lifecycle ----
 
 function setupLifecycle(ws: WorkspaceManager): void {
@@ -367,7 +252,7 @@ async function main() {
   const manager = new MupManager();
 
   // Register built-in system MUPs
-  // NOTE: Chat functions are implemented in ui/index.html (handleChatFunctionCall).
+  // NOTE: Chat functions are implemented in ui/chat.js (handleChatFunctionCall).
   // If you add/remove functions here, update the implementation there too.
   manager.registerSystemMup({
     protocol: "mup/2026-03-17",
@@ -396,19 +281,17 @@ async function main() {
 
   const port = await findAvailablePort(requestedPort);
 
+  // --- Workspace: restore BEFORE bridge starts (avoid race with reconnecting browsers) ---
+  const ws = new WorkspaceManager(manager, workspaceRoot);
+  if (mupsDirs.length > 0) ws.mupsPath = mupsDirs[0];
+  const restored = ws.restoreFromDisk();
+  if (restored.length > 0) console.error(`[mup-mcp] Restored: ${restored.join(", ")}`);
+
   const bridge = new UiBridge(manager, port);
   bridge.folderTree = serverFolderTree;
   bridge.folderPath = mupsDirs.length > 0 ? mupsDirs[0] : "";
   await bridge.start();
-
-  // --- Workspace (state at project root .mup/) ---
-  const ws = new WorkspaceManager(manager, workspaceRoot);
-  if (mupsDirs.length > 0) ws.mupsPath = mupsDirs[0];
   ws.setBridge(bridge);
-
-  // --- Restore from .mup/ folder ---
-  const restored = ws.restoreFromDisk();
-  if (restored.length > 0) console.error(`[mup-mcp] Restored: ${restored.join(", ")}`);
 
   // --- Helpers ---
   const sendLoadMup: SendLoadMupFn = (mupId, mup) => {
