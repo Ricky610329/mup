@@ -240,6 +240,19 @@ function handleServerMessage(msg) {
     case "mups-path-warnings":
       addEventBadge("Warning", (msg.warnings || []).join("; "));
       break;
+    case "set-layout":
+      if (grid && msg.layout) {
+        for (const saved of msg.layout) {
+          for (const item of grid.getGridItems()) {
+            if (item.getAttribute('gs-id') === saved.id) {
+              grid.update(item, { x: saved.x, y: saved.y, w: saved.w, h: saved.h });
+              break;
+            }
+          }
+        }
+        window._pendingGridLayout = msg.layout;
+      }
+      break;
     case "mup-deactivated":
       removeMup(msg.mupId);
       break;

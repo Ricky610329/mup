@@ -3,7 +3,7 @@ import type { UiBridge } from "./bridge.js";
 import type { WorkspaceManager } from "./workspace.js";
 import type { PipelineManager } from "./pipeline.js";
 import { CONFIG } from "./config.js";
-import type { CallHistoryEntry, FunctionResult, SendLoadMupFn } from "./types.js";
+import type { CallHistoryEntry, FunctionResult, GridLayoutItem, SendLoadMupFn } from "./types.js";
 
 // ---- Tool Call Context ----
 
@@ -45,7 +45,7 @@ export function buildToolDescription(manager: MupManager, port: number): string 
   const lines = [
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
-    `Actions: checkInteractions, list, history, pipe, setNotificationLevel`,
+    `Actions: checkInteractions, list, history, pipe, setNotificationLevel, setLayout`,
     `Multi-instance: use { "action": "new-instance", "mupId": "..." } to open another panel. Returns the new instance ID (_2, _3...).`,
   ];
   if (active.length > 0) {
@@ -208,6 +208,19 @@ export async function handleToolCall(
     if (error) return { content: [text(error)], isError: true };
     const mup = manager.get(mupId);
     return { content: [text(`Notification level for "${mup?.manifest.name}" set to "${level}".`)] };
+  }
+  if (args.action === "setLayout") {
+    const layout = args.layout as GridLayoutItem[] | undefined;
+    if (!layout || !Array.isArray(layout)) return { content: [text('Provide "layout": array of { id, x, y, w, h }.')], isError: true };
+    for (const item of layout) {
+      if (!item.id || item.x === undefined || item.y === undefined || item.w === undefined || item.h === undefined) {
+        return { content: [text(`Each layout item needs: id, x, y, w, h. Invalid: ${JSON.stringify(item)}`)], isError: true };
+      }
+    }
+    bridge.sendRaw({ type: "set-layout", layout });
+    ws.gridLayout = layout;
+    ws.markMetadataDirty();
+    return { content: [text(`Layout updated for ${layout.length} panel(s): ${layout.map(l => `${l.id}(${l.w}×${l.h}@${l.x},${l.y})`).join(", ")}`)] };
   }
   if (args.action === "new-instance") {
     const baseMupId = args.mupId as string;

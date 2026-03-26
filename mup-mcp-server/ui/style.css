@@ -22,22 +22,22 @@
     }
 
     [data-theme="dark"] {
-      --bg-base: #1a1a1a;
-      --bg-panel: rgba(30, 30, 30, 0.95);
+      --bg-base: #212225;
+      --bg-panel: rgba(42, 43, 48, 0.96);
       --bg-mup-body: #ffffff;
-      --text-primary: #e5e5e5;
-      --text-secondary: rgba(255, 255, 255, 0.5);
-      --text-tertiary: rgba(255, 255, 255, 0.25);
-      --border: rgba(255, 255, 255, 0.1);
+      --text-primary: #e1e2e5;
+      --text-secondary: rgba(255, 255, 255, 0.55);
+      --text-tertiary: rgba(255, 255, 255, 0.3);
+      --border: rgba(255, 255, 255, 0.08);
       --bg-hover: rgba(255, 255, 255, 0.06);
-      --bg-active: rgba(255, 255, 255, 0.08);
-      --bg-subtle: rgba(255, 255, 255, 0.05);
-      --accent: #e5e5e5;
-      --accent-text: #1a1a1a;
-      --shadow-badge: 0 2px 8px rgba(0,0,0,0.3);
+      --bg-active: rgba(255, 255, 255, 0.09);
+      --bg-subtle: rgba(255, 255, 255, 0.04);
+      --accent: #e1e2e5;
+      --accent-text: #212225;
+      --shadow-badge: 0 2px 8px rgba(0,0,0,0.25);
     }
     [data-theme="dark"] .mup-card-body[data-dark-mode] {
-      background: #242424;
+      background: #2f3035;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }

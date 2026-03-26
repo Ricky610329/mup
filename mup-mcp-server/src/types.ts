@@ -154,7 +154,8 @@ export type ServerMessage =
   | { type: "mups-path-error"; errors: string[] }
   | { type: "mups-path-warnings"; warnings: string[] }
   | { type: "permission-request"; requestId: string; toolName: string; description: string; inputPreview: string }
-  | { type: "thinking"; active: boolean };
+  | { type: "thinking"; active: boolean }
+  | { type: "set-layout"; layout: GridLayoutItem[] };
 
 // ---- Typed Event Emitter for UiBridge ----
 

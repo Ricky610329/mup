@@ -117,6 +117,43 @@
         "name": "exportHTML",
         "description": "Get the full presentation as a self-contained HTML string for download.",
         "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "saveToLibrary",
+        "description": "Save the current presentation to the library for later retrieval.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Optional name override. Defaults to current presentation title." }
+          }
+        }
+      },
+      {
+        "name": "listLibrary",
+        "description": "List all saved presentations in the library.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "loadFromLibrary",
+        "description": "Load a saved presentation from the library by its ID, replacing current slides.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "The saved presentation ID" }
+          },
+          "required": ["id"]
+        }
+      },
+      {
+        "name": "deleteFromLibrary",
+        "description": "Delete a saved presentation from the library.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "The saved presentation ID to delete" }
+          },
+          "required": ["id"]
+        }
       }
     ]
   }
@@ -134,10 +171,10 @@
       --slide-ratio: 16/9;
     }
     body.editor-dark {
-      --editor-bg: #1e1e1e; --editor-toolbar: #2d2d2d; --editor-text: #d4d4d4;
-      --editor-sec: #858585; --editor-ter: #5a5a5a; --editor-border: #404040;
-      --editor-hover: rgba(255,255,255,0.06); --editor-accent: #569cd6;
-      --editor-active-bg: #37373d;
+      --editor-bg: #2f3035; --editor-toolbar: #393a40; --editor-text: #d8d9dc;
+      --editor-sec: #9a9ba0; --editor-ter: #6c6d72; --editor-border: rgba(255,255,255,0.1);
+      --editor-hover: rgba(255,255,255,0.06); --editor-accent: #6ba3d6;
+      --editor-active-bg: #43444a;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -167,7 +204,7 @@
     .toolbar-info { font-size: 10px; color: var(--editor-ter); }
     .toolbar-sep { width: 1px; height: 16px; background: var(--editor-border); margin: 0 2px; }
     /* ---- Main ---- */
-    .main { flex: 1; display: flex; overflow: hidden; }
+    .main { flex: 1; display: flex; overflow: hidden; position: relative; }
     /* ---- Sidebar ---- */
     .sidebar {
       width: 140px; flex-shrink: 0; border-right: 1px solid var(--editor-border);
@@ -334,6 +371,48 @@
       justify-content: center; gap: 8px; color: var(--editor-ter);
       font-size: 13px; text-align: center; flex: 1; padding: 20px;
     }
+    /* ---- Library panel ---- */
+    .library-panel {
+      display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--editor-bg); z-index: 50; flex-direction: column;
+    }
+    .library-panel.open { display: flex; }
+    .library-header {
+      display: flex; align-items: center; padding: 8px 12px;
+      border-bottom: 1px solid var(--editor-border); flex-shrink: 0;
+    }
+    .library-header-title { flex: 1; font-size: 12px; font-weight: 600; color: var(--editor-text); }
+    .library-close {
+      background: none; border: none; cursor: pointer; color: var(--editor-ter);
+      font-size: 16px; width: 24px; height: 24px; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .library-close:hover { background: var(--editor-hover); color: var(--editor-text); }
+    .library-list { flex: 1; overflow-y: auto; padding: 6px; }
+    .library-item {
+      display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+      border-radius: 6px; cursor: pointer; transition: background 0.1s;
+    }
+    .library-item:hover { background: var(--editor-hover); }
+    .library-item-info { flex: 1; overflow: hidden; }
+    .library-item-title {
+      font-size: 12px; font-weight: 500; color: var(--editor-text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .library-item-meta { font-size: 10px; color: var(--editor-ter); margin-top: 1px; }
+    .library-item-delete {
+      background: none; border: none; cursor: pointer; color: var(--editor-ter);
+      font-size: 14px; width: 22px; height: 22px; border-radius: 4px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .library-item-delete:hover { background: var(--editor-hover); color: #ef4444; }
+    .library-empty { color: var(--editor-ter); font-size: 12px; text-align: center; padding: 32px 0; }
+    .library-save-btn {
+      margin: 6px; padding: 6px; border-radius: 6px; border: 1px dashed var(--editor-border);
+      background: none; cursor: pointer; font-size: 11px; color: var(--editor-sec);
+      font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 4px;
+    }
+    .library-save-btn:hover { background: var(--editor-hover); color: var(--editor-text); border-style: solid; }
   </style>
 </head>
 <body>
@@ -371,6 +450,11 @@
     </button>
     <button class="toolbar-btn" id="pdfBtn">PDF</button>
     <button class="toolbar-btn" id="htmlBtn">HTML</button>
+    <div class="toolbar-sep"></div>
+    <button class="toolbar-btn" id="libraryBtn">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Library
+    </button>
   </div>
   <div class="main">
     <div class="sidebar">
@@ -383,6 +467,14 @@
       </div>
     </div>
     <div class="edit-panel" id="editPanel" style="display:none;"></div>
+    <div class="library-panel" id="libraryPanel">
+      <div class="library-header">
+        <span class="library-header-title">Presentation Library</span>
+        <button class="library-close" id="libraryCloseBtn">&times;</button>
+      </div>
+      <button class="library-save-btn" id="librarySaveBtn">+ Save current presentation</button>
+      <div class="library-list" id="libraryList"></div>
+    </div>
   </div>
   <div class="print-container" id="printContainer"></div>
 
@@ -401,7 +493,7 @@
 
     const themes = {
       light:    { bg:'#ffffff', text:'#1a1a1a', heading:'#0d0d0d', accent:'#0066cc', muted:'#666666', codeBg:'#f5f5f5' },
-      dark:     { bg:'#1e1e1e', text:'#e0e0e0', heading:'#ffffff', accent:'#60a5fa', muted:'#999999', codeBg:'#2d2d2d' },
+      dark:     { bg:'#2a2b30', text:'#e1e2e5', heading:'#ffffff', accent:'#60a5fa', muted:'#9a9ba0', codeBg:'#363740' },
       blue:     { bg:'#0f172a', text:'#e2e8f0', heading:'#ffffff', accent:'#38bdf8', muted:'#94a3b8', codeBg:'#1e293b' },
       green:    { bg:'#f0fdf4', text:'#1a3a1a', heading:'#14532d', accent:'#16a34a', muted:'#6b7280', codeBg:'#dcfce7' },
       midnight: { bg:'#0a0a1a', text:'#c8c8e0', heading:'#eeeeff', accent:'#a78bfa', muted:'#6b6b8a', codeBg:'#14142b' },
@@ -775,6 +867,103 @@
       return null;
     }
 
+    // ---- Library ----
+    const LIBRARY_KEY = 'mup-slides-library';
+    const MAX_LIBRARY = 30;
+
+    function loadLibrary() {
+      try { return JSON.parse(localStorage.getItem(LIBRARY_KEY) || '[]'); } catch { return []; }
+    }
+    function saveLibrary(lib) {
+      try { localStorage.setItem(LIBRARY_KEY, JSON.stringify(lib)); } catch {}
+    }
+
+    function librarySave(nameOverride) {
+      if (slides.length === 0) return null;
+      const lib = loadLibrary();
+      const entry = {
+        id: String(Date.now()),
+        name: nameOverride || presentationTitle || 'Untitled',
+        date: new Date().toISOString(),
+        slideCount: slides.length,
+        theme, aspectRatio,
+        slides: JSON.parse(JSON.stringify(slides)),
+        presentationTitle: presentationTitle
+      };
+      lib.unshift(entry);
+      if (lib.length > MAX_LIBRARY) lib.length = MAX_LIBRARY;
+      saveLibrary(lib);
+      return entry;
+    }
+
+    function libraryLoad(id) {
+      const lib = loadLibrary();
+      return lib.find(e => e.id === id) || null;
+    }
+
+    function libraryDelete(id) {
+      const lib = loadLibrary();
+      const idx = lib.findIndex(e => e.id === id);
+      if (idx === -1) return false;
+      lib.splice(idx, 1);
+      saveLibrary(lib);
+      return true;
+    }
+
+    function renderLibraryPanel() {
+      const list = document.getElementById('libraryList');
+      const lib = loadLibrary();
+      if (lib.length === 0) {
+        list.innerHTML = '<div class="library-empty">No saved presentations</div>';
+        return;
+      }
+      list.innerHTML = '';
+      lib.forEach((entry) => {
+        const item = document.createElement('div');
+        item.className = 'library-item';
+        const date = new Date(entry.date);
+        const dateStr = date.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        item.innerHTML = `
+          <div class="library-item-info">
+            <div class="library-item-title">${esc(entry.name)}</div>
+            <div class="library-item-meta">${dateStr} · ${entry.slideCount} slides · ${entry.theme} · ${entry.aspectRatio}</div>
+          </div>
+          <button class="library-item-delete" title="Delete">&times;</button>
+        `;
+        item.querySelector('.library-item-info').addEventListener('click', () => {
+          slides = JSON.parse(JSON.stringify(entry.slides));
+          theme = entry.theme || 'light';
+          aspectRatio = entry.aspectRatio || '16:9';
+          presentationTitle = entry.presentationTitle || entry.name;
+          currentIndex = 0;
+          render(); save();
+          document.getElementById('themeSelect').value = theme;
+          document.getElementById('ratioSelect').value = aspectRatio;
+          document.getElementById('libraryPanel').classList.remove('open');
+        });
+        item.querySelector('.library-item-delete').addEventListener('click', (e) => {
+          e.stopPropagation();
+          libraryDelete(entry.id);
+          renderLibraryPanel();
+        });
+        list.appendChild(item);
+      });
+    }
+
+    // Wire up library UI
+    document.getElementById('libraryBtn').addEventListener('click', () => {
+      const panel = document.getElementById('libraryPanel');
+      panel.classList.toggle('open');
+      if (panel.classList.contains('open')) renderLibraryPanel();
+    });
+    document.getElementById('libraryCloseBtn').addEventListener('click', () => {
+      document.getElementById('libraryPanel').classList.remove('open');
+    });
+    document.getElementById('librarySaveBtn').addEventListener('click', () => {
+      const entry = librarySave();
+      if (entry) renderLibraryPanel();
+    });
+
     // ---- MUP functions ----
     mup.registerFunction('createPresentation', ({ title, subtitle, theme: t, aspectRatio: ar }) => {
       presentationTitle = title;
@@ -840,6 +1029,42 @@
       if (slides.length === 0) return { content: [{ type: 'text', text: 'No slides to export.' }], isError: true };
       downloadHTML();
       return { content: [{ type: 'text', text: `Exported "${presentationTitle || 'presentation'}.html" (${slides.length} slides).` }], isError: false };
+    });
+
+    mup.registerFunction('saveToLibrary', ({ name }) => {
+      if (slides.length === 0) return { content: [{ type: 'text', text: 'No slides to save.' }], isError: true };
+      const entry = librarySave(name);
+      return { content: [{ type: 'text', text: `Saved "${entry.name}" to library (${entry.slideCount} slides). ID: ${entry.id}` }], isError: false };
+    });
+
+    mup.registerFunction('listLibrary', () => {
+      const lib = loadLibrary();
+      if (lib.length === 0) return { content: [{ type: 'text', text: 'Library is empty.' }], isError: false };
+      const lines = lib.map(e => {
+        const date = new Date(e.date).toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        return `[${e.id}] "${e.name}" — ${e.slideCount} slides, ${e.theme}, ${e.aspectRatio} (${date})`;
+      });
+      return { content: [{ type: 'text', text: `${lib.length} saved presentation(s):\n${lines.join('\n')}` }], isError: false };
+    });
+
+    mup.registerFunction('loadFromLibrary', ({ id }) => {
+      const entry = libraryLoad(id);
+      if (!entry) return { content: [{ type: 'text', text: `Presentation "${id}" not found in library.` }], isError: true };
+      slides = JSON.parse(JSON.stringify(entry.slides));
+      theme = entry.theme || 'light';
+      aspectRatio = entry.aspectRatio || '16:9';
+      presentationTitle = entry.presentationTitle || entry.name;
+      currentIndex = 0;
+      render(); save();
+      document.getElementById('themeSelect').value = theme;
+      document.getElementById('ratioSelect').value = aspectRatio;
+      return { content: [{ type: 'text', text: `Loaded "${entry.name}" (${entry.slideCount} slides).` }], isError: false };
+    });
+
+    mup.registerFunction('deleteFromLibrary', ({ id }) => {
+      const ok = libraryDelete(id);
+      if (!ok) return { content: [{ type: 'text', text: `Presentation "${id}" not found.` }], isError: true };
+      return { content: [{ type: 'text', text: `Deleted presentation ${id} from library.` }], isError: false };
     });
 
     // ---- Init ----

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>Voice</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Voice",
+    "description": "Always-on voice assistant (Jarvis mode). When active, continuously listens via microphone and pushes transcripts as interactions. The LLM decides whether each utterance is directed at it and whether to respond. Use speak() to reply verbally. Use setActive() to toggle listening on/off. The user can also toggle via the UI button.",
+    "grid": { "minWidth": 1, "minHeight": 1, "preferredWidth": 1, "preferredHeight": 1 },
+    "permissions": ["microphone"],
+    "darkMode": true,
+    "notifications": { "level": "immediate", "overridable": true },
+    "functions": [
+      {
+        "name": "speak",
+        "description": "Speak text aloud to the user via TTS. Keep responses concise and conversational.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "Text to speak aloud" },
+            "lang": { "type": "string", "description": "BCP-47 language tag for TTS voice (e.g. zh-TW, en-US). Defaults to current language." }
+          },
+          "required": ["text"]
+        }
+      },
+      {
+        "name": "setActive",
+        "description": "Turn voice listening on or off.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "active": { "type": "boolean", "description": "true to start continuous listening, false to stop" }
+          },
+          "required": ["active"]
+        }
+      },
+      {
+        "name": "setLanguage",
+        "description": "Change the speech recognition and TTS language.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "lang": { "type": "string", "description": "BCP-47 language tag (e.g. zh-TW, en-US, ja-JP)" }
+          },
+          "required": ["lang"]
+        }
+      },
+      {
+        "name": "getStatus",
+        "description": "Get current voice status: active/inactive, speaking, language, and recent transcript.",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #2f3035;
+      color: #e1e2e5;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .mic-btn {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    .mic-btn:hover { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.1); }
+
+    .mic-btn svg {
+      width: 24px; height: 24px;
+      color: rgba(255,255,255,0.4);
+      transition: color 0.25s;
+    }
+
+    /* Active (listening) */
+    .mic-btn.active {
+      border-color: #22c55e;
+      background: rgba(34,197,94,0.1);
+    }
+    .mic-btn.active svg { color: #22c55e; }
+
+    /* Pulse ring when listening */
+    .mic-btn.active::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid rgba(34,197,94,0.3);
+      animation: ring-pulse 2s ease-out infinite;
+    }
+    @keyframes ring-pulse {
+      0% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(1.4); opacity: 0; }
+    }
+
+    /* Speaking */
+    .mic-btn.speaking {
+      border-color: #3b82f6;
+      background: rgba(59,130,246,0.1);
+    }
+    .mic-btn.speaking svg { color: #3b82f6; }
+    .mic-btn.speaking::after {
+      border-color: rgba(59,130,246,0.3);
+    }
+
+    /* Volume bar */
+    .volume-bar {
+      width: 80%;
+      max-width: 120px;
+      height: 3px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .volume-fill {
+      height: 100%;
+      width: 0%;
+      background: #22c55e;
+      border-radius: 2px;
+      transition: width 0.1s ease;
+    }
+    .speaking .volume-fill { background: #3b82f6; }
+
+    /* Transcript */
+    .transcript {
+      font-size: 11px;
+      color: rgba(255,255,255,0.4);
+      text-align: center;
+      max-width: 100%;
+      max-height: 32px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0 8px;
+      line-height: 1.4;
+    }
+    .transcript.has-text { color: rgba(255,255,255,0.6); }
+
+    /* Status line */
+    .status {
+      font-size: 10px;
+      color: rgba(255,255,255,0.25);
+      text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .status-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+    }
+    .status-dot.on { background: #22c55e; }
+
+    .lang-tag {
+      font-size: 9px;
+      color: rgba(255,255,255,0.2);
+      position: absolute;
+      bottom: 6px;
+      right: 8px;
+    }
+
+    /* Light theme */
+    body.light {
+      background: #ffffff;
+      color: #1a1a1a;
+    }
+    body.light .mic-btn {
+      border-color: rgba(0,0,0,0.1);
+      background: rgba(0,0,0,0.03);
+    }
+    body.light .mic-btn:hover { border-color: rgba(0,0,0,0.2); background: rgba(0,0,0,0.06); }
+    body.light .mic-btn svg { color: rgba(0,0,0,0.35); }
+    body.light .mic-btn.active { border-color: #16a34a; background: rgba(22,163,74,0.08); }
+    body.light .mic-btn.active svg { color: #16a34a; }
+    body.light .mic-btn.active::after { border-color: rgba(22,163,74,0.25); }
+    body.light .mic-btn.speaking { border-color: #2563eb; background: rgba(37,99,235,0.08); }
+    body.light .mic-btn.speaking svg { color: #2563eb; }
+    body.light .volume-bar { background: rgba(0,0,0,0.06); }
+    body.light .volume-fill { background: #16a34a; }
+    body.light .transcript { color: rgba(0,0,0,0.35); }
+    body.light .transcript.has-text { color: rgba(0,0,0,0.55); }
+    body.light .status { color: rgba(0,0,0,0.25); }
+    body.light .status-dot { background: rgba(0,0,0,0.15); }
+    body.light .status-dot.on { background: #16a34a; }
+    body.light .lang-tag { color: rgba(0,0,0,0.2); }
+  </style>
+</head>
+<body>
+
+  <button class="mic-btn" id="micBtn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="23"/>
+      <line x1="8" y1="23" x2="16" y2="23"/>
+    </svg>
+  </button>
+
+  <div class="volume-bar" id="volumeBar">
+    <div class="volume-fill" id="volumeFill"></div>
+  </div>
+
+  <div class="transcript" id="transcript"></div>
+
+  <div class="status" id="status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Off</span>
+  </div>
+
+  <div class="lang-tag" id="langTag">zh-TW</div>
+
+  <script>
+    // ---- State ----
+    let active = false;
+    let speaking = false;
+    let lang = 'zh-TW';
+    let lastTranscript = '';
+    let recognition = null;
+    let restartTimer = null;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const synth = window.speechSynthesis;
+
+    // ---- DOM ----
+    const micBtn = document.getElementById('micBtn');
+    const volumeFill = document.getElementById('volumeFill');
+    const transcriptEl = document.getElementById('transcript');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const langTag = document.getElementById('langTag');
+
+    // ---- UI Update ----
+    function updateUI() {
+      micBtn.className = 'mic-btn' + (speaking ? ' speaking active' : active ? ' active' : '');
+      statusDot.className = 'status-dot' + (active ? ' on' : '');
+      statusText.textContent = speaking ? 'Speaking...' : active ? 'Listening' : 'Off';
+      langTag.textContent = lang;
+      if (!active && !speaking) volumeFill.style.width = '0%';
+    }
+
+    // ---- Speech Recognition ----
+    function startRecognition() {
+      if (!SpeechRecognition || speaking) return;
+      stopRecognition(true); // clean up previous
+
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = lang;
+
+      recognition.onresult = (event) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const text = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            const final = text.trim();
+            if (final) {
+              lastTranscript = final;
+              transcriptEl.textContent = final;
+              transcriptEl.className = 'transcript has-text';
+              mup.notifyInteraction('speech', `User said: "${final}"`, { transcript: final, lang });
+              mup.updateState(`Listening — heard: "${final.slice(0, 50)}"`, { active: true, speaking: false, lastTranscript: final, lang });
+            }
+          } else {
+            interim += text;
+          }
+        }
+        if (interim) {
+          transcriptEl.textContent = interim;
+          transcriptEl.className = 'transcript has-text';
+          // Fake volume from interim text length changes
+          volumeFill.style.width = Math.min(100, 30 + Math.random() * 50) + '%';
+        }
+      };
+
+      recognition.onerror = (event) => {
+        // Transient errors — just let onend handle restart
+        if (event.error === 'no-speech' || event.error === 'aborted') return;
+        console.warn('Speech error:', event.error);
+      };
+
+      recognition.onend = () => {
+        // Auto-restart if still active and not speaking
+        if (active && !speaking) {
+          clearTimeout(restartTimer);
+          restartTimer = setTimeout(() => {
+            if (active && !speaking) startRecognition();
+          }, 300);
+        }
+      };
+
+      try {
+        recognition.start();
+      } catch (e) {
+        // Already started — ignore
+      }
+    }
+
+    function stopRecognition(silent) {
+      clearTimeout(restartTimer);
+      if (recognition) {
+        try { recognition.abort(); } catch (e) {}
+        recognition = null;
+      }
+      volumeFill.style.width = '0%';
+    }
+
+    // ---- Activate / Deactivate ----
+    function setActiveState(on) {
+      active = on;
+      if (on) {
+        startRecognition();
+      } else {
+        stopRecognition();
+      }
+      updateUI();
+      syncState();
+      // Persist preference
+      try { localStorage.setItem('mup-voice-active', on ? '1' : '0'); } catch {}
+    }
+
+    function syncState() {
+      const summary = active
+        ? (speaking ? 'Speaking' : `Listening (${lang})`)
+        : 'Off';
+      mup.updateState(summary, { active, speaking, lang, lastTranscript });
+    }
+
+    // ---- TTS ----
+    let cachedVoice = null;
+    let cachedVoiceLang = '';
+
+    function pickVoice(ttsLang) {
+      if (cachedVoice && cachedVoiceLang === ttsLang) return cachedVoice;
+      const voices = synth.getVoices();
+      const prefix = ttsLang.split('-')[0]; // 'zh', 'en', etc.
+      // Prefer Online voices, then any matching voice
+      cachedVoice =
+        voices.find(v => v.lang.replace('_', '-') === ttsLang && v.name.includes('Online')) ||
+        voices.find(v => v.lang.replace('_', '-') === ttsLang) ||
+        voices.find(v => v.lang.startsWith(prefix) && v.name.includes('Online')) ||
+        voices.find(v => v.lang.startsWith(prefix)) ||
+        null;
+      cachedVoiceLang = ttsLang;
+      return cachedVoice;
+    }
+    synth.onvoiceschanged = () => { cachedVoice = null; };
+
+    function speakText(text, ttsLang) {
+      return new Promise((resolve) => {
+        const wasListening = active && !speaking;
+        if (recognition) { try { recognition.abort(); } catch {} recognition = null; }
+
+        speaking = true;
+        updateUI();
+        syncState();
+
+        synth.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = ttsLang || lang;
+        utterance.rate = 1.05;
+        const voice = pickVoice(utterance.lang);
+        if (voice) utterance.voice = voice;
+
+        transcriptEl.textContent = text.length > 60 ? text.slice(0, 60) + '...' : text;
+        transcriptEl.className = 'transcript has-text';
+
+        // Fake speaking volume animation
+        const volInterval = setInterval(() => {
+          if (speaking) volumeFill.style.width = (20 + Math.random() * 60) + '%';
+        }, 150);
+
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          clearInterval(volInterval);
+          speaking = false;
+          volumeFill.style.width = '0%';
+          updateUI();
+          syncState();
+          // Delay restart to avoid picking up TTS echo/tail
+          if (wasListening) setTimeout(() => { if (active && !speaking) startRecognition(); }, 800);
+          resolve();
+        };
+
+        // Timeout fallback
+        const timeout = setTimeout(finish, Math.max(3000, text.length * 100));
+        utterance.onend = () => { clearTimeout(timeout); finish(); };
+        utterance.onerror = () => { clearTimeout(timeout); finish(); };
+
+        synth.speak(utterance);
+        // Chrome bug workaround
+        if (synth.speaking) {
+          setTimeout(() => { try { synth.pause(); synth.resume(); } catch {} }, 100);
+        }
+      });
+    }
+
+    // ---- Button ----
+    micBtn.addEventListener('click', () => {
+      if (speaking) return;
+      setActiveState(!active);
+    });
+
+    // ---- MUP Functions ----
+    mup.registerFunction('speak', async (params) => {
+      await speakText(params.text, params.lang);
+      return { content: [{ type: 'text', text: `Spoke: "${params.text.slice(0, 80)}"` }], isError: false };
+    });
+
+    mup.registerFunction('setActive', async (params) => {
+      setActiveState(params.active);
+      return { content: [{ type: 'text', text: params.active ? 'Voice activated' : 'Voice deactivated' }], isError: false };
+    });
+
+    mup.registerFunction('setLanguage', async (params) => {
+      lang = params.lang;
+      langTag.textContent = lang;
+      cachedVoice = null;
+      cachedVoiceLang = '';
+      try { localStorage.setItem('mup-voice-lang', lang); } catch {}
+      // Restart recognition with new language
+      if (active && !speaking) {
+        stopRecognition();
+        startRecognition();
+      }
+      syncState();
+      return { content: [{ type: 'text', text: `Language set to ${lang}` }], isError: false };
+    });
+
+    mup.registerFunction('getStatus', async () => {
+      return {
+        content: [
+          { type: 'text', text: active ? `Listening (${lang})` : 'Off' },
+          { type: 'data', data: { active, speaking, lang, lastTranscript } }
+        ],
+        isError: false
+      };
+    });
+
+    // ---- Init ----
+    mup.onReady(({ theme }) => {
+      if (theme === 'light') document.body.classList.add('light');
+
+      // Restore preferences
+      try {
+        const savedLang = localStorage.getItem('mup-voice-lang');
+        if (savedLang) { lang = savedLang; langTag.textContent = lang; }
+      } catch {}
+
+      syncState();
+    });
+
+    mup.onThemeChange((theme) => {
+      document.body.classList.toggle('light', theme === 'light');
+    });
+  </script>
+</body>
+</html>
