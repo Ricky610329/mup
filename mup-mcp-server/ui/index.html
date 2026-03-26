@@ -538,12 +538,18 @@ function debouncedSaveGrid() {
   _gridSaveTimer = setTimeout(saveGridLayout, 500);
 }
 
+function applyPendingLayout(gsId, widgetEl) {
+  if (!window._pendingGridLayout || !grid) return;
+  const saved = window._pendingGridLayout.find(l => l.id === gsId);
+  if (saved) grid.update(widgetEl, { x: saved.x, y: saved.y, w: saved.w, h: saved.h });
+}
+
 function saveGridLayout() {
   if (!grid || !ws || ws.readyState !== WebSocket.OPEN) return;
   const layout = [];
   for (const item of grid.getGridItems()) {
     const id = item.getAttribute('gs-id');
-    if (id && id !== '__manager__' && id !== 'mup-chat') {
+    if (id) {
       layout.push({
         id,
         x: parseInt(item.getAttribute('gs-x') || '0'),
@@ -1032,6 +1038,7 @@ function renderManagerCard() {
         <div class="manager-list" id="managerList">${listHtml}</div>
       </div>`;
     managerWidget = grid.makeWidget(mgrEl);
+    applyPendingLayout('__manager__', managerWidget);
   } else {
     const listEl = managerWidget.querySelector('#managerList');
     if (listEl) listEl.innerHTML = listHtml;
@@ -1468,6 +1475,7 @@ function renderChatCard() {
     </div>`;
 
   chatWidget = grid.makeWidget(el);
+  applyPendingLayout('mup-chat', chatWidget);
 
   // Bind events
   const input = chatWidget.querySelector('#chatInput');
