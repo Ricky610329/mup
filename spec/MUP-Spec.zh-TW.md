@@ -511,3 +511,12 @@ MUP 和 MCP 是互補的 — MCP 負責連接 LLM 與後端工具及資料；MUP
 | **LLM 看到** | Tool 定義 | Tool 定義 |
 | **使用者看到** | 無 | 互動式 UI |
 | **瀏覽器 API** | 否 | 是（相機、檔案、音訊、GPU） |
+
+---
+
+## Schema 檔案
+
+MUP manifest 格式的機器可讀定義：
+
+- [`schema/manifest.schema.json`](schema/manifest.schema.json) — 用於 manifest 驗證的 JSON Schema
+- [`schema/types.ts`](schema/types.ts) — 完整協議的 TypeScript 型別定義

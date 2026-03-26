@@ -7,7 +7,7 @@
 
 > Bring interactive UI into LLM chat — so anyone can experience agentic AI, not just developers.
 
-Current version: 0.2.4 | Protocol: `mup/2026-03-17`
+Current version: 0.2.5 | Protocol: `mup/2026-03-17`
 
 ## Demo
 

@@ -511,3 +511,12 @@ MUP and MCP are complementary — MCP connects LLMs to backend tools and data; M
 | **LLM sees** | Tool definitions | Tool definitions |
 | **User sees** | Nothing | Interactive UI |
 | **Browser API access** | No | Yes (camera, files, audio, GPU) |
+
+---
+
+## Schema Files
+
+Machine-readable definitions for the MUP manifest format:
+
+- [`schema/manifest.schema.json`](schema/manifest.schema.json) — JSON Schema for manifest validation
+- [`schema/types.ts`](schema/types.ts) — TypeScript type definitions for the full protocol

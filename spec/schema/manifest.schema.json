@@ -51,6 +51,33 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Browser Permissions Policy directives this mup needs (e.g., camera, microphone)"
+    },
+    "darkMode": {
+      "type": "boolean",
+      "description": "Whether this MUP supports dark mode theme switching",
+      "default": false
+    },
+    "multiInstance": {
+      "type": "boolean",
+      "description": "Whether multiple instances of this MUP can be opened simultaneously",
+      "default": false
+    },
+    "notifications": {
+      "type": "object",
+      "description": "Default notification level configuration",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["immediate", "notify", "silent"],
+          "description": "Default notification level: immediate (channel push), notify (queued for polling), silent (suppressed)",
+          "default": "notify"
+        },
+        "overridable": {
+          "type": "boolean",
+          "description": "Whether the LLM can change the notification level at runtime",
+          "default": true
+        }
+      }
     }
   },
   "$defs": {

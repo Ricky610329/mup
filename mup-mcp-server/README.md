@@ -62,7 +62,7 @@ Includes a built-in Chat widget. Load your own MUP `.html` files via `--mups-dir
 - [GitHub](https://github.com/Ricky610329/mup)
 - [Spec](https://github.com/Ricky610329/mup/blob/main/spec/MUP-Spec.md)
 - [MUPs](https://github.com/Ricky610329/mup/tree/main/mups)
-- [Demo Videos](https://github.com/Ricky610329/mup#demos)
+- [Demo Videos](https://github.com/Ricky610329/mup#demo)
 
 ## License
 

@@ -557,6 +557,16 @@
         if (savedLang) { lang = savedLang; langTag.textContent = lang; }
       } catch {}
 
+      // Restore active state — auto-resume listening if it was on before
+      try {
+        const savedActive = localStorage.getItem('mup-voice-active');
+        if (savedActive === '1' && SpeechRecognition) {
+          active = true;
+          updateUI();
+          startRecognition();
+        }
+      } catch {}
+
       syncState();
     });
 

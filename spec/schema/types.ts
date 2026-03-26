@@ -31,10 +31,23 @@ export interface MupManifest {
   functions?: MupFunction[];
   /** Browser Permissions Policy directives (e.g., ["camera", "microphone"]) */
   permissions?: string[];
+  /** Whether this MUP supports dark mode theme switching */
+  darkMode?: boolean;
+  /** Whether multiple instances of this MUP can be opened simultaneously */
+  multiInstance?: boolean;
+  /** Default notification level configuration */
+  notifications?: NotificationConfig;
   /** Optional author name */
   author?: string;
   /** Optional icon URL */
   icon?: string;
+}
+
+export interface NotificationConfig {
+  /** Default level: "immediate" (channel push), "notify" (queued for polling), "silent" (suppressed) */
+  level?: "immediate" | "notify" | "silent";
+  /** Whether the LLM can change the notification level at runtime */
+  overridable?: boolean;
 }
 
 export interface GridRequirements {
