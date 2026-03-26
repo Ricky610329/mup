@@ -302,15 +302,13 @@ export class MupManager {
       timestamp: number;
     }> = [];
     for (const [mupId, mup] of this.mups) {
-      const keep: typeof mup.pendingEvents = [];
       for (const event of mup.pendingEvents) {
-        if (since && event.timestamp <= since) {
-          keep.push(event); // keep events older than since
-        } else {
+        if (!since || event.timestamp > since) {
           events.push({ mupId, mupName: mup.manifest.name, ...event });
         }
+        // Events with timestamp <= since are discarded (already seen)
       }
-      mup.pendingEvents = keep;
+      mup.pendingEvents = []; // Drain all processed events
     }
     return events;
   }

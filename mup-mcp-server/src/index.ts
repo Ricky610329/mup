@@ -17,6 +17,7 @@ import {
   text, buildToolDescription, buildMupDetail,
   handleList, handleCheckInteractions, handleHistory, handlePipe,
 } from "./handlers.js";
+import type { FunctionResult } from "./types.js";
 import type { FolderTreeNode, SendLoadMupFn } from "./types.js";
 
 // ---- Utilities ----
@@ -302,7 +303,12 @@ async function handleToolCall(
 
     if (!mup?.stateSummary && manager.isActive(mupId)) await bridge.waitForMupLoaded(mupId);
 
-    const result = await bridge.callFunction(mupId, fn, fnArgs);
+    let result: FunctionResult;
+    try {
+      result = await bridge.callFunction(mupId, fn, fnArgs);
+    } catch (err) {
+      return { content: [text(`Function call failed: ${(err as Error).message}`)], isError: true };
+    }
     const resultText = result.content.map((c) => c.text || "").join(" ").trim();
     ws.addCallHistory(mupId, fn, fnArgs, resultText);
 

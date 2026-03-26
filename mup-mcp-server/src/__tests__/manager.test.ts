@@ -179,19 +179,19 @@ describe("MupManager", () => {
       const t1 = Date.now();
       mgr.addEvent("mup-test", "old", "Old event");
 
-      // Wait a tick to ensure different timestamp
+      // Set old event to an earlier timestamp
       const mup = mgr.get("mup-test")!;
       mup.pendingEvents[0].timestamp = t1 - 100;
       mgr.addEvent("mup-test", "new", "New event");
 
+      // Only returns events newer than since; old events are discarded
       const events = mgr.drainEvents(t1 - 50);
       assert.equal(events.length, 1);
       assert.equal(events[0].action, "new");
 
-      // Old event is still kept
+      // All events drained (old discarded, new returned) — queue is empty
       const remaining = mgr.drainEvents();
-      assert.equal(remaining.length, 1);
-      assert.equal(remaining[0].action, "old");
+      assert.equal(remaining.length, 0);
     });
   });
 
