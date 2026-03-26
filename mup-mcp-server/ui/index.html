@@ -1377,6 +1377,8 @@ function chatAutoResize(el) {
   el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
 }
 
+// Chat function implementation — manifest defined in src/index.ts (registerSystemMup).
+// Keep both in sync when adding/removing functions.
 function handleChatFunctionCall(fn, args) {
   switch (fn) {
     case 'sendMessage': {

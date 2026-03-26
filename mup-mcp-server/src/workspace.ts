@@ -16,6 +16,19 @@ const METADATA_FILE = "workspace.json";
 const METADATA_VERSION = 1;
 
 // ---- WorkspaceManager (folder-based, in-place) ----
+//
+// Persistence model:
+//   PERSISTED (in .mup/workspace.json):
+//     - activeMups: which MUPs are open
+//     - gridLayout: widget positions and sizes
+//     - customNames: user-renamed panels
+//     - name: workspace name
+//     - mupsPath: last loaded MUP folder
+//   SESSION-ONLY (lost on server restart):
+//     - callHistory: function call log per MUP
+//     - stateSummary: last state string from each MUP
+//   MUP-MANAGED (not server's concern):
+//     - Internal MUP data: stored in browser localStorage by each MUP
 
 export class WorkspaceManager {
   /** Session-only call history (not persisted) */

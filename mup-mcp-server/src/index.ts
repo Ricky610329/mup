@@ -367,6 +367,8 @@ async function main() {
   const manager = new MupManager();
 
   // Register built-in system MUPs
+  // NOTE: Chat functions are implemented in ui/index.html (handleChatFunctionCall).
+  // If you add/remove functions here, update the implementation there too.
   manager.registerSystemMup({
     protocol: "mup/2026-03-17",
     id: "mup-chat",
@@ -430,7 +432,11 @@ async function main() {
     bridge.sendRaw({ type: "folder-tree", tree: serverFolderTree, path: bridge.folderPath });
   }
 
+  let _lastFolderSwitch = 0;
   function switchMupsFolder(newPath: string): { ok: boolean; warnings: string[] } {
+    const now = Date.now();
+    if (now - _lastFolderSwitch < 1000) return { ok: false, warnings: ["Folder switch rate limited (1s cooldown)."] };
+    _lastFolderSwitch = now;
     const resolved = path.resolve(newPath);
     if (!fs.existsSync(resolved)) return { ok: false, warnings: [`Directory not found: ${resolved}`] };
 
