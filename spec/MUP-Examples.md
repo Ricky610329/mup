@@ -1,6 +1,8 @@
 # MUP Examples
 
-This document describes the example MUPs included in `examples/`. Each demonstrates a different protocol capability.
+> **Note:** The original example MUPs have been moved to `archive/examples/`. The active MUPs are now the **agent suite** in `mups/agent/` — see the [main README](../README.md) for details.
+
+This document describes the original example MUPs. Each demonstrates a different protocol capability.
 
 ---
 

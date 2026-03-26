@@ -79,26 +79,20 @@ npm install && npm run build
 ### 搭配 Claude Code（推薦）
 
 ```bash
-claude mcp add --transport stdio --scope user mup -- npx mup-mcp-server --mups-dir /path/to/mup/examples
+claude mcp add --transport stdio --scope user mup -- npx mup-mcp-server
 ```
 
-重啟 Claude Code，MUP 面板就會以 tool 的形式出現。瀏覽器會自動開啟 `http://localhost:3200` 顯示 MUP 面板。
+重啟 Claude Code，瀏覽器會自動開啟 `http://localhost:3200`。用 MUPs 面板載入 MUP `.html` 檔案資料夾，或直接使用內建的 Chat widget。
 
 #### 即時 Channel 模式
 
-manifest 中宣告 `"notifications": { "level": "immediate" }` 的 MUP 可以即時推送互動到 Claude 的對話中，不需要 polling。啟動時加上 channel flag：
+MUP 可以透過 channel notification 即時推送互動到 Claude 的對話中。啟動方式：
 
 ```bash
 claude --dangerously-load-development-channels server:mup
 ```
 
-這讓 Chat 和 Chess 等 MUP 可以即時將使用者的操作傳遞給 Claude。不加此 flag 時，所有 MUP 功能仍然正常運作，只是互動會透過 polling 而非即時推送。
-
-試試看：
-- 「用 pixel art 畫一個笑臉」
-- 「做一份關於 MUP 的簡報」
-- 「來下西洋棋」
-- 開啟 Chat MUP，直接在瀏覽器中和 Claude 對話
+這讓 MUP 可以即時將使用者的操作傳遞給 Claude。不加此 flag 時，所有功能仍然正常運作，只是互動會透過 polling 而非即時推送。
 
 ### 搭配 Claude Desktop
 
@@ -109,51 +103,27 @@ claude --dangerously-load-development-channels server:mup
   "mcpServers": {
     "mup": {
       "command": "npx",
-      "args": ["mup-mcp-server", "--mups-dir", "/path/to/mup/examples"]
+      "args": ["mup-mcp-server"]
     }
   }
 }
 ```
 
-### 獨立使用（自帶聊天介面）
+## Agent Suite MUPs
 
-不需要 Claude — 自帶聊天介面，支援多家 LLM 供應商。
+repo 中包含一組 agent 導向的 MUP 套件，位於 `mups/agent/`：
 
-```bash
-cd mup/mup-agent
-npm install
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
-npm start
-```
+| MUP | 說明 |
+|-----|------|
+| **Agent Core** | 任務佇列，支援優先級排序、透過 channel notification 鏈式執行 |
+| **Principles** | 執行原則手冊 — agent 每次執行任務前先讀取 |
+| **Markdown** | 多檔案工作區，側邊欄、行內重新命名、下載匯出 |
+| **Memory** | 跨 session 鍵值儲存，支援標籤與搜尋 |
+| **Logger** | 彩色執行日誌，支援等級篩選與匯出 |
 
-支援 Anthropic、OpenAI、Google、Groq、xAI。在 `http://localhost:3100` 開啟。
+另外有**內建 Chat** widget（永遠可用，不需要檔案），可直接與 LLM 對話。
 
-## 內建範例
-
-`examples/` 裡有 20 個現成的 MUP：
-
-| 分類 | MUP | 說明 |
-|------|-----|------|
-| basic | Counter | 點 +/−，LLM 設定數值 |
-| basic | Dice | 骰子動畫 + 歷史紀錄 |
-| basic | Timer | 倒數計時 + 進度圓環 |
-| basic | Chess | 跟 LLM 下西洋棋 |
-| creative | Pixel Art | 16×16 像素畫布 |
-| creative | Slides | 簡報製作器 |
-| data | Chart | 長條圖、折線圖、圓餅圖等 |
-| media | Camera | 即時相機 + 拍照 |
-| media | Voice | 語音轉文字 + 文字轉語音 |
-| media | Drum Machine | 四軌步進音序器 |
-| music | Keys | 鋼琴卷軸音序器（雙八度、複音） |
-| music | Bass | 低音音序器（C2–B2、單音） |
-| music | Chords | 和弦進行音序器（8 格、撥弦） |
-| music | Strings | 弦樂 Pad 音序器（去諧波厚實音色） |
-| music | Synth | Lead 合成器音序器（波形、濾波、ADSR） |
-| music | Mixer | 多軌混音台（音量、靜音、Solo） |
-| music | Arranger | 歌曲編排器（段落結構、完整編曲） |
-| productivity | Sticky Notes | 可拖曳便利貼 |
-| productivity | Kanban | 拖放式任務看板 |
-| productivity | Markdown | Markdown 即時編輯器 + 預覽 |
+所有 MUP 透過 `localStorage` 自行管理狀態 — server 只負責版面配置。全面板支援深色模式。
 
 ## 快速範例
 

@@ -17,6 +17,12 @@ npx mup-mcp-server --mups-dir ./my-mups
 ## Usage with Claude Code
 
 ```bash
+claude mcp add --transport stdio --scope user mup -- npx mup-mcp-server
+```
+
+Optionally point to a folder of MUP files:
+
+```bash
 claude mcp add --transport stdio --scope user mup -- npx mup-mcp-server --mups-dir /path/to/mups
 ```
 
@@ -29,7 +35,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "mup": {
       "command": "npx",
-      "args": ["mup-mcp-server", "--mups-dir", "/path/to/mups"]
+      "args": ["mup-mcp-server"]
     }
   }
 }
@@ -49,13 +55,13 @@ A **MUP** is an interactive UI component that lives inside an LLM chat. It's a s
 
 The user operates it by clicking buttons; the LLM operates it through function calls. Both sides see each other's actions in real time.
 
-20+ built-in examples included in the [main repo](https://github.com/Ricky610329/mup): pixel art, chess, music toolkit, kanban, slides, and more.
+Includes a built-in Chat widget and an [agent suite](https://github.com/Ricky610329/mup/tree/main/mups/agent) (task queue, principles, memory, logger, markdown workspace).
 
 ## Links
 
 - [GitHub](https://github.com/Ricky610329/mup)
 - [Spec](https://github.com/Ricky610329/mup/blob/main/spec/MUP-Spec.md)
-- [Examples](https://github.com/Ricky610329/mup/tree/main/examples)
+- [Agent Suite](https://github.com/Ricky610329/mup/tree/main/mups/agent)
 - [Demo Videos](https://github.com/Ricky610329/mup#demos)
 
 ## License

@@ -1,6 +1,8 @@
 # MUP 範例說明
 
-本文件描述 `examples/` 中的範例 MUP。每個展示不同的協議能力。
+> **注意：** 原始範例 MUP 已移至 `archive/examples/`。目前活躍的 MUP 是 `mups/agent/` 中的 **agent 套件** — 詳見[主 README](../README.zh-TW.md)。
+
+本文件描述原始的範例 MUP。每個展示不同的協議能力。
 
 ---
 

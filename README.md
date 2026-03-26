@@ -79,26 +79,20 @@ npm install && npm run build
 ### With Claude Code (recommended)
 
 ```bash
-claude mcp add --transport stdio --scope user mup -- npx mup-mcp-server --mups-dir /path/to/mup/examples
+claude mcp add --transport stdio --scope user mup -- npx mup-mcp-server
 ```
 
-Restart Claude Code. MUP panels are now available as tools — just ask Claude to use them. A browser window opens at `http://localhost:3200` showing the MUP panel grid.
+Restart Claude Code. A browser window opens at `http://localhost:3200`. Use the MUPs panel to load a folder of MUP `.html` files, or start with the built-in Chat widget.
 
 #### Real-time channel mode
 
-MUPs with `"notifications": { "level": "immediate" }` can push interactions directly into Claude's conversation — no polling needed. To enable this, start Claude Code with the channel flag:
+MUPs can push interactions directly into Claude's conversation via channel notifications. To enable:
 
 ```bash
 claude --dangerously-load-development-channels server:mup
 ```
 
-This lets MUPs like Chat and Chess deliver user actions to Claude in real time. Without this flag, all MUP features still work — interactions are just delivered via polling instead of push.
-
-Try it:
-- "Draw a smiley face with pixel art"
-- "Create a presentation about MUP"
-- "Let's play chess"
-- Open the Chat MUP and talk to Claude directly from the browser
+This lets MUPs deliver user actions to Claude in real time. Without this flag, all MUP features still work — interactions are just delivered via polling instead of push.
 
 ### With Claude Desktop
 
@@ -109,51 +103,27 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "mup": {
       "command": "npx",
-      "args": ["mup-mcp-server", "--mups-dir", "/path/to/mup/examples"]
+      "args": ["mup-mcp-server"]
     }
   }
 }
 ```
 
-### Standalone (with built-in chat)
+## Agent Suite MUPs
 
-For use without Claude — includes its own chat interface and supports multiple LLM providers.
+The repo includes an agent-oriented MUP suite in `mups/agent/`:
 
-```bash
-cd mup/mup-agent
-npm install
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
-npm start
-```
+| MUP | Description |
+|-----|-------------|
+| **Agent Core** | Task queue with priority, chain execution via channel notifications |
+| **Principles** | Execution handbook — agent reads this before every task |
+| **Markdown** | Multi-file workspace with sidebar, inline rename, download |
+| **Memory** | Cross-session key-value store with tags and search |
+| **Logger** | Color-coded execution log with level filters and export |
 
-Supports Anthropic, OpenAI, Google, Groq, xAI. Opens at `http://localhost:3100`.
+Plus a **built-in Chat** widget (always available, no file needed) for direct conversation with the LLM.
 
-## Built-in Examples
-
-20 ready-to-use MUPs in `examples/`:
-
-| Category | MUP | Description |
-|----------|-----|-------------|
-| basic | Counter | Click +/−, LLM sets value |
-| basic | Dice | Roll with animation, history |
-| basic | Timer | Countdown with progress ring |
-| basic | Chess | Play chess against the LLM |
-| creative | Pixel Art | 16×16 pixel canvas |
-| creative | Slides | Presentation builder |
-| data | Chart | Bar, line, pie, doughnut, radar, scatter |
-| media | Camera | Live camera + snapshot |
-| media | Voice | Speech-to-text + text-to-speech |
-| media | Drum Machine | 4-track step sequencer |
-| music | Keys | Piano roll step sequencer (2 octaves, polyphonic) |
-| music | Bass | Bass step sequencer (C2–B2, monophonic) |
-| music | Chords | Chord progression sequencer (8 slots, strumming) |
-| music | Strings | String pad sequencer (lush detuned oscillators) |
-| music | Synth | Lead synth sequencer (waveform, filter, ADSR) |
-| music | Mixer | Multi-track mixing console (volume, mute, solo) |
-| music | Arranger | Song structure arranger (sections, full arrangement) |
-| productivity | Sticky Notes | Draggable notes board |
-| productivity | Kanban | Task board with drag-and-drop |
-| productivity | Markdown | Live Markdown editor with preview |
+All MUPs manage their own state via `localStorage` — the server only handles layout. Dark mode support across all panels.
 
 ## Quick Example
 
