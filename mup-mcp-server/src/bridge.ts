@@ -233,6 +233,7 @@ export class UiBridge extends EventEmitter {
       case "flush-save":           this.typedEmit("flush-save"); break;
       case "rename-workspace":     this.typedEmit("rename-workspace", msg.name); break;
       case "set-mups-path":        this.typedEmit("set-mups-path", msg.path); break;
+      case "permission-verdict":   this.typedEmit("permission-verdict", msg.requestId, msg.behavior); break;
     }
   }
 

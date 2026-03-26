@@ -47,6 +47,20 @@ export class MupManager {
     this.catalog.clear();
   }
 
+  /** Find catalog entry by file path (for deletion handling) */
+  findByFilePath(filePath: string): CatalogEntry | undefined {
+    for (const entry of this.catalog.values()) {
+      if (entry.filePath === filePath) return entry;
+    }
+    return undefined;
+  }
+
+  /** Remove a single entry from the catalog */
+  removeCatalogEntry(mupId: string): boolean {
+    this.notificationOverrides.delete(mupId);
+    return this.catalog.delete(mupId);
+  }
+
   activate(mupId: string): LoadedMup | null {
     if (this.systemMups.has(mupId)) return this.mups.get(mupId) ?? null;
     const entry = this.catalog.get(mupId);

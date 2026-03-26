@@ -243,6 +243,9 @@ function handleServerMessage(msg) {
     case "mup-deactivated":
       removeMup(msg.mupId);
       break;
+    case "permission-request":
+      showPermissionRequest(msg.requestId, msg.toolName, msg.description, msg.inputPreview);
+      break;
   }
 }
 

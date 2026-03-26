@@ -136,7 +136,8 @@ export type BrowserMessage =
   | { type: "rename-mup"; mupId: string; customName: string }
   | { type: "flush-save" }
   | { type: "rename-workspace"; name: string }
-  | { type: "set-mups-path"; path: string };
+  | { type: "set-mups-path"; path: string }
+  | { type: "permission-verdict"; requestId: string; behavior: "allow" | "deny" };
 
 // ---- Server → Browser Messages ----
 
@@ -151,7 +152,8 @@ export type ServerMessage =
   | { type: "mup-deactivated"; mupId: string }
   | { type: "mups-path-changed"; path: string }
   | { type: "mups-path-error"; errors: string[] }
-  | { type: "mups-path-warnings"; warnings: string[] };
+  | { type: "mups-path-warnings"; warnings: string[] }
+  | { type: "permission-request"; requestId: string; toolName: string; description: string; inputPreview: string };
 
 // ---- Typed Event Emitter for UiBridge ----
 
@@ -172,6 +174,7 @@ export interface BridgeEvents {
   "flush-save": () => void;
   "rename-workspace": (name: string) => void;
   "set-mups-path": (path: string) => void;
+  "permission-verdict": (requestId: string, behavior: "allow" | "deny") => void;
 }
 
 // ---- Call History (session-only, not persisted) ----

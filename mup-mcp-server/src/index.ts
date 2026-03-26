@@ -129,7 +129,8 @@ function setupBrowserEvents(bridge: UiBridge, manager: MupManager, ws: Workspace
 
 function setupFileWatching(
   mupsDirs: string[], manager: MupManager, bridge: UiBridge,
-  sendLoadMup: SendLoadMupFn, rebuildFolderTree: () => void
+  sendLoadMup: SendLoadMupFn, rebuildFolderTree: () => void,
+  ws: WorkspaceManager, pipeline: PipelineManager
 ): void {
   for (const dir of mupsDirs) {
     try {
@@ -138,7 +139,24 @@ function setupFileWatching(
         // Ignore files inside .mup/ directory
         if (filename.startsWith(".mup")) return;
         const filePath = path.join(dir, filename);
-        if (!fs.existsSync(filePath)) return;
+        if (!fs.existsSync(filePath)) {
+          const entry = manager.findByFilePath(filePath);
+          if (!entry) return;
+          const mupId = entry.manifest.id;
+          for (const m of manager.getAll()) {
+            if (m.manifest.id === mupId || m.manifest.id.startsWith(mupId + "_")) {
+              manager.deactivate(m.manifest.id);
+              bridge.sendRaw({ type: "mup-deactivated", mupId: m.manifest.id });
+              ws.onMupDeactivated(m.manifest.id);
+              pipeline.onMupDeactivated(m.manifest.id);
+            }
+          }
+          manager.removeCatalogEntry(mupId);
+          bridge.sendRaw({ type: "mup-catalog", catalog: bridge.buildCatalogSummary() });
+          rebuildFolderTree();
+          console.error(`[mup-mcp] Removed (file deleted): ${entry.manifest.name}`);
+          return;
+        }
         try {
           const html = fs.readFileSync(filePath, "utf-8");
           const manifest = manager.parseManifest(html, filePath);
@@ -229,7 +247,7 @@ function switchMupsFolder(newPath: string, deps: FolderSwitchDeps): { ok: boolea
   rebuildFolderTree();
 
   // Re-bind file watcher for new directory
-  setupFileWatching([resolved], manager, bridge, sendLoadMup, rebuildFolderTree);
+  setupFileWatching([resolved], manager, bridge, sendLoadMup, rebuildFolderTree, ws, pipeline);
 
   // Persist
   ws.setMupsPath(resolved);
@@ -256,7 +274,7 @@ function setupMcpServer(
     {
       capabilities: {
         tools: {},
-        experimental: { "claude/channel": {} },
+        experimental: { "claude/channel": {}, "claude/channel/permission": {} },
       },
       instructions: `MUP channel events arrive as <channel source="mup" mup_id="..." mup_name="...">. These are real-time user interactions from MUP UI panels in the browser. Respond by calling the mup tool with the mupId and the appropriate function. Use { "action": "setNotificationLevel", "mupId": "...", "level": "immediate" | "notify" | "silent" } to adjust how a MUP notifies you.`,
     },
@@ -297,6 +315,31 @@ function setupMcpServer(
     } finally {
       activeCallMupId = null;
     }
+  });
+
+  // --- Permission relay: forward permission prompts to browser, send verdicts back ---
+  server.fallbackNotificationHandler = async (notification: { method: string; params?: Record<string, unknown> }) => {
+    if (notification.method === "notifications/claude/channel/permission_request") {
+      const p = notification.params || {};
+      bridge.sendRaw({
+        type: "permission-request",
+        requestId: p.request_id as string,
+        toolName: p.tool_name as string,
+        description: p.description as string,
+        inputPreview: p.input_preview as string,
+      });
+      console.error(`[mup-mcp] Permission request: ${p.tool_name} (${p.request_id})`);
+    }
+  };
+
+  bridge.typedOn("permission-verdict", (requestId, behavior) => {
+    server.notification({
+      method: "notifications/claude/channel/permission",
+      params: { request_id: requestId, behavior },
+    }).catch((err) => {
+      console.error(`[mup-mcp] Permission verdict failed: ${(err as Error).message}`);
+    });
+    console.error(`[mup-mcp] Permission verdict: ${requestId} → ${behavior}`);
   });
 
   return server;
@@ -413,7 +456,7 @@ async function main() {
     if (!result.ok) bridge.sendRaw({ type: "mups-path-error", errors: result.warnings });
     else if (result.warnings.length > 0) bridge.sendRaw({ type: "mups-path-warnings", warnings: result.warnings });
   });
-  setupFileWatching(mupsDirs, manager, bridge, sendLoadMup, rebuildFolderTree);
+  setupFileWatching(mupsDirs, manager, bridge, sendLoadMup, rebuildFolderTree, ws, pipeline);
   setupLifecycle(ws);
 
   // --- MCP Server ---

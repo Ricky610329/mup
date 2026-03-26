@@ -395,3 +395,60 @@ function initChatWidget() {
   chatSyncState();
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "mup-loaded", mupId: "mup-chat" }));
 }
+
+// ---- Permission Relay ----
+
+function showPermissionRequest(requestId, toolName, description, inputPreview) {
+  // Ensure chat widget exists
+  if (!chatWidget) initChatWidget();
+  if (!chatWidget) return;
+
+  const msgsEl = chatWidget.querySelector('#chatMessages');
+  const emptyEl = chatWidget.querySelector('#chatEmpty');
+  if (!msgsEl) return;
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  const row = document.createElement('div');
+  row.className = 'chat-msg-row assistant';
+  row.setAttribute('data-permission-id', requestId);
+  row.innerHTML = `
+    <div class="chat-msg assistant chat-permission">
+      <div class="chat-permission-header">Permission Request</div>
+      <div class="chat-permission-tool">${escapeHtml(toolName)}</div>
+      <div class="chat-permission-desc">${escapeHtml(description)}</div>
+      ${inputPreview ? `<pre class="chat-permission-preview">${escapeHtml(inputPreview)}</pre>` : ''}
+      <div class="chat-permission-actions">
+        <button class="chat-permission-btn allow" data-request-id="${escapeHtml(requestId)}">Allow</button>
+        <button class="chat-permission-btn deny" data-request-id="${escapeHtml(requestId)}">Deny</button>
+      </div>
+    </div>`;
+
+  row.querySelector('.chat-permission-btn.allow').addEventListener('click', (e) => {
+    e.stopPropagation();
+    sendPermissionVerdict(requestId, 'allow');
+    resolvePermissionUI(row, 'Allowed');
+  });
+  row.querySelector('.chat-permission-btn.deny').addEventListener('click', (e) => {
+    e.stopPropagation();
+    sendPermissionVerdict(requestId, 'deny');
+    resolvePermissionUI(row, 'Denied');
+  });
+
+  msgsEl.appendChild(row);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  addEventBadge("Permission", `${toolName}: ${description.slice(0, 60)}`);
+}
+
+function sendPermissionVerdict(requestId, behavior) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "permission-verdict", requestId, behavior }));
+  }
+}
+
+function resolvePermissionUI(row, label) {
+  const actions = row.querySelector('.chat-permission-actions');
+  if (actions) {
+    const isAllow = label === 'Allowed';
+    actions.innerHTML = `<span class="chat-permission-resolved ${isAllow ? 'allow' : 'deny'}">${label}</span>`;
+  }
+}

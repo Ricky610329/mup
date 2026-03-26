@@ -240,4 +240,36 @@ describe("MupManager", () => {
       assert.deepEqual(ids, ["mup-test", "mup-test_2"]);
     });
   });
+
+  // ---- findByFilePath ----
+
+  describe("findByFilePath", () => {
+    it("returns correct entry for known path", () => {
+      mgr.scanFromHtml(SAMPLE_HTML, "/mups/test.html");
+      const entry = mgr.findByFilePath("/mups/test.html");
+      assert.notEqual(entry, undefined);
+      assert.equal(entry!.manifest.id, "mup-test");
+    });
+
+    it("returns undefined for unknown path", () => {
+      mgr.scanFromHtml(SAMPLE_HTML, "/mups/test.html");
+      assert.equal(mgr.findByFilePath("/mups/other.html"), undefined);
+    });
+  });
+
+  // ---- removeCatalogEntry ----
+
+  describe("removeCatalogEntry", () => {
+    it("removes entry and returns true", () => {
+      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
+      assert.equal(mgr.getCatalog().length, 1);
+
+      assert.equal(mgr.removeCatalogEntry("mup-test"), true);
+      assert.equal(mgr.getCatalog().length, 0);
+    });
+
+    it("returns false for unknown ID", () => {
+      assert.equal(mgr.removeCatalogEntry("nonexistent"), false);
+    });
+  });
 });
