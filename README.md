@@ -104,6 +104,8 @@ claude --dangerously-load-development-channels server:mup
 
 This lets MUPs deliver user actions to Claude in real time. Without this flag, all MUP features still work — interactions are just delivered via polling instead of push.
 
+> **Known issue (March 2026):** Claude Code v2.1.80+ has a bug where `notifications/claude/channel` events are silently dropped and never reach the conversation. This affects all MCP channel implementations. MUP still works via polling (`checkInteractions`), but real-time push is broken. See [anthropics/claude-code#36431](https://github.com/anthropics/claude-code/issues/36431) for tracking.
+
 ### With Claude Desktop
 
 Add to your `claude_desktop_config.json`:

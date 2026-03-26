@@ -104,6 +104,8 @@ claude --dangerously-load-development-channels server:mup
 
 這讓 MUP 可以即時將使用者的操作傳遞給 Claude。不加此 flag 時，所有功能仍然正常運作，只是互動會透過 polling 而非即時推送。
 
+> **已知問題（2026 年 3 月）：** Claude Code v2.1.80+ 存在一個 bug，`notifications/claude/channel` 事件會被靜默丟棄，無法送達對話。此問題影響所有 MCP channel 實作。MUP 仍可透過 polling（`checkInteractions`）使用，但即時推送暫時無法運作。追蹤 issue：[anthropics/claude-code#36431](https://github.com/anthropics/claude-code/issues/36431)。
+
 ### 搭配 Claude Desktop
 
 在 `claude_desktop_config.json` 加入：
