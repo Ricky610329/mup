@@ -452,3 +452,32 @@ function resolvePermissionUI(row, label) {
     actions.innerHTML = `<span class="chat-permission-resolved ${isAllow ? 'allow' : 'deny'}">${label}</span>`;
   }
 }
+
+// ---- Thinking Indicator ----
+
+let _thinkingTimer = null;
+const THINKING_TIMEOUT_MS = 120_000; // auto-hide after 2 minutes
+
+function setThinkingIndicator(active) {
+  if (!chatWidget) initChatWidget();
+  if (!chatWidget) return;
+
+  const msgsEl = chatWidget.querySelector('#chatMessages');
+  if (!msgsEl) return;
+
+  // Clear any existing indicator and timer
+  const existing = msgsEl.querySelector('.chat-thinking-row');
+  if (existing) existing.remove();
+  if (_thinkingTimer) { clearTimeout(_thinkingTimer); _thinkingTimer = null; }
+
+  if (!active) return;
+
+  const row = document.createElement('div');
+  row.className = 'chat-msg-row assistant chat-thinking-row';
+  row.innerHTML = `<div class="chat-msg assistant chat-thinking"><span class="chat-thinking-dots"><span></span><span></span><span></span></span></div>`;
+  msgsEl.appendChild(row);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+
+  // Auto-hide after timeout
+  _thinkingTimer = setTimeout(() => setThinkingIndicator(false), THINKING_TIMEOUT_MS);
+}

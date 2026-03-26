@@ -246,6 +246,9 @@ function handleServerMessage(msg) {
     case "permission-request":
       showPermissionRequest(msg.requestId, msg.toolName, msg.description, msg.inputPreview);
       break;
+    case "thinking":
+      setThinkingIndicator(msg.active);
+      break;
   }
 }
 

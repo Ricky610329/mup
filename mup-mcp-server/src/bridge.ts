@@ -35,6 +35,11 @@ export class UiBridge extends EventEmitter {
   private manager: MupManager;
   public folderTree: FolderTreeNode[] = [];
   public folderPath: string = "";
+  // Heartbeat
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private isAlive = false;
+  // Message queue for critical messages (permission requests) during disconnection
+  private messageQueue: Array<{ msg: ServerMessage; timestamp: number }> = [];
 
   constructor(manager: MupManager, port: number) {
     super();
@@ -57,8 +62,12 @@ export class UiBridge extends EventEmitter {
       }
 
       this.ws = ws;
+      this.isAlive = true;
+      this.startHeartbeat();
       console.error("[mup-mcp] Browser panel connected");
       this.typedEmit("browser-connected");
+
+      ws.on("pong", () => { this.isAlive = true; });
 
       ws.on("message", (data) => {
         try {
@@ -70,6 +79,7 @@ export class UiBridge extends EventEmitter {
       });
 
       ws.on("close", () => {
+        this.stopHeartbeat();
         console.error("[mup-mcp] Browser panel disconnected");
         this.ws = null;
         for (const [id, pending] of this.pendingCalls) {
@@ -129,11 +139,53 @@ export class UiBridge extends EventEmitter {
     });
   }
 
+  // ---- Heartbeat ----
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.isAlive = true;
+    this.pingInterval = setInterval(() => {
+      if (!this.ws) { this.stopHeartbeat(); return; }
+      if (!this.isAlive) {
+        console.error("[mup-mcp] Heartbeat timeout — terminating stale connection");
+        this.ws.terminate();
+        return;
+      }
+      this.isAlive = false;
+      this.ws.ping();
+    }, CONFIG.heartbeatIntervalMs);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  // ---- Message Queue ----
+
+  private flushMessageQueue(): void {
+    const now = Date.now();
+    const valid = this.messageQueue.filter(m => now - m.timestamp < CONFIG.messageQueueTtlMs);
+    this.messageQueue.length = 0;
+    if (valid.length > 0) {
+      console.error(`[mup-mcp] Flushing ${valid.length} queued message(s)`);
+      for (const { msg } of valid) {
+        this.sendRaw(msg);
+      }
+    }
+  }
+
   // ---- Communication ----
 
   sendRaw(msg: ServerMessage): void {
     if (this.isConnected()) {
       this.ws!.send(JSON.stringify(msg));
+    } else if ((msg as Record<string, unknown>).type === "permission-request") {
+      // Queue permission requests — they're critical and must survive reconnection
+      this.messageQueue.push({ msg, timestamp: Date.now() });
+      console.error("[mup-mcp] Queued permission request (browser disconnected)");
     }
   }
 
@@ -193,6 +245,8 @@ export class UiBridge extends EventEmitter {
           });
         }
         this.typedEmit("browser-ready");
+        // Flush queued permission requests after MUPs are loaded
+        this.flushMessageQueue();
         break;
 
       case "mup-loaded":

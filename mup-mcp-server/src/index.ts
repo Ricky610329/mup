@@ -308,11 +308,16 @@ function setupMcpServer(
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const args = (request.params.arguments || {}) as Record<string, unknown>;
+    const mupId = (args.mupId as string) || null;
     // Track which MUP is being called to suppress self-notifications
-    activeCallMupId = (args.mupId as string) || null;
+    activeCallMupId = mupId;
     try {
       return await handleToolCall(request, { manager, bridge, ws, sendLoadMup, ensureActive, pipeline });
     } finally {
+      // Clear thinking indicator when Claude responds to chat
+      if (mupId === "mup-chat") {
+        bridge.sendRaw({ type: "thinking", active: false });
+      }
       activeCallMupId = null;
     }
   });
@@ -474,6 +479,11 @@ async function main() {
   bridge.typedOn("interaction", (mupId, action, summary, data) => {
     // Suppress notifications from the MUP currently being called by the LLM
     if (mupId === activeCallMupId) return;
+
+    // Signal thinking state to browser when chat message triggers a channel notification
+    if (mupId === "mup-chat" && action === "message") {
+      bridge.sendRaw({ type: "thinking", active: true });
+    }
 
     const level = manager.getNotificationLevel(mupId);
     if (level === "silent") return;

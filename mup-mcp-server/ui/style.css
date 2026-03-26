@@ -389,3 +389,22 @@
     }
     .chat-permission-resolved.allow { color: var(--green); }
     .chat-permission-resolved.deny { color: var(--red); }
+
+    /* ---- Thinking indicator ---- */
+    .chat-thinking {
+      padding: 8px 14px !important; min-height: 0 !important;
+    }
+    .chat-thinking-dots {
+      display: inline-flex; align-items: center; gap: 4px; height: 16px;
+    }
+    .chat-thinking-dots span {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--text-tertiary);
+      animation: chat-thinking-bounce 1.2s infinite ease-in-out;
+    }
+    .chat-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .chat-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes chat-thinking-bounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-6px); opacity: 1; }
+    }

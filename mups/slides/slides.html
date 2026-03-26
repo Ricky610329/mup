@@ -6,7 +6,7 @@
   <script type="application/mup-manifest">
   {
     "name": "Slides",
-    "description": "Professional presentation editor. Layouts: title, content, two-column, image, blank. Themes: light, dark, blue, green. Export to PDF (print) or standalone HTML. Functions: createPresentation, addSlide, updateSlide, removeSlide, getSlides, setTheme, exportHTML.",
+    "description": "Professional presentation editor. Layouts: title, content, two-column, image, embed (HTML/SVG from other tools), blank. Aspect ratios: 16:9, 4:3, 1:1, 9:16. Themes: light, dark, blue, green, midnight, warm. Use embedContent to integrate chart SVGs, diagrams, and other visual outputs into slides. Export to PDF or standalone HTML.",
     "grid": { "minWidth": 2, "minHeight": 2 },
     "darkMode": true,
     "functions": [
@@ -18,7 +18,8 @@
           "properties": {
             "title": { "type": "string", "description": "Presentation title (used on auto-created title slide)" },
             "subtitle": { "type": "string", "description": "Subtitle for the title slide" },
-            "theme": { "type": "string", "enum": ["light", "dark", "blue", "green"], "description": "Color theme (default: light)" }
+            "theme": { "type": "string", "enum": ["light", "dark", "blue", "green", "midnight", "warm"], "description": "Color theme (default: light)" },
+            "aspectRatio": { "type": "string", "enum": ["16:9", "4:3", "1:1", "9:16"], "description": "Slide aspect ratio (default: 16:9)" }
           },
           "required": ["title"]
         }
@@ -29,10 +30,10 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "layout": { "type": "string", "enum": ["title", "content", "two-column", "image", "blank"], "description": "Slide layout type" },
+            "layout": { "type": "string", "enum": ["title", "content", "two-column", "image", "embed", "blank"], "description": "Slide layout. Use 'embed' for HTML/SVG content from charts, diagrams, or other tools." },
             "content": {
               "type": "object",
-              "description": "Content fields depend on layout. title: {title, subtitle}. content: {title, body}. two-column: {title, left, right}. image: {title, imageUrl, caption}. blank: {html}.",
+              "description": "Content fields depend on layout. title: {title, subtitle}. content: {title, body}. two-column: {title, left, right}. image: {title, imageUrl, caption}. embed: {title, html, caption}. blank: {html}.",
               "properties": {
                 "title": { "type": "string" },
                 "subtitle": { "type": "string" },
@@ -41,7 +42,7 @@
                 "right": { "type": "string", "description": "Right column markdown" },
                 "imageUrl": { "type": "string" },
                 "caption": { "type": "string" },
-                "html": { "type": "string" }
+                "html": { "type": "string", "description": "Raw HTML/SVG content" }
               }
             }
           },
@@ -55,7 +56,7 @@
           "type": "object",
           "properties": {
             "index": { "type": "integer", "description": "Slide index (0-based)" },
-            "layout": { "type": "string", "enum": ["title", "content", "two-column", "image", "blank"] },
+            "layout": { "type": "string", "enum": ["title", "content", "two-column", "image", "embed", "blank"] },
             "content": { "type": "object", "description": "Same content fields as addSlide" }
           },
           "required": ["index"]
@@ -83,9 +84,33 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "theme": { "type": "string", "enum": ["light", "dark", "blue", "green"], "description": "Color theme" }
+            "theme": { "type": "string", "enum": ["light", "dark", "blue", "green", "midnight", "warm"], "description": "Color theme" }
           },
           "required": ["theme"]
+        }
+      },
+      {
+        "name": "setAspectRatio",
+        "description": "Change the slide aspect ratio.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "aspectRatio": { "type": "string", "enum": ["16:9", "4:3", "1:1", "9:16"], "description": "Slide aspect ratio" }
+          },
+          "required": ["aspectRatio"]
+        }
+      },
+      {
+        "name": "embedContent",
+        "description": "Add a slide with embedded HTML/SVG content — ideal for integrating charts, diagrams, or other visual outputs from other tools.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "html": { "type": "string", "description": "HTML or SVG content to embed" },
+            "title": { "type": "string", "description": "Optional slide title" },
+            "caption": { "type": "string", "description": "Optional caption below the content" }
+          },
+          "required": ["html"]
         }
       },
       {
@@ -104,9 +129,9 @@
       --editor-sec: #666; --editor-ter: #999; --editor-border: #e0e0e0;
       --editor-hover: rgba(0,0,0,0.04); --editor-accent: #0066cc;
       --editor-active-bg: #e3f2fd;
-      /* Slide theme (overridden by setTheme) */
       --slide-bg: #ffffff; --slide-text: #1a1a1a; --slide-heading: #0d0d0d;
       --slide-accent: #0066cc; --slide-muted: #666666; --slide-code-bg: #f5f5f5;
+      --slide-ratio: 16/9;
     }
     body.editor-dark {
       --editor-bg: #1e1e1e; --editor-toolbar: #2d2d2d; --editor-text: #d4d4d4;
@@ -124,7 +149,7 @@
     .toolbar {
       display: flex; align-items: center; gap: 6px;
       padding: 5px 10px; border-bottom: 1px solid var(--editor-border);
-      background: var(--editor-toolbar); flex-shrink: 0;
+      background: var(--editor-toolbar); flex-shrink: 0; flex-wrap: wrap;
     }
     .toolbar-title { font-size: 11px; font-weight: 600; color: var(--editor-sec); }
     .toolbar-spacer { flex: 1; }
@@ -140,6 +165,7 @@
       color: var(--editor-text); font-family: inherit; outline: none;
     }
     .toolbar-info { font-size: 10px; color: var(--editor-ter); }
+    .toolbar-sep { width: 1px; height: 16px; background: var(--editor-border); margin: 0 2px; }
     /* ---- Main ---- */
     .main { flex: 1; display: flex; overflow: hidden; }
     /* ---- Sidebar ---- */
@@ -157,7 +183,7 @@
     .slide-thumb {
       position: relative; border: 2px solid transparent; border-radius: 4px;
       margin-bottom: 4px; cursor: pointer; padding: 2px;
-      aspect-ratio: 16/9; overflow: hidden; background: var(--editor-bg);
+      aspect-ratio: var(--slide-ratio); overflow: hidden; background: var(--editor-bg);
     }
     .slide-thumb:hover { border-color: var(--editor-border); }
     .slide-thumb.active { border-color: var(--editor-accent); }
@@ -184,12 +210,14 @@
       padding: 16px; overflow: hidden; background: var(--editor-hover);
     }
     .slide-frame {
-      width: 100%; max-width: 800px; aspect-ratio: 16/9;
+      width: 100%; max-width: 800px; aspect-ratio: var(--slide-ratio);
       background: var(--slide-bg); border-radius: 4px;
       box-shadow: 0 2px 12px rgba(0,0,0,0.12);
       position: relative; overflow: hidden;
       display: flex; flex-direction: column;
     }
+    /* Constrain height for portrait ratios */
+    .slide-frame.ratio-portrait { max-width: none; max-height: 90%; width: auto; }
     /* ---- Slide Content ---- */
     .slide-inner {
       flex: 1; padding: 40px 48px; display: flex; flex-direction: column;
@@ -239,6 +267,22 @@
       border-radius: 6px; margin: 8px auto; display: block;
     }
     .layout-image .caption { font-size: 13px; color: var(--slide-muted); text-align: center; margin-top: 8px; }
+    /* Embed layout */
+    .layout-embed .slide-inner { padding: 24px 32px; }
+    .layout-embed .embed-container {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      overflow: hidden; min-height: 0;
+    }
+    .layout-embed .embed-container > svg {
+      max-width: 100%; max-height: 100%; height: auto;
+    }
+    .layout-embed .embed-container > img {
+      max-width: 100%; max-height: 100%; object-fit: contain;
+    }
+    .layout-embed .embed-container > iframe {
+      width: 100%; height: 100%; border: none; border-radius: 4px;
+    }
+    .layout-embed .caption { font-size: 13px; color: var(--slide-muted); text-align: center; margin-top: 8px; }
     /* Footer */
     .slide-footer {
       padding: 6px 48px; display: flex; justify-content: space-between;
@@ -297,19 +341,30 @@
     <span class="toolbar-title">Slides</span>
     <span class="toolbar-info" id="slideInfo">0 slides</span>
     <span class="toolbar-spacer"></span>
+    <select class="toolbar-select" id="ratioSelect" title="Aspect ratio">
+      <option value="16:9">16:9</option>
+      <option value="4:3">4:3</option>
+      <option value="1:1">1:1</option>
+      <option value="9:16">9:16</option>
+    </select>
+    <div class="toolbar-sep"></div>
     <select class="toolbar-select" id="layoutSelect">
       <option value="title">Title</option>
       <option value="content" selected>Content</option>
       <option value="two-column">Two Column</option>
       <option value="image">Image</option>
+      <option value="embed">Embed</option>
       <option value="blank">Blank</option>
     </select>
     <button class="toolbar-btn" id="addSlideBtn">+ Slide</button>
+    <div class="toolbar-sep"></div>
     <select class="toolbar-select" id="themeSelect">
       <option value="light">Light</option>
       <option value="dark">Dark</option>
       <option value="blue">Blue</option>
       <option value="green">Green</option>
+      <option value="midnight">Midnight</option>
+      <option value="warm">Warm</option>
     </select>
     <button class="toolbar-btn" id="presentBtn">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> Present
@@ -336,15 +391,21 @@
     let slides = [];
     let currentIndex = 0;
     let theme = 'light';
+    let aspectRatio = '16:9';
     let presentationTitle = '';
     let stateTimer = null;
     const STORAGE_KEY = 'mup-slides-data';
 
+    const RATIOS = { '16:9': '16/9', '4:3': '4/3', '1:1': '1/1', '9:16': '9/16' };
+    const PORTRAIT_RATIOS = new Set(['9:16']);
+
     const themes = {
-      light:  { bg:'#ffffff', text:'#1a1a1a', heading:'#0d0d0d', accent:'#0066cc', muted:'#666666', codeBg:'#f5f5f5' },
-      dark:   { bg:'#1e1e1e', text:'#e0e0e0', heading:'#ffffff', accent:'#60a5fa', muted:'#999999', codeBg:'#2d2d2d' },
-      blue:   { bg:'#0f172a', text:'#e2e8f0', heading:'#ffffff', accent:'#38bdf8', muted:'#94a3b8', codeBg:'#1e293b' },
-      green:  { bg:'#f0fdf4', text:'#1a3a1a', heading:'#14532d', accent:'#16a34a', muted:'#6b7280', codeBg:'#dcfce7' },
+      light:    { bg:'#ffffff', text:'#1a1a1a', heading:'#0d0d0d', accent:'#0066cc', muted:'#666666', codeBg:'#f5f5f5' },
+      dark:     { bg:'#1e1e1e', text:'#e0e0e0', heading:'#ffffff', accent:'#60a5fa', muted:'#999999', codeBg:'#2d2d2d' },
+      blue:     { bg:'#0f172a', text:'#e2e8f0', heading:'#ffffff', accent:'#38bdf8', muted:'#94a3b8', codeBg:'#1e293b' },
+      green:    { bg:'#f0fdf4', text:'#1a3a1a', heading:'#14532d', accent:'#16a34a', muted:'#6b7280', codeBg:'#dcfce7' },
+      midnight: { bg:'#0a0a1a', text:'#c8c8e0', heading:'#eeeeff', accent:'#a78bfa', muted:'#6b6b8a', codeBg:'#14142b' },
+      warm:     { bg:'#fdf6ec', text:'#3d2e1c', heading:'#2a1a08', accent:'#d97706', muted:'#8b7355', codeBg:'#f5ead6' },
     };
 
     function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -352,6 +413,16 @@
     function md(s) {
       if (!s) return '';
       try { return marked.parse(s); } catch { return esc(s); }
+    }
+
+    // ---- Aspect ratio ----
+    function applyAspectRatio(r) {
+      const cssVal = RATIOS[r] || '16/9';
+      document.documentElement.style.setProperty('--slide-ratio', cssVal);
+    }
+
+    function pageOrientation() {
+      return PORTRAIT_RATIOS.has(aspectRatio) ? 'portrait' : 'landscape';
     }
 
     // ---- Theme ----
@@ -387,6 +458,9 @@
         case 'image':
           inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${c.imageUrl ? `<img src="${esc(c.imageUrl)}" alt="">` : ''}<div class="caption">${esc(c.caption || '')}</div>`;
           break;
+        case 'embed':
+          inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}<div class="embed-container">${c.html || ''}</div>${c.caption ? `<div class="caption">${esc(c.caption)}</div>` : ''}`;
+          break;
         case 'blank':
           inner = c.html || '';
           break;
@@ -400,7 +474,9 @@
     // ---- Render UI ----
     function render() {
       applySlideTheme(theme);
+      applyAspectRatio(aspectRatio);
       document.getElementById('themeSelect').value = theme;
+      document.getElementById('ratioSelect').value = aspectRatio;
       document.getElementById('slideInfo').textContent = `${slides.length} slide${slides.length !== 1 ? 's' : ''}`;
 
       // Sidebar thumbnails
@@ -435,7 +511,6 @@
       editPanel.style.display = 'flex';
 
       const slide = slides[currentIndex];
-      // Ensure canvas has a slide frame
       let frame = canvasArea.querySelector('.slide-frame');
       if (!frame) {
         canvasArea.innerHTML = '';
@@ -443,7 +518,8 @@
         frame.className = 'slide-frame';
         canvasArea.appendChild(frame);
       }
-      frame.className = `slide-frame layout-${slide.layout}`;
+      const isPortrait = PORTRAIT_RATIOS.has(aspectRatio);
+      frame.className = `slide-frame layout-${slide.layout}${isPortrait ? ' ratio-portrait' : ''}`;
       frame.style.background = themes[theme]?.bg || '#fff';
       frame.innerHTML = renderSlideHTML(slide, currentIndex, slides.length);
 
@@ -456,7 +532,7 @@
       const c = slide.content || {};
       let html = `<div class="edit-group"><div class="edit-label">LAYOUT</div>
         <select class="edit-input" id="editLayout">
-          ${['title','content','two-column','image','blank'].map(l => `<option value="${l}"${l===slide.layout?' selected':''}>${l}</option>`).join('')}
+          ${['title','content','two-column','image','embed','blank'].map(l => `<option value="${l}"${l===slide.layout?' selected':''}>${l}</option>`).join('')}
         </select></div>`;
 
       if (slide.layout !== 'blank') {
@@ -482,6 +558,12 @@
           <input class="edit-input" id="editImageUrl" value="${esc(c.imageUrl||'')}" placeholder="https://..."></div>
           <div class="edit-group"><div class="edit-label">CAPTION</div>
           <input class="edit-input" id="editCaption" value="${esc(c.caption||'')}" placeholder="Image caption..."></div>`;
+      }
+      if (slide.layout === 'embed') {
+        html += `<div class="edit-group"><div class="edit-label">HTML / SVG</div>
+          <textarea class="edit-textarea" id="editHtml" rows="8" placeholder="Paste HTML or SVG...">${esc(c.html||'')}</textarea></div>
+          <div class="edit-group"><div class="edit-label">CAPTION</div>
+          <input class="edit-input" id="editCaption" value="${esc(c.caption||'')}" placeholder="Caption..."></div>`;
       }
       if (slide.layout === 'blank') {
         html += `<div class="edit-group"><div class="edit-label">HTML</div>
@@ -526,6 +608,11 @@
       render(); debouncedSave();
     });
 
+    document.getElementById('ratioSelect').addEventListener('change', (e) => {
+      aspectRatio = e.target.value;
+      render(); debouncedSave();
+    });
+
     document.getElementById('presentBtn').addEventListener('click', startPresentation);
     document.getElementById('pdfBtn').addEventListener('click', exportPDF);
     document.getElementById('htmlBtn').addEventListener('click', downloadHTML);
@@ -536,22 +623,28 @@
       const win = window.open('', '_blank');
       if (!win) return;
       const th = themes[theme] || themes.light;
+      const ratioCSS = RATIOS[aspectRatio] || '16/9';
+      const isPortrait = PORTRAIT_RATIOS.has(aspectRatio);
       const slidesHtml = slides.map((s, i) =>
         `<div class="slide layout-${s.layout}" style="background:${th.bg};">
           ${renderSlideHTML(s, i, slides.length)}
         </div>`
       ).join('');
-      win.document.write(buildPresentationHTML(slidesHtml, th));
+      win.document.write(buildPresentationHTML(slidesHtml, th, ratioCSS, isPortrait));
       win.document.close();
     }
 
-    function buildPresentationHTML(slidesHtml, th) {
+    function buildPresentationHTML(slidesHtml, th, ratioCSS, isPortrait) {
+      // For portrait ratios, center the slide in the viewport
+      const slideSize = isPortrait
+        ? `width:auto;height:100vh;aspect-ratio:${ratioCSS};max-width:100vw;margin:0 auto;`
+        : `width:100vw;height:100vh;`;
       return `<!DOCTYPE html><html><head><meta charset="UTF-8">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
           *{margin:0;padding:0;box-sizing:border-box}
-          body{background:#000;overflow:hidden;font-family:'Inter',sans-serif}
-          .slide{width:100vw;height:100vh;display:none;flex-direction:column;position:relative;overflow:hidden;color:${th.text}}
+          body{background:#000;overflow:hidden;font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
+          .slide{${slideSize}display:none;flex-direction:column;position:relative;overflow:hidden;color:${th.text}}
           .slide.active{display:flex}
           .slide-inner{flex:1;padding:6vh 6vw;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
           .slide-inner h1{font-size:4vw;font-weight:700;color:${th.heading};margin-bottom:1.5vh;line-height:1.2}
@@ -571,6 +664,9 @@
           .slide-columns{display:flex;gap:4vw;flex:1}.slide-col{flex:1;overflow:hidden}
           .layout-image img{max-width:80%;max-height:55vh;object-fit:contain;border-radius:8px;margin:1vh auto;display:block}
           .caption{font-size:1.3vw;color:${th.muted};text-align:center;margin-top:1vh}
+          .embed-container{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0}
+          .embed-container>svg{max-width:100%;max-height:100%;height:auto}
+          .embed-container>img{max-width:100%;max-height:100%;object-fit:contain}
           .slide-footer{padding:1vh 6vw;display:flex;justify-content:space-between;font-size:1.2vw;color:${th.muted};flex-shrink:0}
           .slide-progress{position:absolute;bottom:0;left:0;height:4px;background:${th.accent};transition:width 0.3s}
         </style></head><body>
@@ -592,6 +688,7 @@
     function exportPDF() {
       if (slides.length === 0) return;
       const th = themes[theme] || themes.light;
+      const orient = pageOrientation();
       const printWin = window.open('', '_blank');
       if (!printWin) return;
       const slidesHtml = slides.map((s, i) =>
@@ -603,7 +700,7 @@
       printWin.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
-          @page{size:landscape;margin:0}*{margin:0;padding:0;box-sizing:border-box}
+          @page{size:${orient};margin:0}*{margin:0;padding:0;box-sizing:border-box}
           body{font-family:'Inter',sans-serif}
           .print-slide{width:100vw;height:100vh;page-break-after:always;display:flex;flex-direction:column;overflow:hidden;position:relative}
           .print-slide:last-child{page-break-after:auto}
@@ -618,6 +715,8 @@
           .layout-title .slide-inner{justify-content:center;align-items:center;text-align:center}
           .slide-columns{display:flex;gap:32px;flex:1}.slide-col{flex:1}
           .caption{font-size:11pt;color:${th.muted};text-align:center}
+          .embed-container{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden}
+          .embed-container>svg{max-width:100%;max-height:100%;height:auto}
           img{max-width:80%;max-height:50vh;object-fit:contain;margin:8px auto;display:block;border-radius:6px}
         </style></head><body>${slidesHtml}</body></html>`);
       printWin.document.close();
@@ -628,12 +727,14 @@
     function downloadHTML() {
       if (slides.length === 0) return;
       const th = themes[theme] || themes.light;
+      const ratioCSS = RATIOS[aspectRatio] || '16/9';
+      const isPortrait = PORTRAIT_RATIOS.has(aspectRatio);
       const slidesHtml = slides.map((s, i) =>
         `<div class="slide layout-${s.layout}" style="background:${th.bg};">
           ${renderSlideHTML(s, i, slides.length)}
         </div>`
       ).join('');
-      const html = buildPresentationHTML(slidesHtml, th);
+      const html = buildPresentationHTML(slidesHtml, th, ratioCSS, isPortrait);
       const blob = new Blob([html], { type: 'text/html' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -655,28 +756,34 @@
     // ---- State ----
     function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 500); }
     function save() {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, slides, theme, presentationTitle, currentIndex })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 2, slides, theme, aspectRatio, presentationTitle, currentIndex })); } catch {}
       const summary = slides.length === 0
         ? 'Slides: empty'
-        : `Slides: "${presentationTitle || 'Untitled'}" — ${slides.length} slide(s), theme: ${theme}`;
+        : `Slides: "${presentationTitle || 'Untitled'}" — ${slides.length} slide(s), ${aspectRatio}, theme: ${theme}`;
       mup.updateState(summary);
     }
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) { const d = JSON.parse(stored); if (d._v === 1) return d; }
+        if (stored) {
+          const d = JSON.parse(stored);
+          if (d._v === 2) return d;
+          // Migrate from v1
+          if (d._v === 1) return { ...d, _v: 2, aspectRatio: '16:9' };
+        }
       } catch {}
       return null;
     }
 
     // ---- MUP functions ----
-    mup.registerFunction('createPresentation', ({ title, subtitle, theme: t }) => {
+    mup.registerFunction('createPresentation', ({ title, subtitle, theme: t, aspectRatio: ar }) => {
       presentationTitle = title;
       if (t) theme = t;
+      if (ar) aspectRatio = ar;
       slides = [{ layout: 'title', content: { title, subtitle: subtitle || '' } }];
       currentIndex = 0;
       render(); save();
-      return { content: [{ type: 'text', text: `Created presentation "${title}" with title slide. Theme: ${theme}.` }], isError: false };
+      return { content: [{ type: 'text', text: `Created presentation "${title}" with title slide. Theme: ${theme}, ratio: ${aspectRatio}.` }], isError: false };
     });
 
     mup.registerFunction('addSlide', ({ layout, content }) => {
@@ -706,13 +813,27 @@
     mup.registerFunction('getSlides', () => {
       if (slides.length === 0) return { content: [{ type: 'text', text: 'No slides.' }], isError: false };
       const lines = slides.map((s, i) => `[${i}] ${s.layout}: ${s.content?.title || s.content?.body?.slice(0,50) || '(empty)'}`);
-      return { content: [{ type: 'text', text: `"${presentationTitle}" (${theme} theme, ${slides.length} slides):\n${lines.join('\n')}` }], isError: false };
+      return { content: [{ type: 'text', text: `"${presentationTitle}" (${theme} theme, ${aspectRatio}, ${slides.length} slides):\n${lines.join('\n')}` }], isError: false };
     });
 
     mup.registerFunction('setTheme', ({ theme: t }) => {
       theme = t;
       render(); save();
       return { content: [{ type: 'text', text: `Theme set to "${t}".` }], isError: false };
+    });
+
+    mup.registerFunction('setAspectRatio', ({ aspectRatio: ar }) => {
+      if (!RATIOS[ar]) return { content: [{ type: 'text', text: `Unknown ratio "${ar}". Use: ${Object.keys(RATIOS).join(', ')}.` }], isError: true };
+      aspectRatio = ar;
+      render(); save();
+      return { content: [{ type: 'text', text: `Aspect ratio set to ${ar}.` }], isError: false };
+    });
+
+    mup.registerFunction('embedContent', ({ html, title, caption }) => {
+      slides.push({ layout: 'embed', content: { html: html || '', title: title || '', caption: caption || '' } });
+      currentIndex = slides.length - 1;
+      render(); save();
+      return { content: [{ type: 'text', text: `Added embed slide (index ${currentIndex}). Total: ${slides.length}.` }], isError: false };
     });
 
     mup.registerFunction('exportHTML', () => {
@@ -729,6 +850,7 @@
       if (state) {
         slides = state.slides || [];
         theme = state.theme || 'light';
+        aspectRatio = state.aspectRatio || '16:9';
         presentationTitle = state.presentationTitle || '';
         currentIndex = state.currentIndex || 0;
         if (currentIndex >= slides.length) currentIndex = 0;

@@ -29,4 +29,10 @@ export const CONFIG = {
   wsMaxPayloadBytes: 10 * 1024 * 1024,
   /** Channel notification debounce (ms) */
   channelDebounceMs: 500,
+  /** Heartbeat ping interval (ms) */
+  heartbeatIntervalMs: 30_000,
+  /** Heartbeat pong timeout — terminate if no response (ms) */
+  heartbeatTimeoutMs: 10_000,
+  /** Max age for queued messages before they're discarded (ms) */
+  messageQueueTtlMs: 60_000,
 } as const;

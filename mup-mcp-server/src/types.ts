@@ -153,7 +153,8 @@ export type ServerMessage =
   | { type: "mups-path-changed"; path: string }
   | { type: "mups-path-error"; errors: string[] }
   | { type: "mups-path-warnings"; warnings: string[] }
-  | { type: "permission-request"; requestId: string; toolName: string; description: string; inputPreview: string };
+  | { type: "permission-request"; requestId: string; toolName: string; description: string; inputPreview: string }
+  | { type: "thinking"; active: boolean };
 
 // ---- Typed Event Emitter for UiBridge ----
 
