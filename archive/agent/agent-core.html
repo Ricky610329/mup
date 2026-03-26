@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Agent Core</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Agent Core",
+    "description": "Task queue and execution controller for agent workflow. Add tasks, start execution, and the agent chains through them via channel notifications. Functions: addTask, getTasks, startNext, completeTask, failTask, pauseAll, clearCompleted, getStatus.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "getTasks",
+        "description": "Get all tasks with their status. Call this to see the current queue.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "addTask",
+        "description": "Add a new task to the queue.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string", "description": "Task title" },
+            "description": { "type": "string", "description": "Detailed task description with requirements" },
+            "priority": { "type": "string", "enum": ["high", "normal", "low"], "description": "Priority level (default: normal)" }
+          },
+          "required": ["title", "description"]
+        }
+      },
+      {
+        "name": "startNext",
+        "description": "Start the next pending task. Returns the task details. Call this when ready to work on the next task.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "completeTask",
+        "description": "Mark the current running task as completed with a summary.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "summary": { "type": "string", "description": "Brief summary of what was done" }
+          },
+          "required": ["summary"]
+        }
+      },
+      {
+        "name": "failTask",
+        "description": "Mark the current running task as failed with a reason.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "reason": { "type": "string", "description": "Why the task failed" }
+          },
+          "required": ["reason"]
+        }
+      },
+      {
+        "name": "getStatus",
+        "description": "Get a summary of the queue status: counts by state, current task, etc.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "pauseAll",
+        "description": "Pause execution. No more tasks will auto-start until resumed.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "clearCompleted",
+        "description": "Remove all completed tasks from the queue.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "updateTask",
+        "description": "Update a task's title, description, or priority.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "taskId": { "type": "string" },
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "priority": { "type": "string", "enum": ["high", "normal", "low"] }
+          },
+          "required": ["taskId"]
+        }
+      },
+      {
+        "name": "removeTask",
+        "description": "Remove a task from the queue.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "taskId": { "type": "string" }
+          },
+          "required": ["taskId"]
+        }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    :root {
+      --bg: #fff; --bg-toolbar: #f8f9fa; --bg-card: #fff;
+      --text: #333; --text-sec: #666; --text-ter: #999;
+      --border: #e0e0e0; --hover: rgba(0,0,0,0.04);
+      --accent: #0066cc; --accent-bg: #e3f2fd;
+      --green: #22c55e; --green-bg: #f0fdf4;
+      --red: #ef4444; --red-bg: #fef2f2;
+      --amber: #f59e0b; --amber-bg: #fffbeb;
+      --blue: #3b82f6; --blue-bg: #eff6ff;
+    }
+    body.dark {
+      --bg: #1e1e1e; --bg-toolbar: #2d2d2d; --bg-card: #252526;
+      --text: #d4d4d4; --text-sec: #858585; --text-ter: #5a5a5a;
+      --border: #404040; --hover: rgba(255,255,255,0.06);
+      --accent: #569cd6; --accent-bg: #37373d;
+      --green: #4ade80; --green-bg: #1a2e1a;
+      --red: #f87171; --red-bg: #2e1a1a;
+      --amber: #fbbf24; --amber-bg: #2e2a1a;
+      --blue: #60a5fa; --blue-bg: #1a2a3e;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100vh; display: flex; flex-direction: column;
+      background: var(--bg); color: var(--text);
+    }
+
+    .toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-bottom: 1px solid var(--border);
+      background: var(--bg-toolbar); flex-shrink: 0;
+    }
+    .toolbar-title { font-size: 12px; font-weight: 600; color: var(--text-sec); }
+    .toolbar-spacer { flex: 1; }
+    .toolbar-stat {
+      font-size: 10px; padding: 2px 6px; border-radius: 10px;
+      font-weight: 500;
+    }
+    .stat-pending { background: var(--amber-bg); color: var(--amber); }
+    .stat-running { background: var(--blue-bg); color: var(--blue); }
+    .stat-done { background: var(--green-bg); color: var(--green); }
+    .toolbar-btn {
+      background: none; border: 1px solid var(--border); cursor: pointer;
+      color: var(--text-sec); font-size: 11px; padding: 3px 8px;
+      border-radius: 4px; font-family: inherit;
+    }
+    .toolbar-btn:hover { background: var(--hover); color: var(--text); }
+    .toolbar-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .toolbar-btn.primary:hover { opacity: 0.85; }
+    .toolbar-btn.danger { color: var(--red); border-color: var(--red); }
+    .toolbar-btn.danger:hover { background: var(--red-bg); }
+
+    .task-list { flex: 1; overflow-y: auto; padding: 8px; }
+
+    .task {
+      border: 1px solid var(--border); border-radius: 8px;
+      margin-bottom: 6px; overflow: hidden; background: var(--bg-card);
+    }
+    .task-header {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 10px; cursor: pointer;
+    }
+    .task-header:hover { background: var(--hover); }
+    .task-status {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .task-status.pending { background: var(--amber); }
+    .task-status.running { background: var(--blue); animation: pulse 1.5s infinite; }
+    .task-status.completed { background: var(--green); }
+    .task-status.failed { background: var(--red); }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+    .task-title {
+      flex: 1; font-size: 13px; font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .task.completed .task-title { text-decoration: line-through; color: var(--text-ter); }
+    .task-priority {
+      font-size: 9px; padding: 1px 5px; border-radius: 8px;
+      font-weight: 600; text-transform: uppercase;
+    }
+    .priority-high { background: var(--red-bg); color: var(--red); }
+    .priority-low { background: var(--hover); color: var(--text-ter); }
+    .task-actions { display: flex; gap: 2px; opacity: 0; }
+    .task-header:hover .task-actions { opacity: 1; }
+    .task-act {
+      background: none; border: none; cursor: pointer; color: var(--text-ter);
+      font-size: 12px; padding: 2px 4px; border-radius: 3px;
+    }
+    .task-act:hover { background: var(--hover); color: var(--text); }
+    .task-act.danger:hover { color: var(--red); }
+
+    .task-body {
+      padding: 0 10px 8px 24px; font-size: 12px; color: var(--text-sec);
+      line-height: 1.5; display: none; white-space: pre-wrap;
+    }
+    .task.expanded .task-body { display: block; }
+    .task-result {
+      margin-top: 6px; padding: 4px 8px; border-radius: 4px;
+      font-size: 11px;
+    }
+    .task-result.success { background: var(--green-bg); color: var(--green); }
+    .task-result.error { background: var(--red-bg); color: var(--red); }
+
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 8px; padding: 40px 16px;
+      color: var(--text-ter); font-size: 13px; text-align: center; flex: 1;
+    }
+
+    /* Add task form */
+    .add-form {
+      border-top: 1px solid var(--border); padding: 8px;
+      background: var(--bg-toolbar); flex-shrink: 0; display: none;
+    }
+    .add-form.open { display: block; }
+    .add-form input, .add-form textarea {
+      width: 100%; border: 1px solid var(--border); border-radius: 4px;
+      padding: 5px 8px; font-size: 12px; font-family: inherit;
+      background: var(--bg); color: var(--text); outline: none;
+      margin-bottom: 4px;
+    }
+    .add-form textarea { resize: none; min-height: 50px; }
+    .add-form input:focus, .add-form textarea:focus { border-color: var(--accent); }
+    .add-form-actions { display: flex; gap: 4px; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span class="toolbar-title">Agent Core</span>
+    <span class="toolbar-stat stat-pending" id="statPending">0</span>
+    <span class="toolbar-stat stat-running" id="statRunning">0</span>
+    <span class="toolbar-stat stat-done" id="statDone">0</span>
+    <span class="toolbar-spacer"></span>
+    <button class="toolbar-btn" id="addBtn">+ Task</button>
+    <button class="toolbar-btn primary" id="startBtn">Start</button>
+  </div>
+  <div class="task-list" id="taskList"></div>
+  <div class="add-form" id="addForm">
+    <input type="text" id="addTitle" placeholder="Task title...">
+    <textarea id="addDesc" placeholder="Task description..." rows="3"></textarea>
+    <div class="add-form-actions">
+      <select id="addPriority" style="font-size:11px;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);">
+        <option value="normal">Normal</option>
+        <option value="high">High</option>
+        <option value="low">Low</option>
+      </select>
+      <button class="toolbar-btn" id="addCancel">Cancel</button>
+      <button class="toolbar-btn primary" id="addSubmit">Add</button>
+    </div>
+  </div>
+
+  <script>
+    const taskListEl = document.getElementById('taskList');
+    let tasks = [];
+    let paused = false;
+    let stateTimer = null;
+    let autoChain = true; // When a task completes, auto-notify next
+
+    function genId() { return 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5); }
+    function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function getRunning() { return tasks.find(t => t.status === 'running'); }
+    function getPending() { return tasks.filter(t => t.status === 'pending').sort((a, b) => {
+      const p = { high: 0, normal: 1, low: 2 };
+      return (p[a.priority] || 1) - (p[b.priority] || 1);
+    }); }
+
+    // ---- Rendering ----
+    function render() {
+      updateStats();
+      if (tasks.length === 0) {
+        taskListEl.innerHTML = '<div class="empty-state"><span>No tasks in queue</span><span style="font-size:11px">Click <b>+ Task</b> or let the agent use <b>addTask</b></span></div>';
+        return;
+      }
+      taskListEl.innerHTML = '';
+      // Show running first, then pending by priority, then completed, then failed
+      const order = ['running', 'pending', 'completed', 'failed'];
+      const sorted = [...tasks].sort((a, b) => {
+        const ai = order.indexOf(a.status), bi = order.indexOf(b.status);
+        if (ai !== bi) return ai - bi;
+        if (a.status === 'pending') {
+          const p = { high: 0, normal: 1, low: 2 };
+          return (p[a.priority] || 1) - (p[b.priority] || 1);
+        }
+        return 0;
+      });
+      for (const t of sorted) {
+        const div = document.createElement('div');
+        div.className = 'task' + (t.status === 'completed' ? ' completed' : '') + (t._expanded ? ' expanded' : '');
+        const prioHtml = t.priority === 'high' ? '<span class="task-priority priority-high">HIGH</span>' :
+                         t.priority === 'low' ? '<span class="task-priority priority-low">LOW</span>' : '';
+        let resultHtml = '';
+        if (t.result) resultHtml = `<div class="task-result ${t.status === 'completed' ? 'success' : 'error'}">${esc(t.result)}</div>`;
+
+        div.innerHTML = `
+          <div class="task-header">
+            <span class="task-status ${t.status}"></span>
+            <span class="task-title">${esc(t.title)}</span>
+            ${prioHtml}
+            <div class="task-actions">
+              <button class="task-act danger" data-action="remove" title="Remove">&times;</button>
+            </div>
+          </div>
+          <div class="task-body">${esc(t.description)}${resultHtml}</div>
+        `;
+        div.querySelector('.task-header').addEventListener('click', () => {
+          t._expanded = !t._expanded;
+          div.classList.toggle('expanded', t._expanded);
+        });
+        div.querySelector('[data-action="remove"]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          tasks = tasks.filter(x => x.id !== t.id);
+          render(); debouncedSave();
+        });
+        taskListEl.appendChild(div);
+      }
+    }
+
+    function updateStats() {
+      const pending = tasks.filter(t => t.status === 'pending').length;
+      const running = tasks.filter(t => t.status === 'running').length;
+      const done = tasks.filter(t => t.status === 'completed').length;
+      document.getElementById('statPending').textContent = pending;
+      document.getElementById('statRunning').textContent = running;
+      document.getElementById('statDone').textContent = done;
+    }
+
+    // ---- Add form ----
+    document.getElementById('addBtn').addEventListener('click', () => {
+      document.getElementById('addForm').classList.toggle('open');
+      document.getElementById('addTitle').focus();
+    });
+    document.getElementById('addCancel').addEventListener('click', () => {
+      document.getElementById('addForm').classList.remove('open');
+    });
+    document.getElementById('addSubmit').addEventListener('click', () => {
+      const title = document.getElementById('addTitle').value.trim();
+      const desc = document.getElementById('addDesc').value.trim();
+      const priority = document.getElementById('addPriority').value;
+      if (!title) return;
+      tasks.push({ id: genId(), title, description: desc, priority, status: 'pending', createdAt: Date.now() });
+      document.getElementById('addTitle').value = '';
+      document.getElementById('addDesc').value = '';
+      document.getElementById('addPriority').value = 'normal';
+      document.getElementById('addForm').classList.remove('open');
+      render(); debouncedSave();
+    });
+
+    // ---- Start button ----
+    document.getElementById('startBtn').addEventListener('click', () => {
+      if (getRunning()) return; // Already running
+      paused = false;
+      triggerNext();
+    });
+
+    function triggerNext() {
+      if (paused) return;
+      if (getRunning()) return;
+      const pending = getPending();
+      if (pending.length === 0) return;
+      const task = pending[0];
+      task.status = 'running';
+      task.startedAt = Date.now();
+      render(); debouncedSave();
+      // Send channel notification to wake Claude Code
+      mup.notifyInteraction('taskReady', `Task ready: ${task.title}\n\nDescription: ${task.description}`, { taskId: task.id, title: task.title, description: task.description });
+    }
+
+    // ---- State ----
+    // ---- State (localStorage + summary to server) ----
+    const STORAGE_KEY = 'mup-agent-core-data';
+    function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 500); }
+    function save() {
+      const clean = tasks.map(({ _expanded, ...t }) => t);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, tasks: clean, paused, autoChain })); } catch {}
+      const running = getRunning();
+      const pending = getPending().length;
+      let summary = `Agent Core: ${tasks.length} task(s), ${pending} pending`;
+      if (running) summary += `, running: "${running.title}"`;
+      if (paused) summary += ' [PAUSED]';
+      mup.updateState(summary);
+    }
+    function loadState() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1) return d; }
+      } catch {}
+      return {};
+    }
+
+    // ---- Theme ----
+    function applyTheme(t) { document.body.classList.toggle('dark', t === 'dark'); }
+
+    // ---- MUP functions ----
+    mup.registerFunction('getTasks', () => {
+      if (tasks.length === 0) return { content: [{ type: 'text', text: 'Queue is empty.' }], isError: false };
+      const lines = tasks.map(t => `[${t.status}] ${t.title} (${t.priority}) — ${t.description.slice(0, 80)}`);
+      return { content: [{ type: 'text', text: lines.join('\n') }, { type: 'data', data: { tasks: tasks.map(({ _expanded, ...t }) => t), paused } }], isError: false };
+    });
+
+    mup.registerFunction('addTask', ({ title, description, priority }) => {
+      const task = { id: genId(), title, description, priority: priority || 'normal', status: 'pending', createdAt: Date.now() };
+      tasks.push(task);
+      render(); save();
+      return { content: [{ type: 'text', text: `Added task "${title}" (${task.id}).` }], isError: false };
+    });
+
+    mup.registerFunction('startNext', () => {
+      if (getRunning()) return { content: [{ type: 'text', text: `Already running: "${getRunning().title}". Complete or fail it first.` }], isError: true };
+      const pending = getPending();
+      if (pending.length === 0) return { content: [{ type: 'text', text: 'No pending tasks.' }], isError: false };
+      const task = pending[0];
+      task.status = 'running';
+      task.startedAt = Date.now();
+      paused = false;
+      render(); save();
+      return { content: [{ type: 'text', text: `Started: "${task.title}"\n\n${task.description}` }, { type: 'data', data: { taskId: task.id, title: task.title, description: task.description, priority: task.priority } }], isError: false };
+    });
+
+    mup.registerFunction('completeTask', ({ summary }) => {
+      const running = getRunning();
+      if (!running) return { content: [{ type: 'text', text: 'No running task to complete.' }], isError: true };
+      running.status = 'completed';
+      running.completedAt = Date.now();
+      running.result = summary;
+      render(); save();
+      // Auto-chain: notify about next task
+      if (autoChain && !paused) {
+        const next = getPending();
+        if (next.length > 0) {
+          setTimeout(() => triggerNext(), 500);
+        }
+      }
+      return { content: [{ type: 'text', text: `Completed: "${running.title}". ${getPending().length} task(s) remaining.` }], isError: false };
+    });
+
+    mup.registerFunction('failTask', ({ reason }) => {
+      const running = getRunning();
+      if (!running) return { content: [{ type: 'text', text: 'No running task to fail.' }], isError: true };
+      running.status = 'failed';
+      running.completedAt = Date.now();
+      running.result = reason;
+      render(); save();
+      return { content: [{ type: 'text', text: `Failed: "${running.title}" — ${reason}. Queue paused.` }], isError: false };
+    });
+
+    mup.registerFunction('getStatus', () => {
+      const pending = tasks.filter(t => t.status === 'pending').length;
+      const running = getRunning();
+      const completed = tasks.filter(t => t.status === 'completed').length;
+      const failed = tasks.filter(t => t.status === 'failed').length;
+      let text = `Queue: ${pending} pending, ${completed} completed, ${failed} failed.`;
+      if (running) text += `\nRunning: "${running.title}"`;
+      if (paused) text += '\nStatus: PAUSED';
+      return { content: [{ type: 'text', text }], isError: false };
+    });
+
+    mup.registerFunction('pauseAll', () => {
+      paused = true;
+      render(); save();
+      return { content: [{ type: 'text', text: 'Queue paused. No more tasks will auto-start.' }], isError: false };
+    });
+
+    mup.registerFunction('clearCompleted', () => {
+      const count = tasks.filter(t => t.status === 'completed').length;
+      tasks = tasks.filter(t => t.status !== 'completed');
+      render(); save();
+      return { content: [{ type: 'text', text: `Cleared ${count} completed task(s).` }], isError: false };
+    });
+
+    mup.registerFunction('updateTask', ({ taskId, title, description, priority }) => {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return { content: [{ type: 'text', text: `Task ${taskId} not found.` }], isError: true };
+      if (title) task.title = title;
+      if (description) task.description = description;
+      if (priority) task.priority = priority;
+      render(); save();
+      return { content: [{ type: 'text', text: `Updated task "${task.title}".` }], isError: false };
+    });
+
+    mup.registerFunction('removeTask', ({ taskId }) => {
+      const idx = tasks.findIndex(t => t.id === taskId);
+      if (idx === -1) return { content: [{ type: 'text', text: `Task ${taskId} not found.` }], isError: true };
+      const removed = tasks.splice(idx, 1)[0];
+      render(); save();
+      return { content: [{ type: 'text', text: `Removed task "${removed.title}".` }], isError: false };
+    });
+
+    // ---- Init ----
+    mup.onThemeChange(applyTheme);
+    mup.onReady((params) => {
+      if (params?.theme) applyTheme(params.theme);
+      const state = loadState();
+      if (state.tasks) tasks = state.tasks;
+      if (state.paused) paused = state.paused;
+      if (state.autoChain !== undefined) autoChain = state.autoChain;
+      // Reset any "running" tasks to pending (since we lost context on restart)
+      tasks.forEach(t => { if (t.status === 'running') t.status = 'pending'; });
+      render(); save();
+    });
+  </script>
+</body>
+</html>

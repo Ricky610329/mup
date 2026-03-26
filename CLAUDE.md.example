@@ -1,0 +1,46 @@
+# MUP Project — Claude Code Instructions
+
+<!-- Copy this file to CLAUDE.md and customize for your setup. -->
+<!-- Or paste the "First-time Setup Prompt" from SETUP.md to let Claude Code generate it for you. -->
+
+## MUP Channel Event Handling (CRITICAL)
+
+When you receive a `<channel source="mup">` event, you MUST respond through the originating MUP — never with plain text only.
+
+**Step 1: Load the tool.** The `mcp__mup__mup` tool is deferred. Before your first MUP call in a conversation, run `ToolSearch` with query `select:mcp__mup__mup` to load it.
+
+**Step 2: Reply through the MUP.**
+- Voice (`mup-voice`, action="speech"): call `mup` with `mupId="mup-voice"`, `functionName="speak"`
+- Chat (`mup-chat`, action="message"): call `mup` with `mupId="mup-chat"`, `functionName="sendMessage"`
+- Other MUPs: respond through the appropriate MUP function
+
+## Non-blocking Execution (CRITICAL)
+
+ALL tasks that involve actual work (coding, file edits, research, git operations, reading large files, etc.) MUST run in the background. The conversation channel must never be blocked.
+
+**Default behavior for every task request:**
+1. **Immediately acknowledge** via speak() or sendMessage()
+2. **Delegate to a background agent** using `Agent` tool with `run_in_background=true`
+3. **Continue the conversation** — the user can keep chatting, ask questions, or give new tasks while agents work
+4. **Report results** via speak() or sendMessage() when the background agent completes
+
+**Do NOT** run tools sequentially in the foreground while the user waits. The user's experience should feel like talking to an assistant who can multitask.
+
+## Progress Tracking (when mup-progress is active)
+
+When `mup-progress` is activated in the session, you MUST keep it in sync with all work:
+
+1. **Starting a task** — call `addTask` with a descriptive name and `status: "running"`
+2. **Delegating to background agent** — add the task immediately, set progress to a reasonable estimate
+3. **Mid-task updates** — call `updateTask` to reflect progress changes (e.g., 50%, 80%)
+4. **Completing a task** — call `updateTask` with `status: "completed"`
+5. **Inline work counts too** — even small tasks done directly (not via background agent) should be tracked
+
+## Language
+
+<!-- Change this to match your preferred language -->
+Respond in the user's language unless the context requires otherwise (e.g., code comments in English).
+
+## Project Context
+
+This is the MUP (Model UI Protocol) project — an interactive UI protocol for LLM conversations. The active codebase is `mup-mcp-server/`. MUP HTML files define UI panels that the LLM can control via function calls.

@@ -288,6 +288,7 @@ function renderChatCard() {
     <div class="grid-stack-item-content">
       <div class="mup-card-header" style="cursor:grab;">
         <span class="mup-name">Chat</span>
+        <button class="mup-close-btn" id="chatClearBtn" title="New chat" style="color:var(--text-secondary);font-size:14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
         <button class="mup-close-btn" id="chatHistoryBtn" title="Chat history" style="color:var(--text-secondary);font-size:14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
       </div>
       <div class="chat-history-panel" id="chatHistoryPanel">
@@ -362,6 +363,20 @@ function renderChatCard() {
     for (const file of e.dataTransfer.files) {
       if (file.type.startsWith('image/')) chatStageImage(file);
     }
+  });
+
+  const clearBtn = chatWidget.querySelector('#chatClearBtn');
+  clearBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  clearBtn.addEventListener('click', () => {
+    if (chatMessages.length === 0) return;
+    chatArchiveCurrent();
+    chatMessages.length = 0;
+    chatRenderedCount = 0;
+    const msgsEl = chatWidget.querySelector('#chatMessages');
+    msgsEl.querySelectorAll('.chat-msg-row').forEach(el => el.remove());
+    const empty = chatWidget.querySelector('#chatEmpty');
+    if (empty) empty.style.display = '';
+    chatSyncState();
   });
 
   histBtn.addEventListener('pointerdown', (e) => e.stopPropagation());

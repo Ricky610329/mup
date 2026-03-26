@@ -1,8 +1,8 @@
 # MUP 範例說明
 
-> **注意：** 原始範例 MUP 已移至 `archive/examples/`。目前活躍的 MUP 是 `mups/slides/` 中的**簡報套件** — 詳見[主 README](../README.zh-TW.md)。
+> **注意：** 原始範例 MUP 已移至 `archive/examples/`。目前活躍的 MUP 在 `mups/` 中 — **slides.html**（簡報）、**voice.html**（語音助手）、**progress.html**（進度指示器）。詳見[主 README](../README.zh-TW.md)。
 
-本文件描述原始的範例 MUP。每個展示不同的協議能力。
+本文件描述已封存的範例 MUP。每個展示不同的協議能力。
 
 ---
 
@@ -30,18 +30,31 @@
 |-----|------|------|---------|
 | [Chart](#chart圖表) | 1×1 | `renderChart`, `clear`, `getData`, `setType` | LLM → 視覺化資料管線 |
 
+### games/
+
+| MUP | Grid | 函式 | 展示能力 |
+|-----|------|------|---------|
+| [Snake Engine](#snake-engine貪食蛇引擎) | 1×1 | — | 遊戲引擎範例 |
+
 ### media/
 
 | MUP | Grid | 函式 | 展示能力 |
 |-----|------|------|---------|
 | [Camera](#camera相機) | 1×1 | `capturePhoto`, `startCamera`, `stopCamera` | 瀏覽器權限 + 多模態 `image` 內容 |
 | [Voice](#voice語音) | 1×1 | `startListening`, `stopListening`, `speak`, `getTranscript` | 語音轉文字 + 文字轉語音 |
-| [Drum Machine](#drum-machine鼓機) | 1×1 | `setPattern`, `toggleStep`, `setBPM`, `play`, `stop`, `clear`, `getState` | 複雜狀態 + Web Audio |
+
+### music/
+
+| MUP | Grid | 函式 | 展示能力 |
+|-----|------|------|---------|
+| [Drums](#drums鼓機) | 1×1 | `setPattern`, `toggleStep`, `setBPM`, `play`, `stop`, `clear`, `getState` | 複雜狀態 + Web Audio |
+| 另外 7 個 | — | — | arranger、bass、guitar、mixer、piano、strings、synth |
 
 ### productivity/
 
 | MUP | Grid | 函式 | 展示能力 |
 |-----|------|------|---------|
+| [Markdown](#markdown) | 1×1 | `loadFile`, `render`, `clear` | Markdown 渲染 + 檔案載入 |
 | [Sticky Notes](#sticky-notes便利貼) | 1×1 | `addNote`, `moveNote`, `removeNote`, `editNote`, `getNotes`, `clearAll`, `setNotifications` | 完整 CRUD + 位置控制 |
 | [Kanban](#kanban看板) | 2×1 | `addTask`, `moveTask`, `removeTask`, `getTasks`, `clearBoard`, `addColumn` | 拖放式任務管理看板 |
 
@@ -128,37 +141,6 @@ MUP 的 "hello world"。一個數字、兩個按鈕、兩個函式。
 
 ---
 
-## Markdown
-
-**檔案：** `creative/markdown.html`
-
-Markdown 渲染器。可渲染 LLM 生成的內容，或從工作區載入 `.md` 檔案。
-
-**展示重點：**
-- Markdown 渲染：標題、列表、程式碼區塊、表格、連結
-- `mup.system('workspace.read', ...)` 從 host 載入檔案
-- 跨 MUP 協作（讀取 Workspace 中的檔案）
-
-**Demo 流程：** 使用者說「顯示 README」→ LLM 呼叫 `loadFile({ path: "README.md" })` → Markdown 在檢視器中渲染 → 使用者可點重新整理從原始檔重新載入。
-
----
-
-## Editor（編輯器）
-
-**檔案：** `creative/editor.html`
-
-文字編輯器，使用者可撰寫和選取文字與 LLM 討論。選取感知：LLM 能看到使用者反白的文字並修改它。
-
-**展示重點：**
-- 透過 `getSelection()` 和 `replaceRange()` 追蹤選取
-- `mup.system('workspace.read/write', ...)` 進行檔案讀寫
-- 選取文字變更時 `notifyInteraction`
-- 精細編輯：插入、替換範圍、取得行數
-
-**Demo 流程：** 使用者輸入程式碼 → 選取一個函式 → LLM 透過 interaction 看到選取 → 使用者說「重構這段」→ LLM 呼叫 `replaceRange()` 只編輯選取的部分。
-
----
-
 ## Slides（簡報）
 
 **檔案：** `creative/slides.html`
@@ -192,36 +174,11 @@ Markdown 渲染器。可渲染 LLM 生成的內容，或從工作區載入 `.md`
 
 ---
 
-## Search（搜尋）
+## Snake Engine（貪食蛇引擎）
 
-**檔案：** `data/search.html`
+**檔案：** `games/snake-engine.html`
 
-網頁搜尋面板。LLM 搜尋網頁並顯示帶有可點擊連結的結果。使用者也可以直接輸入查詢。
-
-**展示重點：**
-- `mup.system("webSearch", ...)` 請求 host 提供的網頁搜尋
-- 在 MUP UI 中顯示外部資料
-- 使用者透過輸入欄發起搜尋
-- 使用者點擊結果時 `notifyInteraction`
-
-**Demo 流程：** 使用者說「搜尋 MUP protocol」→ LLM 呼叫 `search({ query: "MUP protocol" })` → 結果顯示標題、描述和連結 → 使用者點擊結果。
-
----
-
-## Workspace（工作區）
-
-**檔案：** `data/workspace.html`
-
-檔案工作區。使用者選擇資料夾後，LLM 可以瀏覽、讀取、寫入和下載檔案。
-
-**展示重點：**
-- `permissions: ["file-system-access"]`
-- 智慧檔案存取：先用 `info()` 查看大小/預覽再用 `read()`
-- 大檔案的 offset/limit 分頁讀取
-- `download()` 下載二進制檔案
-- 使用者發起的資料夾選取器（需要 user gesture）
-
-**Demo 流程：** 使用者點「Choose Folder」→ LLM 看到「Folder opened: my-project」→ LLM 呼叫 `list()` → 看到檔案 → 呼叫 `info({ path: "data.csv" })` 查看大小 → 呼叫 `read({ path: "data.csv" })` 讀取內容。
+貪食蛇遊戲引擎。展示在 MUP 中執行遊戲邏輯。
 
 ---
 
@@ -259,9 +216,9 @@ Markdown 渲染器。可渲染 LLM 生成的內容，或從工作區載入 `.md`
 
 ---
 
-## Drum Machine（鼓機）
+## Drums（鼓機）
 
-**檔案：** `media/drum-machine.html`
+**檔案：** `music/drums.html`
 
 4 軌、16 步的音序器，用 Web Audio 合成音色。LLM 可以作曲。
 
@@ -272,6 +229,20 @@ Markdown 渲染器。可渲染 LLM 生成的內容，或從工作區載入 `.md`
 - 豐富的 `updateState`，包含結構化資料
 
 **Demo 流程：** 使用者說「做一個 hip-hop 節拍」→ LLM 呼叫 `setPattern` 設定 kick、snare、hihat → 呼叫 `setBPM(90)` → 呼叫 `play` → 使用者聽到節拍，可以自己微調。
+
+---
+
+## Markdown
+
+**檔案：** `productivity/markdown.html`
+
+Markdown 渲染器。可渲染 LLM 生成的內容，或從工作區載入 `.md` 檔案。
+
+**展示重點：**
+- Markdown 渲染：標題、列表、程式碼區塊、表格、連結
+- 跨 MUP 協作潛力
+
+**Demo 流程：** 使用者說「顯示 README」→ LLM 呼叫 `loadFile({ path: "README.md" })` → Markdown 在檢視器中渲染 → 使用者可點重新整理從原始檔重新載入。
 
 ---
 
@@ -313,13 +284,12 @@ Markdown 渲染器。可渲染 LLM 生成的內容，或從工作區載入 `.md`
 
 | 功能 | 使用的範例 MUP |
 |------|--------------|
-| `registerFunction` | 全部 12 個 |
-| `onReady` | 全部 12 個 |
-| `updateState` | 全部 12 個 |
-| `notifyInteraction` | Counter、Timer、Dice、Chess、Chart、Camera、Voice、Drum Machine、Sticky Notes、Kanban |
-| `mup.system()` | —（目前無） |
+| `registerFunction` | 所有已記錄的範例 |
+| `onReady` | 所有已記錄的範例 |
+| `updateState` | 所有已記錄的範例 |
+| `notifyInteraction` | Counter、Timer、Dice、Chess、Chart、Camera、Voice、Drums、Sticky Notes、Kanban |
 | `permissions` | Camera、Voice |
-| `text` 內容 | 全部 12 個 |
+| `text` 內容 | 所有已記錄的範例 |
 | `data` 內容 | 除 Camera 外全部 |
 | `image` 內容 | Camera |
 | Headless MUP (0×0) | —（目前無） |

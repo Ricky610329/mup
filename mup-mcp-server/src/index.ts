@@ -276,7 +276,28 @@ function setupMcpServer(
         tools: {},
         experimental: { "claude/channel": {}, "claude/channel/permission": {} },
       },
-      instructions: `MUP channel events arrive as <channel source="mup" mup_id="..." mup_name="...">. These are real-time user interactions from MUP UI panels in the browser. Respond by calling the mup tool with the mupId and the appropriate function. Use { "action": "setNotificationLevel", "mupId": "...", "level": "immediate" | "notify" | "silent" } to adjust how a MUP notifies you.`,
+      instructions: [
+          `MUP channel events arrive as <channel source="mup" mup_id="..." mup_name="..." action="...">. These are real-time user interactions from MUP UI panels in the browser.`,
+          ``,
+          `## Conversation Mode — CRITICAL`,
+          `When you receive a channel event, you MUST reply through the originating MUP:`,
+          `- Voice (mup-voice, action="speech"): ALWAYS call mup tool with mupId="mup-voice", functionName="speak" to reply verbally.`,
+          `- Chat (mup-chat, action="message"): ALWAYS call mup tool with mupId="mup-chat", functionName="sendMessage" to reply in chat.`,
+          `- NEVER respond with plain text only. Route ALL responses through the MUP that sent the event.`,
+          `- Keep voice replies concise and conversational. Chat replies can be longer with markdown.`,
+          ``,
+          `## Non-blocking Task Execution`,
+          `When the user requests a task (coding, research, file changes, etc.):`,
+          `1. IMMEDIATELY acknowledge via speak() or sendMessage() — e.g. "I'm on it, working in the background."`,
+          `2. Delegate the actual work to a background agent (Agent tool with run_in_background=true).`,
+          `3. When the background agent completes, notify the user via speak() or sendMessage() with the result.`,
+          `This keeps the conversation responsive — the user can keep talking while work happens in parallel.`,
+          ``,
+          `## Other Tools`,
+          `- Use { "action": "checkInteractions" } to poll for recent user interactions from MUP panels.`,
+          `- Use { "action": "setNotificationLevel", "mupId": "...", "level": "immediate" | "notify" | "silent" } to adjust notifications.`,
+          `- MUP panels provide richer visual presentation — prefer them over plain text responses.`,
+        ].join("\n"),
     },
   );
 
@@ -495,14 +516,19 @@ async function main() {
 
       channelDebounceTimers.set(mupId, setTimeout(() => {
         channelDebounceTimers.delete(mupId);
-        const mupName = manager.get(mupId)?.manifest.name ?? mupId;
+        const mup = manager.get(mupId);
+        const mupName = mup?.manifest.name ?? mupId;
+
+        // Build reply hint based on MUP type
+        const replyFn = mupId === "mup-voice" ? "speak" : mupId === "mup-chat" ? "sendMessage" : null;
+        const meta: Record<string, unknown> = { mup_id: mupId, mup_name: mupName, action };
+        if (replyFn) {
+          meta.replyHint = { mupId, function: replyFn };
+        }
 
         server.notification({
           method: "notifications/claude/channel",
-          params: {
-            content: summary,
-            meta: { mup_id: mupId, mup_name: mupName, action },
-          },
+          params: { content: summary, meta },
         }).catch((err) => {
           console.error(`[mup-mcp] Channel notification failed: ${(err as Error).message}`);
         });

@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sticky Notes</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Sticky Notes",
+    "description": "A board of draggable sticky notes for brainstorming, organizing ideas, or collecting information. Users add notes by clicking, edit inline, and drag to rearrange. LLM can add notes at specific positions, move notes to organize them, edit text and color, or read the entire board. Positions use percentage coordinates (0-100 for both x and y). Each note is roughly 30% wide and 20% tall, so a 3-column layout uses x values around 2, 35, 68 and rows use y values spaced by ~25. Colors: yellow, pink, blue, green, purple, orange.",
+    "grid": { "minWidth": 1, "minHeight": 1 },
+    "functions": [
+      {
+        "name": "addNote",
+        "description": "Add a new sticky note. Positions are percentages (0-100). Omit x/y for auto-placement.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "Note content" },
+            "color": { "type": "string", "enum": ["yellow", "pink", "blue", "green", "purple", "orange"], "description": "Note color" },
+            "x": { "type": "number", "description": "Horizontal position 0-100 (percentage)" },
+            "y": { "type": "number", "description": "Vertical position 0-100 (percentage)" }
+          },
+          "required": ["text"]
+        }
+      },
+      {
+        "name": "moveNote",
+        "description": "Move a note to a new position. Use this to organize or group related notes together.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "x": { "type": "number", "description": "Horizontal position 0-100 (percentage)" },
+            "y": { "type": "number", "description": "Vertical position 0-100 (percentage)" }
+          },
+          "required": ["id", "x", "y"]
+        }
+      },
+      {
+        "name": "removeNote",
+        "description": "Remove a note by its ID",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" }
+          },
+          "required": ["id"]
+        }
+      },
+      {
+        "name": "editNote",
+        "description": "Change the text and/or color of an existing note",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "text": { "type": "string" },
+            "color": { "type": "string", "enum": ["yellow", "pink", "blue", "green", "purple", "orange"] }
+          },
+          "required": ["id"]
+        }
+      },
+      {
+        "name": "getNotes",
+        "description": "Get all notes on the board with their IDs, text, colors, and positions",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "clearAll",
+        "description": "Remove all notes from the board",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setNotifications",
+        "description": "Configure which user actions trigger notifications to the LLM. Defaults: move=false, edit=true, delete=true, add=true.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "move": { "type": "boolean", "description": "Notify when user drags a note" },
+            "edit": { "type": "boolean", "description": "Notify when user edits note text" },
+            "delete": { "type": "boolean", "description": "Notify when user deletes a note" },
+            "add": { "type": "boolean", "description": "Notify when user clicks to add a note" }
+          }
+        }
+      }
+    ],
+    "multiInstance": true
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: transparent;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .board {
+      width: 100%; height: 100%;
+      position: relative;
+      cursor: crosshair;
+    }
+
+    .hint {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(60,60,67,0.3);
+      font-size: 13px;
+      font-weight: 500;
+      pointer-events: none;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .note {
+      position: absolute;
+      width: clamp(110px, 30%, 160px);
+      min-height: 60px;
+      border-radius: 4px;
+      padding: 24px 10px 10px;
+      font-size: 12px;
+      line-height: 1.5;
+      cursor: grab;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: box-shadow 0.15s, transform 0.1s, left 0.3s ease, top 0.3s ease;
+      overflow-wrap: break-word;
+    }
+    .note:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+    .note.dragging {
+      cursor: grabbing; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      transform: rotate(2deg) scale(1.03); z-index: 100;
+      transition: box-shadow 0.15s, transform 0.1s;
+    }
+
+    .note-text {
+      outline: none;
+      min-height: 20px;
+      color: rgba(0,0,0,0.75);
+      font-family: inherit;
+    }
+
+    .note-delete {
+      position: absolute;
+      top: 6px; right: 6px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0,0,0,0.1);
+      color: rgba(0,0,0,0.3);
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s;
+      font-family: inherit;
+    }
+    .note:hover .note-delete { opacity: 1; }
+    .note-delete:hover { background: rgba(0,0,0,0.2); color: rgba(0,0,0,0.6); }
+
+    .note-id {
+      position: absolute;
+      top: 7px; left: 12px;
+      font-size: 10px;
+      font-weight: 700;
+      color: rgba(0,0,0,0.15);
+      letter-spacing: 0.3px;
+    }
+
+    /* Colors */
+    .note.yellow { background: #fff9c4; }
+    .note.pink   { background: #f8bbd0; }
+    .note.blue   { background: #bbdefb; }
+    .note.green  { background: #c8e6c9; }
+    .note.purple { background: #d1c4e9; }
+    .note.orange { background: #ffe0b2; }
+  </style>
+</head>
+<body>
+  <div class="board" id="board">
+    <div class="hint" id="hint">Click anywhere to add a note</div>
+  </div>
+
+  <script>
+    const COLORS = ['yellow', 'pink', 'blue', 'green', 'purple', 'orange'];
+    let notes = []; // { id, text, color, x, y }
+    let nextId = 1;
+    let colorIndex = 0;
+
+    // Notification preferences — MUP author sets defaults, LLM can adjust
+    let notifySettings = { move: false, edit: false, delete: false, add: false };
+
+    const board = document.getElementById('board');
+    const hint = document.getElementById('hint');
+
+    // Percentage to pixel conversion
+    function pctToX(pct) { return (pct / 100) * board.clientWidth; }
+    function pctToY(pct) { return (pct / 100) * board.clientHeight; }
+    function xToPct(px) { return (px / board.clientWidth) * 100; }
+    function yToPct(py) { return (py / board.clientHeight) * 100; }
+
+    // Click on empty space to add note
+    board.addEventListener('click', (e) => {
+      if (e.target !== board) return;
+      const rect = board.getBoundingClientRect();
+      const noteW = Math.min(160, rect.width * 0.3);
+      const px = Math.min(e.clientX - rect.left, rect.width - noteW - 10);
+      const py = Math.min(e.clientY - rect.top, rect.height - 70);
+      const color = COLORS[colorIndex++ % COLORS.length];
+      const note = createNote('', color, xToPct(Math.max(8, px)), yToPct(Math.max(8, py)));
+      if (notifySettings.add) mup.notifyInteraction('add', `User added a new ${color} note`, { id: note.id, color });
+      // Focus for editing
+      setTimeout(() => {
+        const textEl = note.el.querySelector('.note-text');
+        textEl.focus();
+      }, 50);
+    });
+
+    function createNote(text, color, xPct, yPct) {
+      const id = 'n' + nextId++;
+      color = color || 'yellow';
+      xPct = xPct ?? (5 + Math.random() * 60);
+      yPct = yPct ?? (5 + Math.random() * 60);
+
+      const note = { id, text, color, xPct, yPct };
+      notes.push(note);
+
+      const el = document.createElement('div');
+      el.className = `note ${color}`;
+      el.style.left = pctToX(xPct) + 'px';
+      el.style.top = pctToY(yPct) + 'px';
+      el.dataset.id = id;
+
+      el.innerHTML = `
+        <span class="note-id">${id}</span>
+        <button class="note-delete">&times;</button>
+        <div class="note-text" contenteditable="true">${escapeHtml(text)}</div>
+      `;
+
+      // Drag
+      let dragging = false, startX, startY, origPx, origPy;
+      el.addEventListener('pointerdown', (e) => {
+        if (e.target.classList.contains('note-text') || e.target.classList.contains('note-delete')) return;
+        dragging = true;
+        el.classList.add('dragging');
+        startX = e.clientX; startY = e.clientY;
+        origPx = pctToX(note.xPct); origPy = pctToY(note.yPct);
+        el.setPointerCapture(e.pointerId);
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const newPx = origPx + (e.clientX - startX);
+        const newPy = origPy + (e.clientY - startY);
+        el.style.left = newPx + 'px';
+        el.style.top = newPy + 'px';
+        note.xPct = xToPct(newPx);
+        note.yPct = yToPct(newPy);
+      });
+      el.addEventListener('pointerup', () => {
+        if (!dragging) return;
+        dragging = false;
+        el.classList.remove('dragging');
+        if (notifySettings.move) mup.notifyInteraction('move', `User moved note "${note.text.slice(0, 30)}" to (${Math.round(note.xPct)}%, ${Math.round(note.yPct)}%)`, { id: note.id, x: Math.round(note.xPct), y: Math.round(note.yPct) });
+      });
+
+      // Delete
+      el.querySelector('.note-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeNoteById(id, true);
+      });
+
+      // Edit
+      const textEl = el.querySelector('.note-text');
+      textEl.addEventListener('blur', () => {
+        const newText = textEl.textContent.trim();
+        if (newText !== note.text) {
+          note.text = newText;
+          if (newText) {
+            if (notifySettings.edit) mup.notifyInteraction('edit', `User wrote: "${newText.slice(0, 50)}"`, { id: note.id, text: newText });
+          }
+        }
+      });
+      // Stop click from propagating to board
+      textEl.addEventListener('click', (e) => e.stopPropagation());
+
+      board.appendChild(el);
+      note.el = el;
+      updateHint();
+      sendNoteState();
+
+      return note;
+    }
+
+    function moveNoteToPosition(note, xPct, yPct) {
+      note.xPct = xPct;
+      note.yPct = yPct;
+      note.el.style.left = pctToX(xPct) + 'px';
+      note.el.style.top = pctToY(yPct) + 'px';
+    }
+
+    function removeNoteById(id, notify) {
+      const idx = notes.findIndex(n => n.id === id);
+      if (idx === -1) return false;
+      const note = notes[idx];
+      note.el.remove();
+      notes.splice(idx, 1);
+      updateHint();
+      sendNoteState();
+      if (notify) {
+        if (notifySettings.delete) mup.notifyInteraction('delete', `User deleted note "${note.text.slice(0, 30)}"`, { id });
+      }
+      return true;
+    }
+
+    function updateHint() {
+      hint.style.display = notes.length === 0 ? '' : 'none';
+    }
+
+    function sendNoteState() {
+      const label = notes.length === 0 ? 'Board empty' : `${notes.length} note(s)`;
+      mup.updateState(label, { noteCount: notes.length, notes: notes.map(n => ({ id: n.id, text: n.text, color: n.color, x: Math.round(n.xPct), y: Math.round(n.yPct) })) });
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Reposition notes on resize
+    const resizeObserver = new ResizeObserver(() => {
+      for (const note of notes) {
+        note.el.style.left = pctToX(note.xPct) + 'px';
+        note.el.style.top = pctToY(note.yPct) + 'px';
+      }
+    });
+    resizeObserver.observe(board);
+
+    // === MUP Functions ===
+
+    mup.registerFunction('addNote', async (params) => {
+      const note = createNote(
+        params.text || '',
+        params.color || 'yellow',
+        params.x,
+        params.y
+      );
+      return {
+        content: [{ type: 'text', text: `Added note ${note.id}: "${note.text.slice(0, 40)}" at (${Math.round(note.xPct)}%, ${Math.round(note.yPct)}%)` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('moveNote', async (params) => {
+      const note = notes.find(n => n.id === params.id);
+      if (!note) return { content: [{ type: 'text', text: `Note ${params.id} not found` }], isError: true };
+      moveNoteToPosition(note, params.x, params.y);
+      sendNoteState();
+      return {
+        content: [{ type: 'text', text: `Moved note ${params.id} to (${Math.round(params.x)}%, ${Math.round(params.y)}%)` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('removeNote', async (params) => {
+      const ok = removeNoteById(params.id, false);
+      return {
+        content: [{ type: 'text', text: ok ? `Removed note ${params.id}` : `Note ${params.id} not found` }],
+        isError: !ok
+      };
+    });
+
+    mup.registerFunction('editNote', async (params) => {
+      const note = notes.find(n => n.id === params.id);
+      if (!note) return { content: [{ type: 'text', text: `Note ${params.id} not found` }], isError: true };
+      if (params.text !== undefined) {
+        note.text = params.text;
+        note.el.querySelector('.note-text').textContent = params.text;
+      }
+      if (params.color && COLORS.includes(params.color)) {
+        note.el.classList.remove(note.color);
+        note.color = params.color;
+        note.el.classList.add(params.color);
+      }
+      return { content: [{ type: 'text', text: `Updated note ${params.id}` }], isError: false };
+    });
+
+    mup.registerFunction('getNotes', async () => {
+      const data = notes.map(n => ({ id: n.id, text: n.text, color: n.color, x: Math.round(n.xPct), y: Math.round(n.yPct) }));
+      const summary = notes.length === 0
+        ? 'Board is empty'
+        : `${notes.length} note(s): ${notes.map(n => `[${n.id}] "${n.text.slice(0, 25)}" (${n.color}, ${Math.round(n.xPct)}%,${Math.round(n.yPct)}%)`).join(', ')}`;
+      return {
+        content: [
+          { type: 'text', text: summary },
+          { type: 'data', data }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('clearAll', async () => {
+      while (notes.length > 0) removeNoteById(notes[0].id, false);
+      return { content: [{ type: 'text', text: 'All notes cleared' }], isError: false };
+    });
+
+    mup.registerFunction('setNotifications', async (params) => {
+      if (params.move !== undefined) notifySettings.move = params.move;
+      if (params.edit !== undefined) notifySettings.edit = params.edit;
+      if (params.delete !== undefined) notifySettings.delete = params.delete;
+      if (params.add !== undefined) notifySettings.add = params.add;
+      const active = Object.entries(notifySettings).filter(([, v]) => v).map(([k]) => k);
+      return {
+        content: [{ type: 'text', text: `Notifications: ${active.length ? active.join(', ') : 'all off'}` }],
+        isError: false
+      };
+    });
+
+    mup.onReady((params) => {
+      if (params.savedState && params.savedState.notes) {
+        for (const n of params.savedState.notes) {
+          createNote(n.text, n.color, n.x, n.y);
+        }
+      }
+      sendNoteState();
+    });
+  </script>
+</body>
+</html>

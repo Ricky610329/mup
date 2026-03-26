@@ -4,12 +4,14 @@ dist/
 *.local
 .env
 .claude/
+CLAUDE.md
 
 # MUP workspace state
 .mup/
 
-# MUP archive (moved out of tracking)
-archive/
+# MUP archive — keep examples, ignore build artifacts
+archive/mup-agent/node_modules/
+archive/mup-agent/dist/
 
 # npm auth (use ~/.npmrc for local, NPM_TOKEN env for CI)
 .npmrc
@@ -17,3 +19,6 @@ archive/
 # MCP Registry tokens and publisher binary
 .mcpregistry_*
 mcp-publisher.exe
+
+# Local workspace tools (not part of open-source repo)
+tools/

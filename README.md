@@ -7,6 +7,8 @@
 
 > Bring interactive UI into LLM chat — so anyone can experience agentic AI, not just developers.
 
+Current version: 0.2.4 | Protocol: `mup/2026-03-17`
+
 ## Demos
 
 - **[Stop Making Apps. Make MUP.](https://youtu.be/HkmWpmfX46o)** — Full demo: Music, Slides, Pixel Art, Notes
@@ -43,6 +45,14 @@ MUP changes this. It puts clickable, visual UI right inside the chat — so anyo
 - **Shared functions.** A function can be called by the LLM (as a tool) or triggered by the user (via UI). Both sides operate on the same state through the same code.
 - **LLM as orchestrator.** MUPs don't talk to each other. The LLM reads outputs and decides what to do next.
 - **Just HTML.** Write a manifest, register your functions, done. Ship a single file.
+
+## Available MUPs
+
+- **Chat** — Built-in, always available
+- **Slides** — Presentation slides (`mups/slides.html`)
+- **Voice** — Speech synthesis (`mups/voice.html`)
+- **Progress** — Task progress tracking (`mups/progress.html`)
+- More examples in [`archive/examples/`](archive/examples/) (music, pixel art, games, productivity, etc.)
 
 ## Docs
 
@@ -125,6 +135,11 @@ Add to your `claude_desktop_config.json`:
         "properties": { "value": { "type": "number" } },
         "required": ["value"]
       }
+    },
+    {
+      "name": "getCount",
+      "description": "Get the current counter value",
+      "inputSchema": { "type": "object", "properties": {} }
     }
   ]
 }

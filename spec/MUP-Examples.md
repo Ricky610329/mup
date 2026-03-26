@@ -1,8 +1,8 @@
 # MUP Examples
 
-> **Note:** The original example MUPs have been moved to `archive/examples/`. The active MUPs are now the **slides suite** in `mups/slides/` — see the [main README](../README.md) for details.
+> **Note:** The original example MUPs have been moved to `archive/examples/`. The active MUPs are now in `mups/` — **slides.html** (presentation), **voice.html** (voice assistant), and **progress.html** (progress indicator). See the [main README](../README.md) for details.
 
-This document describes the original example MUPs. Each demonstrates a different protocol capability.
+This document describes the archived example MUPs. Each demonstrates a different protocol capability.
 
 ---
 
@@ -30,18 +30,31 @@ This document describes the original example MUPs. Each demonstrates a different
 |-----|------|-----------|-------------|
 | [Chart](#chart) | 1×1 | `renderChart`, `clear`, `getData`, `setType` | LLM → visual data pipeline |
 
+### games/
+
+| MUP | Grid | Functions | Demonstrates |
+|-----|------|-----------|-------------|
+| [Snake Engine](#snake-engine) | 1×1 | — | Game engine example |
+
 ### media/
 
 | MUP | Grid | Functions | Demonstrates |
 |-----|------|-----------|-------------|
 | [Camera](#camera) | 1×1 | `capturePhoto`, `startCamera`, `stopCamera` | Browser permissions + multimodal `image` content |
 | [Voice](#voice) | 1×1 | `startListening`, `stopListening`, `speak`, `getTranscript` | Speech-to-text + text-to-speech |
-| [Drum Machine](#drum-machine) | 1×1 | `setPattern`, `toggleStep`, `setBPM`, `play`, `stop`, `clear`, `getState` | Complex state + Web Audio |
+
+### music/
+
+| MUP | Grid | Functions | Demonstrates |
+|-----|------|-----------|-------------|
+| [Drums](#drums) | 1×1 | `setPattern`, `toggleStep`, `setBPM`, `play`, `stop`, `clear`, `getState` | Complex state + Web Audio |
+| Plus 7 others | — | — | arranger, bass, guitar, mixer, piano, strings, synth |
 
 ### productivity/
 
 | MUP | Grid | Functions | Demonstrates |
 |-----|------|-----------|-------------|
+| [Markdown](#markdown) | 1×1 | `loadFile`, `render`, `clear` | Markdown rendering + file loading |
 | [Sticky Notes](#sticky-notes) | 1×1 | `addNote`, `moveNote`, `removeNote`, `editNote`, `getNotes`, `clearAll`, `setNotifications` | Full CRUD + position control |
 | [Kanban](#kanban) | 2×1 | `addTask`, `moveTask`, `removeTask`, `getTasks`, `clearBoard`, `addColumn` | Task management board with drag-and-drop |
 
@@ -128,37 +141,6 @@ A 16×16 pixel display rendered on `<canvas>`. The LLM draws by calling `setPixe
 
 ---
 
-## Markdown
-
-**File:** `creative/markdown.html`
-
-A markdown renderer. Can render LLM-generated content or load `.md` files from the workspace.
-
-**What it shows:**
-- Markdown rendering with headings, lists, code blocks, tables, links
-- `mup.system('workspace.read', ...)` to load files from host
-- Cross-MUP collaboration (reads files from Workspace)
-
-**Demo flow:** User asks "Show me the README" → LLM calls `loadFile({ path: "README.md" })` → Markdown rendered in the viewer → User can click refresh to reload from source.
-
----
-
-## Editor
-
-**File:** `creative/editor.html`
-
-A text editor where users write and select text to discuss with the LLM. Selection-aware: the LLM can see what the user highlighted and modify it.
-
-**What it shows:**
-- Selection tracking via `getSelection()` and `replaceRange()`
-- `mup.system('workspace.read/write', ...)` for file I/O
-- `notifyInteraction` on text selection changes
-- Fine-grained editing: insert, replace range, get line count
-
-**Demo flow:** User types code → Selects a function → LLM sees the selection via interaction → User asks "Refactor this" → LLM calls `replaceRange()` to edit just the selected portion.
-
----
-
 ## Slides
 
 **File:** `creative/slides.html`
@@ -192,36 +174,11 @@ Data visualization: bar, line, and pie charts rendered on Canvas.
 
 ---
 
-## Search
+## Snake Engine
 
-**File:** `data/search.html`
+**File:** `games/snake-engine.html`
 
-A web search panel. The LLM searches the web and displays results with clickable links. Users can also type queries directly.
-
-**What it shows:**
-- `mup.system("webSearch", ...)` to request host-provided web search
-- Displaying external data in the MUP UI
-- User-initiated search via input field
-- `notifyInteraction` when user clicks a result
-
-**Demo flow:** User asks "Search for MUP protocol" → LLM calls `search({ query: "MUP protocol" })` → Results appear with titles, descriptions, and links → User clicks a result.
-
----
-
-## Workspace
-
-**File:** `data/workspace.html`
-
-A file workspace. User picks a folder, then the LLM can browse, read, write, and download files.
-
-**What it shows:**
-- `permissions: ["file-system-access"]`
-- Smart file access: `info()` to check size/preview before `read()`
-- Offset/limit pagination for large files
-- `download()` for binary files
-- User-initiated folder picker (requires user gesture)
-
-**Demo flow:** User clicks "Choose Folder" → LLM sees "Folder opened: my-project" → LLM calls `list()` → Sees files → Calls `info({ path: "data.csv" })` to check size → Calls `read({ path: "data.csv" })` to read content.
+A Snake game engine. Demonstrates game logic running inside a MUP.
 
 ---
 
@@ -259,9 +216,9 @@ Voice assistant with speech-to-text and text-to-speech. User taps the mic to spe
 
 ---
 
-## Drum Machine
+## Drums
 
-**File:** `media/drum-machine.html`
+**File:** `music/drums.html`
 
 A 4-track, 16-step sequencer with Web Audio synthesis. LLM can compose beats.
 
@@ -272,6 +229,20 @@ A 4-track, 16-step sequencer with Web Audio synthesis. LLM can compose beats.
 - Rich `updateState` with structured data
 
 **Demo flow:** User asks "Make a hip-hop beat" → LLM calls `setPattern` for kick, snare, hihat → calls `setBPM(90)` → calls `play` → User hears the beat and can tweak it.
+
+---
+
+## Markdown
+
+**File:** `productivity/markdown.html`
+
+A markdown renderer. Can render LLM-generated content or load `.md` files from the workspace.
+
+**What it shows:**
+- Markdown rendering with headings, lists, code blocks, tables, links
+- Cross-MUP collaboration potential
+
+**Demo flow:** User asks "Show me the README" → LLM calls `loadFile({ path: "README.md" })` → Markdown rendered in the viewer → User can click refresh to reload from source.
 
 ---
 
@@ -313,13 +284,12 @@ A task board with columns (To Do, In Progress, Done). LLM can manage tasks, user
 
 | Feature | Example MUPs |
 |---------|-------------|
-| `registerFunction` | All 12 |
-| `onReady` | All 12 |
-| `updateState` | All 12 |
-| `notifyInteraction` | Counter, Timer, Dice, Chess, Chart, Camera, Voice, Drum Machine, Sticky Notes, Kanban |
-| `mup.system()` | — (none currently) |
+| `registerFunction` | All documented examples |
+| `onReady` | All documented examples |
+| `updateState` | All documented examples |
+| `notifyInteraction` | Counter, Timer, Dice, Chess, Chart, Camera, Voice, Drums, Sticky Notes, Kanban |
 | `permissions` | Camera, Voice |
-| `text` content | All 12 |
+| `text` content | All documented examples |
 | `data` content | All except Camera |
 | `image` content | Camera |
 | Headless MUP (0×0) | — (none currently) |

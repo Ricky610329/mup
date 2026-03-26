@@ -174,12 +174,50 @@
     .status-dot.on { background: #22c55e; }
 
     .lang-tag {
-      font-size: 9px;
-      color: rgba(255,255,255,0.2);
+      font-size: 10px;
+      color: rgba(255,255,255,0.4);
       position: absolute;
-      bottom: 6px;
+      bottom: 8px;
       right: 8px;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.2s, background 0.2s, border-color 0.2s;
+      padding: 3px 8px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
+      background: rgba(255,255,255,0.05);
     }
+    .lang-tag:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+
+    .lang-picker {
+      position: absolute;
+      bottom: 22px;
+      right: 6px;
+      background: #1e1e22;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 4px 0;
+      display: none;
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      max-height: 140px;
+      overflow-y: auto;
+    }
+    .lang-picker.open { display: block; }
+    .lang-option {
+      padding: 4px 12px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.6);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .lang-option:hover { background: rgba(255,255,255,0.08); color: #fff; }
+    .lang-option.active { color: #22c55e; }
+
+    body.light .lang-picker { background: #fff; border-color: rgba(0,0,0,0.1); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    body.light .lang-option { color: rgba(0,0,0,0.5); }
+    body.light .lang-option:hover { background: rgba(0,0,0,0.05); color: #000; }
+    body.light .lang-option.active { color: #16a34a; }
 
     /* Light theme */
     body.light {
@@ -204,7 +242,8 @@
     body.light .status { color: rgba(0,0,0,0.25); }
     body.light .status-dot { background: rgba(0,0,0,0.15); }
     body.light .status-dot.on { background: #16a34a; }
-    body.light .lang-tag { color: rgba(0,0,0,0.2); }
+    body.light .lang-tag { color: rgba(0,0,0,0.35); border-color: rgba(0,0,0,0.1); background: rgba(0,0,0,0.03); }
+    body.light .lang-tag:hover { color: rgba(0,0,0,0.6); background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.2); }
   </style>
 </head>
 <body>
@@ -230,6 +269,7 @@
   </div>
 
   <div class="lang-tag" id="langTag">zh-TW</div>
+  <div class="lang-picker" id="langPicker"></div>
 
   <script>
     // ---- State ----
@@ -250,6 +290,52 @@
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
     const langTag = document.getElementById('langTag');
+    const langPicker = document.getElementById('langPicker');
+
+    // ---- Language picker ----
+    const LANGUAGES = [
+      { code: 'zh-TW', label: '繁體中文' },
+      { code: 'zh-CN', label: '简体中文' },
+      { code: 'en-US', label: 'English (US)' },
+      { code: 'en-GB', label: 'English (UK)' },
+      { code: 'ja-JP', label: '日本語' },
+      { code: 'ko-KR', label: '한국어' },
+      { code: 'es-ES', label: 'Español' },
+      { code: 'fr-FR', label: 'Français' },
+      { code: 'de-DE', label: 'Deutsch' },
+      { code: 'pt-BR', label: 'Português' },
+    ];
+
+    function renderLangPicker() {
+      langPicker.innerHTML = LANGUAGES.map(l =>
+        `<div class="lang-option${l.code === lang ? ' active' : ''}" data-lang="${l.code}">${l.label} <span style="opacity:0.4">${l.code}</span></div>`
+      ).join('');
+    }
+
+    langTag.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderLangPicker();
+      langPicker.classList.toggle('open');
+    });
+
+    langPicker.addEventListener('click', (e) => {
+      const opt = e.target.closest('.lang-option');
+      if (!opt) return;
+      const newLang = opt.dataset.lang;
+      if (newLang !== lang) {
+        lang = newLang;
+        localStorage.setItem('mup-voice-lang', lang);
+        updateUI();
+        if (active) { stopRecognition(true); startRecognition(); }
+      }
+      langPicker.classList.remove('open');
+    });
+
+    document.addEventListener('click', () => langPicker.classList.remove('open'));
+
+    // Restore saved language
+    const savedLang = localStorage.getItem('mup-voice-lang');
+    if (savedLang) lang = savedLang;
 
     // ---- UI Update ----
     function updateUI() {

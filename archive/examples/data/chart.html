@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chart</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Chart",
+    "description": "A data visualization MUP powered by Chart.js. Renders bar, line, pie, doughnut, radar, and scatter charts with animations and tooltips. The LLM generates data and the MUP renders it visually. Users can switch chart types.",
+    "grid": { "minWidth": 1, "minHeight": 1 },
+    "functions": [
+      {
+        "name": "renderChart",
+        "description": "Render a chart with the given type, title, labels, and datasets. Each dataset has a label, data array, and optional color. Supported types: bar, line, pie, doughnut, radar, scatter.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["bar", "line", "pie", "doughnut", "radar", "scatter"] },
+            "title": { "type": "string" },
+            "labels": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "datasets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": { "type": "string" },
+                  "data": { "type": "array", "items": { "type": "number" } },
+                  "color": { "type": "string" }
+                },
+                "required": ["label", "data"]
+              }
+            }
+          },
+          "required": ["type", "labels", "datasets"]
+        }
+      },
+      {
+        "name": "clear",
+        "description": "Clear the chart and reset to empty state",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "getData",
+        "description": "Get the current chart data including type, title, labels, and datasets",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setType",
+        "description": "Change the chart type without changing the data",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["bar", "line", "pie", "doughnut", "radar", "scatter"] }
+          },
+          "required": ["type"]
+        }
+      }
+    ],
+    "multiInstance": true
+  }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: transparent;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+    .toolbar {
+      display: flex;
+      gap: 3px;
+      padding: 4px 6px;
+      border-bottom: 1px solid rgba(60,60,67,0.1);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .type-btn {
+      border: none;
+      background: rgba(60,60,67,0.06);
+      color: rgba(60,60,67,0.6);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 10px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .type-btn:hover { background: rgba(60,60,67,0.12); }
+    .type-btn.active { background: rgba(0,122,255,0.1); color: #007aff; }
+    .chart-container {
+      flex: 1;
+      position: relative;
+      padding: 8px;
+      min-height: 0;
+    }
+    .chart-container canvas { width: 100% !important; height: 100% !important; }
+    .empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: rgba(60,60,67,0.3);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar" id="toolbar">
+    <button class="type-btn" data-type="bar">Bar</button>
+    <button class="type-btn" data-type="line">Line</button>
+    <button class="type-btn" data-type="pie">Pie</button>
+    <button class="type-btn" data-type="doughnut">Donut</button>
+    <button class="type-btn" data-type="radar">Radar</button>
+    <button class="type-btn" data-type="scatter">Scatter</button>
+  </div>
+  <div class="chart-container" id="container">
+    <div class="empty" id="empty">No chart data — ask the LLM to generate one</div>
+    <canvas id="canvas" style="display:none;"></canvas>
+  </div>
+
+  <script>
+    const COLORS = [
+      '#007aff', '#ff3b30', '#34c759', '#ff9500', '#af52de',
+      '#5ac8fa', '#ff2d55', '#ffcc00', '#64d2ff', '#30d158'
+    ];
+
+    let chartInstance = null;
+    let chartData = null; // { type, title, labels, datasets }
+    const canvas = document.getElementById('canvas');
+    const emptyEl = document.getElementById('empty');
+
+    function renderChart(data) {
+      chartData = data;
+      if (chartInstance) chartInstance.destroy();
+
+      emptyEl.style.display = 'none';
+      canvas.style.display = '';
+
+      const isPie = data.type === 'pie' || data.type === 'doughnut';
+
+      const datasets = data.datasets.map((ds, i) => {
+        const color = ds.color || COLORS[i % COLORS.length];
+        const colors = isPie ? data.labels.map((_, j) => COLORS[j % COLORS.length]) : undefined;
+        return {
+          label: ds.label,
+          data: ds.data,
+          backgroundColor: isPie ? colors : color + '33',
+          borderColor: isPie ? colors : color,
+          borderWidth: isPie ? 1 : 2,
+          pointRadius: data.type === 'scatter' ? 5 : 3,
+          fill: data.type === 'line' ? false : undefined,
+          tension: data.type === 'line' ? 0.3 : undefined,
+        };
+      });
+
+      chartInstance = new Chart(canvas, {
+        type: data.type,
+        data: { labels: data.labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 500 },
+          plugins: {
+            title: {
+              display: !!data.title,
+              text: data.title || '',
+              font: { size: 13, weight: '600', family: 'Inter, sans-serif' },
+            },
+            legend: {
+              display: data.datasets.length > 1 || isPie,
+              labels: { font: { size: 10, family: 'Inter, sans-serif' } },
+            },
+          },
+          scales: isPie || data.type === 'radar' ? {} : {
+            x: { ticks: { font: { size: 10 } } },
+            y: { ticks: { font: { size: 10 } }, beginAtZero: true },
+          },
+        },
+      });
+
+      updateTypeButtons(data.type);
+    }
+
+    function updateTypeButtons(type) {
+      document.querySelectorAll('.type-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === type);
+      });
+    }
+
+    // Toolbar type switching
+    document.querySelectorAll('.type-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!chartData) return;
+        chartData.type = btn.dataset.type;
+        renderChart(chartData);
+        mup.notifyInteraction('changeType', `User changed chart type to ${chartData.type}`, { type: chartData.type });
+        sendChartState();
+      });
+    });
+
+    // Resize observer
+    new ResizeObserver(() => {
+      if (chartInstance) chartInstance.resize();
+    }).observe(document.getElementById('container'));
+
+    function sendChartState() {
+      if (!chartData) {
+        mup.updateState('No chart data', { hasData: false });
+      } else {
+        const dsInfo = chartData.datasets.map(ds => ds.label).join(', ');
+        mup.updateState(`${chartData.type} chart: ${dsInfo}`, { hasData: true, chartData });
+      }
+    }
+
+    // === MUP Functions ===
+
+    mup.registerFunction('renderChart', async (params) => {
+      renderChart(params);
+      sendChartState();
+      const dsInfo = chartData.datasets.map(ds => `${ds.label} (${ds.data.length} pts)`).join(', ');
+      return {
+        content: [{ type: 'text', text: `Rendered ${chartData.type} chart: ${dsInfo}` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('clear', async () => {
+      if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+      chartData = null;
+      canvas.style.display = 'none';
+      emptyEl.style.display = '';
+      emptyEl.textContent = 'No chart data — ask the LLM to generate one';
+      updateTypeButtons('');
+      sendChartState();
+      return { content: [{ type: 'text', text: 'Chart cleared' }], isError: false };
+    });
+
+    mup.registerFunction('getData', async () => {
+      if (!chartData) {
+        return { content: [{ type: 'text', text: 'No chart data' }], isError: false };
+      }
+      return {
+        content: [
+          { type: 'text', text: `${chartData.type} chart with ${chartData.datasets.length} dataset(s)` },
+          { type: 'data', data: chartData }
+        ],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('setType', async (params) => {
+      if (!chartData) {
+        return { content: [{ type: 'text', text: 'No chart to change' }], isError: true };
+      }
+      chartData.type = params.type;
+      renderChart(chartData);
+      sendChartState();
+      return { content: [{ type: 'text', text: `Chart type changed to ${params.type}` }], isError: false };
+    });
+
+    mup.onReady((params) => {
+      if (params.savedState && params.savedState.chartData) {
+        renderChart(params.savedState.chartData);
+      }
+      sendChartState();
+    });
+  </script>
+</body>
+</html>

@@ -55,13 +55,13 @@ A **MUP** is an interactive UI component that lives inside an LLM chat. It's a s
 
 The user operates it by clicking buttons; the LLM operates it through function calls. Both sides see each other's actions in real time.
 
-Includes a built-in Chat widget and presentation MUPs (slides, charts, tables, diagrams).
+Includes a built-in Chat widget. Load your own MUP `.html` files via `--mups-dir`, or use the ones in the [mups/](https://github.com/Ricky610329/mup/tree/main/mups) folder (Slides, Voice, Progress).
 
 ## Links
 
 - [GitHub](https://github.com/Ricky610329/mup)
 - [Spec](https://github.com/Ricky610329/mup/blob/main/spec/MUP-Spec.md)
-- [Slides MUPs](https://github.com/Ricky610329/mup/tree/main/mups/slides)
+- [MUPs](https://github.com/Ricky610329/mup/tree/main/mups)
 - [Demo Videos](https://github.com/Ricky610329/mup#demos)
 
 ## License

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Voice</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Voice",
+    "description": "Voice assistant with speech-to-text and text-to-speech. User taps the mic button to speak one utterance, which is transcribed and sent as an interaction. IMPORTANT: When the user speaks via this Voice panel, ALWAYS call speak() with a short conversational reply (1-2 sentences) so the user hears your response. The user must tap the mic again to speak next.",
+    "grid": { "minWidth": 1, "minHeight": 1 },
+    "permissions": ["microphone"],
+    "functions": [
+      {
+        "name": "startListening",
+        "description": "Start listening for speech.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "stopListening",
+        "description": "Stop listening for speech.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "speak",
+        "description": "Speak text aloud to the user via text-to-speech. Use this to respond to voice input. Keep it short and conversational (1-2 sentences).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "Text to speak aloud" }
+          },
+          "required": ["text"]
+        }
+      },
+      {
+        "name": "getTranscript",
+        "description": "Get the most recent transcript text.",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: transparent;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .mic-btn {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      border: 2px solid rgba(60,60,67,0.15);
+      background: rgba(255,255,255,0.6);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .mic-btn:hover { border-color: rgba(60,60,67,0.3); }
+    .mic-btn.listening {
+      border-color: #ff3b30;
+      background: rgba(255,59,48,0.08);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .mic-btn.listening svg { color: #ff3b30; }
+    .mic-btn.speaking {
+      border-color: #007aff;
+      background: rgba(0,122,255,0.08);
+      animation: pulse-blue 1.5s ease-in-out infinite;
+    }
+    .mic-btn.speaking svg { color: #007aff; }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255,59,48,0.3); }
+      50% { box-shadow: 0 0 0 10px rgba(255,59,48,0); }
+    }
+    @keyframes pulse-blue {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,122,255,0.3); }
+      50% { box-shadow: 0 0 0 10px rgba(0,122,255,0); }
+    }
+
+    .mic-btn svg {
+      width: 22px; height: 22px;
+      color: rgba(60,60,67,0.6);
+      transition: color 0.2s;
+    }
+
+    .status {
+      font-size: 11px;
+      color: rgba(60,60,67,0.4);
+      text-align: center;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status.active { color: #ff3b30; }
+    .status.speaking { color: #007aff; }
+
+    .transcript {
+      font-size: 11px;
+      color: rgba(60,60,67,0.6);
+      text-align: center;
+      max-width: 100%;
+      max-height: 40px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.4;
+      padding: 0 4px;
+    }
+
+    .unsupported {
+      font-size: 12px;
+      color: rgba(255,59,48,0.6);
+      text-align: center;
+      padding: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="main"></div>
+
+  <script>
+    const main = document.getElementById('main');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const synth = window.speechSynthesis;
+
+    let listening = false;
+    let speaking = false;
+    let recognition = null;
+    let lastTranscript = '';
+    let micBtn, statusEl, transcriptEl;
+
+    if (!SpeechRecognition) {
+      main.innerHTML = '<div class="unsupported">Speech recognition not supported</div>';
+    } else {
+      main.parentElement.innerHTML = `
+        <button class="mic-btn" id="micBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+        <div class="status" id="status">Tap to listen</div>
+        <div class="transcript" id="transcript"></div>
+      `;
+
+      micBtn = document.getElementById('micBtn');
+      statusEl = document.getElementById('status');
+      transcriptEl = document.getElementById('transcript');
+
+      micBtn.addEventListener('click', () => {
+        if (speaking) return;
+        if (listening) {
+          stopRecognition();
+        } else {
+          startRecognition();
+        }
+      });
+    }
+
+    function startRecognition() {
+      if (listening || speaking || !SpeechRecognition) return;
+
+      recognition = new SpeechRecognition();
+      recognition.continuous = false; // stop after each utterance
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        listening = true;
+        micBtn.classList.remove('speaking');
+        micBtn.classList.add('listening');
+        statusEl.textContent = 'Listening...';
+        statusEl.className = 'status active';
+        mup.updateState('Listening', { listening: true, speaking: false });
+      };
+
+      recognition.onresult = (event) => {
+        let interim = '';
+        let final = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const text = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            final += text;
+          } else {
+            interim += text;
+          }
+        }
+
+        if (interim) {
+          transcriptEl.textContent = interim;
+        }
+
+        if (final.trim()) {
+          lastTranscript = final.trim();
+          transcriptEl.textContent = lastTranscript;
+          mup.updateState(`Heard: "${lastTranscript.slice(0, 50)}"`, { listening: false, transcript: lastTranscript });
+          mup.notifyInteraction('speech', `User said: "${lastTranscript}"`, { transcript: lastTranscript });
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'no-speech' || event.error === 'aborted') return;
+        statusEl.textContent = 'Error: ' + event.error;
+        stopRecognition();
+      };
+
+      recognition.onend = () => {
+        // utterance finished — stop and wait for LLM to respond
+        listening = false;
+        micBtn.classList.remove('listening');
+        if (!speaking) {
+          statusEl.textContent = 'Processing...';
+          statusEl.className = 'status';
+        }
+      };
+
+      try {
+        recognition.start();
+      } catch (e) {
+        statusEl.textContent = 'Error starting';
+      }
+    }
+
+    function stopRecognition() {
+      listening = false;
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+        recognition = null;
+      }
+      if (micBtn) micBtn.classList.remove('listening');
+      if (statusEl && !speaking) {
+        statusEl.textContent = 'Tap to listen';
+        statusEl.className = 'status';
+      }
+      mup.updateState('Idle', { listening: false, speaking: false });
+    }
+
+    // Cache the selected voice so we don't search every time
+    let cachedVoice = null;
+    function pickVoice() {
+      if (cachedVoice) return cachedVoice;
+      const voices = synth.getVoices();
+      const femaleNames = ['Jenny', 'Aria', 'Sara', 'Zira', 'Samantha', 'Karen', 'Victoria', 'Fiona'];
+      cachedVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Jenny') && v.name.includes('Online'))
+        || voices.find(v => v.lang.startsWith('en') && femaleNames.some(n => v.name.includes(n)) && v.name.includes('Online'))
+        || voices.find(v => v.lang.startsWith('en') && femaleNames.some(n => v.name.includes(n)))
+        || voices.find(v => v.lang.startsWith('en') && !v.localService)
+        || voices.find(v => v.lang.startsWith('en'));
+      return cachedVoice;
+    }
+    // Pre-load voices (Chrome loads them async)
+    synth.onvoiceschanged = () => { cachedVoice = null; pickVoice(); };
+    pickVoice();
+
+    function finishSpeaking() {
+      speaking = false;
+      micBtn.classList.remove('speaking');
+      statusEl.textContent = 'Tap to listen';
+      statusEl.className = 'status';
+      mup.updateState('Idle', { listening: false, speaking: false });
+    }
+
+    function speakText(text) {
+      return new Promise((resolve) => {
+        // Stop listening while speaking to avoid echo
+        if (listening) stopRecognition();
+        // Cancel any stuck utterance
+        synth.cancel();
+
+        speaking = true;
+        micBtn.classList.remove('listening');
+        micBtn.classList.add('speaking');
+        statusEl.textContent = 'Speaking...';
+        statusEl.className = 'status speaking';
+        transcriptEl.textContent = text.slice(0, 80) + (text.length > 80 ? '...' : '');
+        mup.updateState('Speaking', { listening: false, speaking: true });
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        utterance.rate = 1.05;
+        const voice = pickVoice();
+        if (voice) utterance.voice = voice;
+
+        // Timeout fallback — Chrome sometimes doesn't fire onend
+        const estimatedMs = Math.max(2000, text.length * 80);
+        let done = false;
+        const timeout = setTimeout(() => {
+          if (!done) { done = true; synth.cancel(); finishSpeaking(); resolve(); }
+        }, estimatedMs);
+
+        utterance.onend = () => {
+          if (!done) { done = true; clearTimeout(timeout); finishSpeaking(); resolve(); }
+        };
+        utterance.onerror = () => {
+          if (!done) { done = true; clearTimeout(timeout); finishSpeaking(); resolve(); }
+        };
+
+        synth.speak(utterance);
+
+        // Chrome bug workaround: pause/resume to prevent stuck queue
+        if (synth.speaking) {
+          setTimeout(() => { synth.pause(); synth.resume(); }, 100);
+        }
+      });
+    }
+
+    // === MUP Functions ===
+
+    mup.registerFunction('startListening', async () => {
+      startRecognition();
+      return { content: [{ type: 'text', text: 'Listening started' }], isError: false };
+    });
+
+    mup.registerFunction('stopListening', async () => {
+      stopRecognition();
+      return { content: [{ type: 'text', text: 'Listening stopped' }], isError: false };
+    });
+
+    mup.registerFunction('speak', async (params) => {
+      await speakText(params.text);
+      return { content: [{ type: 'text', text: `Spoke: "${params.text.slice(0, 60)}"` }], isError: false };
+    });
+
+    mup.registerFunction('getTranscript', async () => {
+      return {
+        content: [
+          { type: 'text', text: lastTranscript || 'No transcript yet' },
+          { type: 'data', data: { transcript: lastTranscript, listening, speaking } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.onReady(() => {
+      mup.updateState('Idle', { listening: false, speaking: false });
+    });
+  </script>
+</body>
+</html>

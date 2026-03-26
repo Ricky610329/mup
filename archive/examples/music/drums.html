@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Drums</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Drums",
+    "description": "A 4-track drum step sequencer (kick, snare, hi-hat, clap) with 16 steps. Users toggle steps by clicking. LLM can set patterns, change tempo, and control playback. Use getPattern to export to the Mixer.",
+    "grid": { "minWidth": 3, "minHeight": 2 },
+    "functions": [
+      { "name": "setPattern", "description": "Set the beat pattern for one instrument. steps is 16 booleans (true = hit).", "inputSchema": { "type": "object", "properties": { "instrument": { "type": "string", "enum": ["kick", "snare", "hihat", "clap"] }, "steps": { "type": "array", "items": { "type": "boolean" }, "minItems": 16, "maxItems": 16 } }, "required": ["instrument", "steps"] } },
+      { "name": "setBPM", "description": "Set tempo (60-200).", "inputSchema": { "type": "object", "properties": { "bpm": { "type": "integer", "minimum": 60, "maximum": 200 } }, "required": ["bpm"] } },
+      { "name": "play", "description": "Start playback.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "stop", "description": "Stop playback.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "clear", "description": "Clear all patterns.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "getState", "description": "Get current patterns, BPM, and playback status.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "getPattern", "description": "Get drum patterns for export to Mixer/Arranger.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "toggleStep", "description": "Toggle a single step on or off.", "inputSchema": { "type": "object", "properties": { "instrument": { "type": "string", "enum": ["kick", "snare", "hihat", "clap"] }, "step": { "type": "integer", "minimum": 0, "maximum": 15 }, "on": { "type": "boolean" } }, "required": ["instrument", "step"] } }
+    ]
+  }
+  </script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,sans-serif;background:#1a1410;color:#c4a880;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+    .bar{display:flex;align-items:center;gap:4px;padding:4px 8px;background:#14100a;border-bottom:1px solid#2a2014;flex-shrink:0}
+    .bar button{width:28px;height:24px;border:1px solid#3a2a1a;border-radius:4px;background:#221a10;color:#c4a880;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;font-family:inherit}
+    .bar button:hover{background:#2e2218}
+    .bar button.on{background:#664422;border-color:#886644;color:#ffe0b0}
+    .bar input[type=number]{width:40px;padding:2px 4px;border:1px solid#3a2a1a;border-radius:3px;background:#221a10;color:#c4a880;font-size:11px;font-family:inherit;text-align:center}
+    .bar .sep{width:1px;height:16px;background:#2a2014} .bar .spacer{flex:1} .bar .lbl{font-size:9px;color:#665}
+    .seq{flex:1;display:flex;flex-direction:column;gap:2px;padding:6px 8px;overflow:hidden}
+    .trk{flex:1;display:flex;align-items:center;gap:2px;min-height:0}
+    .trk-lbl{width:36px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#665;flex-shrink:0;text-align:right;padding-right:4px}
+    .steps{flex:1;display:grid;grid-template-columns:repeat(16,1fr);gap:2px;height:100%}
+    .stp{border-radius:3px;cursor:pointer;background:#1e1810;transition:background .08s;min-height:14px}
+    .stp:hover{filter:brightness(1.3)}
+    .stp.bt{border-left:1px solid#2a2014}
+    .stp.on[data-i="kick"]{background:#cc5533}
+    .stp.on[data-i="snare"]{background:#ccaa33}
+    .stp.on[data-i="hihat"]{background:#55aa44}
+    .stp.on[data-i="clap"]{background:#7755cc}
+    .stp.cur{box-shadow:inset 0 0 0 1px #ffaa66}
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <button id="playBtn">&#9654;</button><button id="stopBtn">&#9632;</button><div class="sep"></div>
+    <span class="lbl">BPM</span><input type="number" id="bpm" value="120" min="60" max="200"><div class="sep"></div>
+    <button id="clearBtn">&#10005;</button>
+  </div>
+  <div class="seq" id="seq"></div>
+
+  <script>
+    const INST=['kick','snare','hihat','clap'],STEPS=16,ctx=new AudioContext(),seqEl=document.getElementById('seq'),cells={};
+    const patterns={};INST.forEach(i=>patterns[i]=new Array(STEPS).fill(false));
+    let bpm=120,playing=false,step=-1,timer=null;
+
+    // Build grid
+    INST.forEach(inst=>{
+      const trk=document.createElement('div');trk.className='trk';
+      const lbl=document.createElement('div');lbl.className='trk-lbl';lbl.textContent=inst;trk.appendChild(lbl);
+      const stps=document.createElement('div');stps.className='steps';cells[inst]={};
+      for(let s=0;s<STEPS;s++){const el=document.createElement('div');el.className='stp'+(s%4===0?' bt':'');el.dataset.i=inst;el.dataset.s=s;stps.appendChild(el);cells[inst][s]=el}
+      trk.appendChild(stps);seqEl.appendChild(trk);
+    });
+
+    seqEl.addEventListener('pointerdown',e=>{
+      const el=e.target.closest('.stp');if(!el)return;
+      const inst=el.dataset.i,s=+el.dataset.s;
+      patterns[inst][s]=!patterns[inst][s];el.classList.toggle('on',patterns[inst][s]);
+      broadcastState();
+      mup.notifyInteraction('toggle',`User toggled ${inst} step ${s+1} ${patterns[inst][s]?'ON':'OFF'}`,{instrument:inst,step:s,on:patterns[inst][s]});
+    });
+
+    function renderAll(){INST.forEach(inst=>{for(let s=0;s<STEPS;s++)cells[inst][s].classList.toggle('on',patterns[inst][s])})}
+
+    // Audio synthesis
+    function playSound(inst){
+      const now=ctx.currentTime;
+      if(inst==='kick'){const o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.setValueAtTime(150,now);o.frequency.exponentialRampToValueAtTime(30,now+.12);g.gain.setValueAtTime(.8,now);g.gain.exponentialRampToValueAtTime(.01,now+.15);o.connect(g);g.connect(ctx.destination);o.start(now);o.stop(now+.15)}
+      else if(inst==='snare'){const n=ctx.createBufferSource(),buf=ctx.createBuffer(1,ctx.sampleRate*.1,ctx.sampleRate),d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;n.buffer=buf;const g=ctx.createGain(),f=ctx.createBiquadFilter();f.type='highpass';f.frequency.value=1000;g.gain.setValueAtTime(.5,now);g.gain.exponentialRampToValueAtTime(.01,now+.1);n.connect(f);f.connect(g);g.connect(ctx.destination);n.start(now)}
+      else if(inst==='hihat'){const n=ctx.createBufferSource(),buf=ctx.createBuffer(1,ctx.sampleRate*.05,ctx.sampleRate),d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;n.buffer=buf;const g=ctx.createGain(),f=ctx.createBiquadFilter();f.type='highpass';f.frequency.value=5000;g.gain.setValueAtTime(.3,now);g.gain.exponentialRampToValueAtTime(.01,now+.05);n.connect(f);f.connect(g);g.connect(ctx.destination);n.start(now)}
+      else if(inst==='clap'){for(let i=0;i<3;i++){const n=ctx.createBufferSource(),buf=ctx.createBuffer(1,ctx.sampleRate*.02,ctx.sampleRate),d=buf.getChannelData(0);for(let j=0;j<d.length;j++)d[j]=Math.random()*2-1;n.buffer=buf;const g=ctx.createGain(),f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=2000;g.gain.setValueAtTime(.4,now+i*.01);g.gain.exponentialRampToValueAtTime(.01,now+i*.01+.04);n.connect(f);f.connect(g);g.connect(ctx.destination);n.start(now+i*.01)}}
+    }
+
+    function startPlay(){if(playing)return;ctx.resume();playing=true;step=-1;document.getElementById('playBtn').classList.add('on');tick()}
+    function stopPlay(){playing=false;clearTimeout(timer);document.getElementById('playBtn').classList.remove('on');INST.forEach(inst=>{for(let s=0;s<STEPS;s++)cells[inst][s].classList.remove('cur')});step=-1}
+    function tick(){
+      if(!playing)return;
+      if(step>=0)INST.forEach(inst=>cells[inst][step].classList.remove('cur'));
+      step=(step+1)%STEPS;
+      INST.forEach(inst=>{cells[inst][step].classList.add('cur');if(patterns[inst][step])playSound(inst)});
+      timer=setTimeout(tick,(60/bpm/4)*1000);
+    }
+
+    document.getElementById('playBtn').addEventListener('click',()=>{if(playing){stopPlay();broadcastState();mup.notifyInteraction('stop','User stopped playback',{})}else{startPlay();broadcastState();mup.notifyInteraction('play','User started playback',{bpm})}});
+    document.getElementById('stopBtn').addEventListener('click',()=>{stopPlay();broadcastState()});
+    document.getElementById('clearBtn').addEventListener('click',()=>{INST.forEach(i=>patterns[i].fill(false));renderAll();broadcastState();mup.notifyInteraction('clear','User cleared all patterns',{})});
+    document.getElementById('bpm').addEventListener('change',e=>{bpm=+e.target.value;broadcastState()});
+
+    function totalHits(){return Object.values(patterns).flat().filter(Boolean).length}
+    function broadcastState(){mup.updateState(`Drums: ${totalHits()} hits, ${bpm} BPM${playing?', playing':''}`,{patterns,bpm,playing})}
+
+    mup.registerFunction('setPattern',({instrument,steps})=>{if(!patterns[instrument])return{content:[{type:'text',text:'Unknown: '+instrument}],isError:true};for(let i=0;i<STEPS;i++)patterns[instrument][i]=!!steps[i];renderAll();broadcastState();return{content:[{type:'text',text:`Set ${instrument}: ${steps.filter(Boolean).length} hits`}],isError:false}});
+    mup.registerFunction('setBPM',({bpm:b})=>{bpm=Math.max(60,Math.min(200,b));document.getElementById('bpm').value=bpm;broadcastState();return{content:[{type:'text',text:`BPM: ${bpm}`}],isError:false}});
+    mup.registerFunction('play',()=>{startPlay();broadcastState();return{content:[{type:'text',text:'Playing'}],isError:false}});
+    mup.registerFunction('stop',()=>{stopPlay();broadcastState();return{content:[{type:'text',text:'Stopped'}],isError:false}});
+    mup.registerFunction('clear',()=>{INST.forEach(i=>patterns[i].fill(false));renderAll();broadcastState();return{content:[{type:'text',text:'Cleared'}],isError:false}});
+    mup.registerFunction('getState',()=>({content:[{type:'text',text:`BPM: ${bpm}, Playing: ${playing}, Hits: ${totalHits()}`},{type:'data',data:{patterns,bpm,playing}}],isError:false}));
+    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Drums: ${totalHits()} hits, ${bpm} BPM`},{type:'data',data:{track:'drums',pattern:patterns,bpm}}],isError:false}));
+    mup.registerFunction('toggleStep',({instrument,step,on})=>{if(!patterns[instrument])return{content:[{type:'text',text:'Unknown: '+instrument}],isError:true};if(step<0||step>=STEPS)return{content:[{type:'text',text:'Step must be 0-15'}],isError:true};const v=on!==undefined?on:!patterns[instrument][step];patterns[instrument][step]=v;cells[instrument][step].classList.toggle('on',v);broadcastState();return{content:[{type:'text',text:`${instrument} step ${step}: ${v?'ON':'OFF'}`}],isError:false}});
+
+    mup.onReady(p=>{if(p?.savedState){const s=p.savedState;if(s.bpm){bpm=s.bpm;document.getElementById('bpm').value=bpm}if(s.patterns){for(const i of INST)if(s.patterns[i])patterns[i]=s.patterns[i]}renderAll()}broadcastState()});
+  </script>
+</body>
+</html>

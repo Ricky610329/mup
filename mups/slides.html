@@ -6,7 +6,7 @@
   <script type="application/mup-manifest">
   {
     "name": "Slides",
-    "description": "Professional presentation editor. Layouts: title, content, two-column, image, embed (HTML/SVG from other tools), blank. Aspect ratios: 16:9, 4:3, 1:1, 9:16. Themes: light, dark, blue, green, midnight, warm. Use embedContent to integrate chart SVGs, diagrams, and other visual outputs into slides. Export to PDF or standalone HTML.",
+    "description": "Professional presentation editor. BEST PRACTICES: (1) Prefer 'content' and 'two-column' layouts — they handle sizing automatically and avoid overflow. Only use 'embed' or 'blank' for custom visuals like charts/SVGs. (2) Use setTheme() to change themes — do NOT recreate the presentation just to switch themes. (3) Use saveToLibrary() to save, exportHTML() to export. (4) Keep embed HTML simple: max 6 grid items per slide, use 11-14px body text, generous padding. Layouts: title, content, two-column, image, embed, blank. Aspect ratios: 16:9, 4:3, 1:1, 9:16. Themes: light, dark, blue, green, midnight, warm.",
     "grid": { "minWidth": 2, "minHeight": 2 },
     "darkMode": true,
     "functions": [
@@ -448,6 +448,10 @@
     <button class="toolbar-btn" id="presentBtn">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> Present
     </button>
+    <button class="toolbar-btn" id="saveBtn">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Save
+    </button>
     <button class="toolbar-btn" id="pdfBtn">PDF</button>
     <button class="toolbar-btn" id="htmlBtn">HTML</button>
     <div class="toolbar-sep"></div>
@@ -708,6 +712,15 @@
     document.getElementById('presentBtn').addEventListener('click', startPresentation);
     document.getElementById('pdfBtn').addEventListener('click', exportPDF);
     document.getElementById('htmlBtn').addEventListener('click', downloadHTML);
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const entry = librarySave();
+      if (entry) {
+        const btn = document.getElementById('saveBtn');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Saved!';
+        setTimeout(() => { btn.innerHTML = orig; }, 1500);
+      }
+    });
 
     // ---- Presentation mode ----
     function startPresentation() {

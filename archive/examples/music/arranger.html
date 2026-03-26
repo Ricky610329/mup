@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Arranger</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Arranger",
+    "description": "A song structure arranger. The LLM stores named sections (verse, chorus, bridge...) with pattern data from each instrument, then arranges them into a full song. Playback follows the arrangement order, switching patterns per section. Use addSection to store patterns, setArrangement to define song structure, then play.",
+    "grid": { "minWidth": 3, "minHeight": 2 },
+    "functions": [
+      {
+        "name": "addSection",
+        "description": "Add or update a named section with pattern data for each track. Track data comes from each instrument's getPattern result.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Section name, e.g. 'verse', 'chorus', 'bridge', 'intro', 'solo'" },
+            "bars": { "type": "integer", "description": "How many bars this section lasts (default 4)" },
+            "tracks": { "type": "object", "description": "Object with track names as keys (keys, chords, bass, synth, strings, drums) and their getPattern data as values" }
+          },
+          "required": ["name", "tracks"]
+        }
+      },
+      {
+        "name": "removeSection",
+        "description": "Remove a named section.",
+        "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] }
+      },
+      {
+        "name": "setArrangement",
+        "description": "Set the song structure as an ordered list of section names.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "order": { "type": "array", "items": { "type": "string" }, "description": "e.g. ['intro','verse','chorus','verse','chorus','bridge','chorus','outro']" }
+          },
+          "required": ["order"]
+        }
+      },
+      {
+        "name": "setBPM",
+        "description": "Set master BPM.",
+        "inputSchema": { "type": "object", "properties": { "bpm": { "type": "integer" } }, "required": ["bpm"] }
+      },
+      {
+        "name": "setMasterVolume",
+        "description": "Set master volume (0–1).",
+        "inputSchema": { "type": "object", "properties": { "volume": { "type": "number" } }, "required": ["volume"] }
+      },
+      {
+        "name": "play",
+        "description": "Play the full arrangement from the beginning.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "stop",
+        "description": "Stop playback.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "getState",
+        "description": "Get sections, arrangement, and playback state.",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,sans-serif;background:#111;color:#aaa;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+    .bar{display:flex;align-items:center;gap:6px;padding:5px 10px;background:#0a0a0a;border-bottom:1px solid#222;flex-shrink:0}
+    .bar button{padding:4px 12px;border:1px solid#333;border-radius:4px;background:#1a1a1a;color:#ccc;cursor:pointer;font-size:12px;font-family:inherit}
+    .bar button:hover{background:#222} .bar button.on{background:#2a4a2a;border-color:#4a8a4a;color:#8c8}
+    .bar .lbl{font-size:10px;color:#666} .bar .sep{width:1px;height:16px;background:#333}
+    .bar input[type=number]{width:44px;padding:2px 4px;border:1px solid#333;border-radius:3px;background:#1a1a1a;color:#ccc;font-size:11px;font-family:inherit;text-align:center}
+    .bar input[type=range]{width:60px;accent-color:#5a5}
+    .bar .spacer{flex:1}
+    .bar .pos{font-size:11px;color:#888;font-variant-numeric:tabular-nums}
+
+    .timeline{display:flex;gap:2px;padding:8px;overflow-x:auto;flex-shrink:0;min-height:60px;align-items:stretch;border-bottom:1px solid#222}
+    .timeline:empty::after{content:'No arrangement set. LLM will define the song structure.';color:#444;font-size:11px;display:flex;align-items:center;padding:0 8px}
+    .tblock{padding:6px 10px;border-radius:5px;border:1px solid#333;background:#1a1a1a;cursor:default;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;min-width:60px;transition:all .2s;flex-shrink:0}
+    .tblock .tname{font-size:12px;font-weight:600;color:#ccc}
+    .tblock .tbars{font-size:9px;color:#666}
+    .tblock.cur{border-color:#4a8a4a;background:#1a2a1a;box-shadow:0 0 10px rgba(74,138,74,.15)}
+    .tblock.cur .tname{color:#8c8}
+
+    .sections{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:3px}
+    .sections:empty::after{content:'No sections yet. LLM will add verse, chorus, etc.';color:#444;font-size:11px;padding:8px}
+    .sec{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid#1e1e1e;border-radius:5px;background:#161616}
+    .sec .sname{width:64px;font-size:12px;font-weight:600;flex-shrink:0}
+    .sec .sbars{font-size:10px;color:#666;width:32px;text-align:center;flex-shrink:0}
+    .sec .stracks{flex:1;display:flex;gap:3px;flex-wrap:wrap}
+    .sec .stag{font-size:9px;padding:1px 6px;border-radius:3px;background:#222;color:#888}
+    .sec .stag.has{background:#1a2a1a;color:#6a6}
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <button id="playBtn">&#9654; Play</button>
+    <button id="stopBtn">&#9632; Stop</button>
+    <div class="sep"></div>
+    <span class="lbl">BPM</span><input type="number" id="bpm" value="120" min="40" max="240">
+    <div class="sep"></div>
+    <span class="lbl">Vol</span><input type="range" id="vol" min="0" max="1" step="0.01" value="0.75">
+    <div class="spacer"></div>
+    <span class="pos" id="pos"></span>
+  </div>
+  <div class="timeline" id="timeline"></div>
+  <div class="sections" id="sections"></div>
+
+  <script>
+    const TRACK_NAMES = ['keys','chords','bass','synth','strings','drums'];
+    const TCOL = {keys:'#68c',chords:'#c94',bass:'#c44',synth:'#4ac',strings:'#86a',drums:'#888'};
+    const ctx = new AudioContext();
+    const master = ctx.createGain(); master.gain.value = 0.75; master.connect(ctx.destination);
+    const N = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const freq = m => 440 * Math.pow(2, (m - 69) / 12);
+    function midiOf(name) { const m = name.match(/^([A-G]#?)(\d)$/); return m ? N.indexOf(m[1]) + (parseInt(m[2]) + 1) * 12 : -1; }
+    const CHORDS = {'C':[48,52,55,60,64],'Cm':[48,51,55,60,63],'D':[50,54,57,62],'Dm':[50,53,57,62],'E':[40,47,52,56,59,64],'Em':[40,47,52,55,59,64],'F':[41,48,53,57,60],'G':[43,47,50,55,59,67],'A':[45,52,57,61,64],'Am':[45,52,57,60,64],'B':[47,54,59,63,66],'Bm':[47,54,59,62,66],'C7':[48,52,55,58,64],'D7':[50,54,57,60],'E7':[40,47,50,56,59,64],'G7':[43,47,50,55,59,65],'A7':[45,52,55,61,64],'Cmaj':[48,52,55,60],'Dmin':[50,53,57,62],'Emin':[52,55,59,64],'Fmaj':[53,57,60,65],'Gmaj':[55,59,62,67],'Amin':[45,48,52,57],'Bdim':[47,50,53,59],'Cmaj7':[48,52,55,59],'Amin7':[45,48,52,55],'Fmaj7':[53,57,60,64],'Gmaj7':[55,59,62,66],'Dmin7':[50,53,57,60]};
+
+    let sections = {}; // { name: { bars, tracks: { keys: data, bass: data, ... } } }
+    let arrangement = []; // ["verse", "chorus", ...]
+    let bpm = 120, playing = false, timer = null;
+    let curSection = -1, curStep = -1, totalStepsInSection = 0;
+
+    const timelineEl = document.getElementById('timeline');
+    const sectionsEl = document.getElementById('sections');
+    const posEl = document.getElementById('pos');
+
+    // ---- Render ----
+    function render() {
+      // Timeline
+      timelineEl.innerHTML = '';
+      arrangement.forEach((name, i) => {
+        const sec = sections[name];
+        const el = document.createElement('div');
+        el.className = 'tblock' + (i === curSection ? ' cur' : '');
+        const bars = sec ? sec.bars || 4 : 4;
+        el.style.minWidth = Math.max(48, bars * 16) + 'px';
+        el.innerHTML = `<span class="tname">${name}</span><span class="tbars">${bars} bars</span>`;
+        timelineEl.appendChild(el);
+      });
+
+      // Sections list
+      sectionsEl.innerHTML = '';
+      for (const [name, sec] of Object.entries(sections)) {
+        const el = document.createElement('div');
+        el.className = 'sec';
+        const trackTags = TRACK_NAMES.map(t => {
+          const has = sec.tracks && sec.tracks[t];
+          return `<span class="stag${has ? ' has' : ''}" style="${has ? 'color:' + TCOL[t] : ''}">${t}</span>`;
+        }).join('');
+        el.innerHTML = `<span class="sname">${name}</span><span class="sbars">${sec.bars || 4}b</span><div class="stracks">${trackTags}</div>`;
+        sectionsEl.appendChild(el);
+      }
+
+      updatePos();
+    }
+
+    function updatePos() {
+      if (!playing || curSection < 0) { posEl.textContent = ''; return; }
+      const name = arrangement[curSection] || '';
+      const sec = sections[name];
+      const bar = sec ? Math.floor(curStep / 16) + 1 : 0;
+      const beat = Math.floor((curStep % 16) / 4) + 1;
+      posEl.textContent = `${name} ${bar}.${beat}  [${curSection + 1}/${arrangement.length}]`;
+    }
+
+    // ---- Audio engines (reused from Mixer) ----
+    function synthNote(type, f, dest, dur, p) {
+      const now = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.value = f; o.connect(g); g.connect(dest);
+      const a = p.attack || .01, d = p.decay || .1, s = p.sustain ?? .5, r = p.release || .1;
+      g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(.2, now + a);
+      g.gain.linearRampToValueAtTime(.2 * s, now + a + d); g.gain.setValueAtTime(.2 * s, now + dur);
+      g.gain.linearRampToValueAtTime(.001, now + dur + r); o.start(now); o.stop(now + dur + r);
+    }
+
+    function playDrum(type, dest) {
+      const now = ctx.currentTime;
+      if (type === 'kick') { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(150, now); o.frequency.exponentialRampToValueAtTime(40, now + .1); o.connect(g); g.connect(dest); g.gain.setValueAtTime(.8, now); g.gain.exponentialRampToValueAtTime(.001, now + .3); o.start(now); o.stop(now + .3); }
+      else { const n = ctx.createBufferSource(), buf = ctx.createBuffer(1, ctx.sampleRate * (type === 'hihat' ? .05 : .1), ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; n.buffer = buf; const g = ctx.createGain(), f = ctx.createBiquadFilter(); f.type = type === 'hihat' ? 'highpass' : type === 'clap' ? 'bandpass' : 'highpass'; f.frequency.value = type === 'hihat' ? 5000 : type === 'clap' ? 2000 : 1000; n.connect(f); f.connect(g); g.connect(dest); g.gain.setValueAtTime(type === 'snare' ? .5 : .3, now); g.gain.exponentialRampToValueAtTime(.001, now + (type === 'hihat' ? .06 : .12)); n.start(now); }
+    }
+
+    function playStepAudio(trackName, trackData, stepInPattern, dur) {
+      if (!trackData) return;
+      const tg = ctx.createGain(); tg.gain.value = 0.7; tg.connect(master);
+      const p = trackData.params || {};
+      const pat = trackData.pattern;
+
+      if (trackName === 'keys') {
+        if (!pat || !pat[stepInPattern] || !pat[stepInPattern].length) return;
+        pat[stepInPattern].forEach(n => { const m = midiOf(n); if (m >= 0) synthNote(p.waveform || 'triangle', freq(m), tg, dur * .8, p); });
+      } else if (trackName === 'bass') {
+        if (!pat || !pat[stepInPattern]) return;
+        const m = midiOf(pat[stepInPattern]); if (m < 0) return;
+        const now = ctx.currentTime, o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        o.type = p.waveform || 'sawtooth'; o.frequency.value = freq(m); f.type = 'lowpass'; f.frequency.value = p.filterFreq || 400; f.Q.value = p.filterQ || 4;
+        o.connect(f); f.connect(g); g.connect(tg); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(.3, now + .01); g.gain.exponentialRampToValueAtTime(.001, now + (p.decay || .3)); o.start(now); o.stop(now + (p.decay || .3));
+      } else if (trackName === 'synth') {
+        if (!pat || !pat[stepInPattern]) return;
+        const m = midiOf(pat[stepInPattern]); if (m < 0) return;
+        const now = ctx.currentTime, o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), fl = ctx.createBiquadFilter(), g = ctx.createGain(), mx = ctx.createGain();
+        o1.type = p.waveform || 'sawtooth'; o1.frequency.value = freq(m); o2.type = p.waveform || 'sawtooth'; o2.frequency.value = freq(m); o2.detune.value = p.detune || 0;
+        fl.type = 'lowpass'; fl.frequency.value = p.filterFreq || 3000; fl.Q.value = p.filterQ || 2; mx.gain.value = .5;
+        o1.connect(fl); o2.connect(mx); mx.connect(fl); fl.connect(g); g.connect(tg);
+        g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(.2, now + (p.attack || .02)); g.gain.linearRampToValueAtTime(.2 * (p.sustain ?? .5), now + (p.attack || .02) + (p.decay || .15));
+        g.gain.setValueAtTime(.2 * (p.sustain ?? .5), now + dur * .8); g.gain.linearRampToValueAtTime(.001, now + dur * .8 + (p.release || .2));
+        o1.start(now); o2.start(now); o1.stop(now + dur + (p.release || .2)); o2.stop(now + dur + (p.release || .2));
+      } else if (trackName === 'drums') {
+        if (!pat) return;
+        for (const [inst, steps] of Object.entries(pat)) { if (Array.isArray(steps) && steps[stepInPattern]) playDrum(inst, tg); }
+      }
+    }
+
+    function playChordAudio(trackName, trackData, chordName, dur) {
+      if (!chordName || !trackData) return;
+      const notes = CHORDS[chordName]; if (!notes) return;
+      const tg = ctx.createGain(); tg.gain.value = 0.7; tg.connect(master);
+      const p = trackData.params || {};
+
+      if (trackName === 'chords') {
+        const now = ctx.currentTime;
+        notes.forEach((midi, j) => {
+          const delay = j * ((p.strumSpeed || 30) / 1000), o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+          o.type = 'triangle'; o.frequency.value = freq(midi); f.type = 'lowpass'; f.frequency.value = p.brightness || 2000; f.Q.value = 1;
+          o.connect(f); f.connect(g); g.connect(tg); const t = now + delay;
+          g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.1, t + .005); g.gain.exponentialRampToValueAtTime(.001, t + (p.decay || 1.2));
+          o.start(t); o.stop(t + (p.decay || 1.2));
+        });
+      } else if (trackName === 'strings') {
+        const det = p.detune || 4, pg = ctx.createGain();
+        pg.gain.setValueAtTime(0, ctx.currentTime); pg.gain.linearRampToValueAtTime(.08, ctx.currentTime + (p.attack || .6)); pg.connect(tg);
+        notes.forEach(midi => { [-det, 0, det].forEach(d => { const o = ctx.createOscillator(), f = ctx.createBiquadFilter(); o.type = 'sawtooth'; o.frequency.value = freq(midi); o.detune.value = d; f.type = 'lowpass'; f.frequency.value = p.brightness || 1200; f.Q.value = .5; o.connect(f); f.connect(pg); o.start(); setTimeout(() => { try { o.stop(); } catch {} }, (dur + (p.release || .8)) * 1000); }); });
+        pg.gain.setValueAtTime(.08, ctx.currentTime + dur); pg.gain.linearRampToValueAtTime(.001, ctx.currentTime + dur + (p.release || .8));
+      }
+    }
+
+    // ---- Playback ----
+    function startPlay() {
+      if (playing) return;
+      if (arrangement.length === 0) return;
+      ctx.resume(); playing = true; curSection = 0; curStep = -1;
+      const sec = sections[arrangement[0]];
+      totalStepsInSection = (sec ? sec.bars || 4 : 4) * 16;
+      document.getElementById('playBtn').classList.add('on');
+      render();
+      tick();
+    }
+
+    function stopPlay() {
+      playing = false; clearTimeout(timer);
+      document.getElementById('playBtn').classList.remove('on');
+      curSection = -1; curStep = -1;
+      render();
+    }
+
+    function tick() {
+      if (!playing) return;
+      curStep++;
+
+      // Advance to next section if needed
+      if (curStep >= totalStepsInSection) {
+        curSection++;
+        if (curSection >= arrangement.length) { stopPlay(); return; }
+        curStep = 0;
+        const sec = sections[arrangement[curSection]];
+        totalStepsInSection = (sec ? sec.bars || 4 : 4) * 16;
+        render(); // update timeline highlight
+      }
+
+      const secName = arrangement[curSection];
+      const sec = sections[secName];
+      if (!sec) { timer = setTimeout(tick, 60 / bpm / 4 * 1000); return; }
+
+      const dur = 60 / bpm / 4;
+      const stepInPattern = curStep % 16; // pattern loops every 16 steps
+
+      // Play step-based tracks
+      for (const t of ['keys', 'bass', 'synth', 'drums']) {
+        if (sec.tracks && sec.tracks[t]) playStepAudio(t, sec.tracks[t], stepInPattern, dur);
+      }
+
+      // Play chord-based tracks
+      if (sec.tracks) {
+        const chordData = sec.tracks['chords'];
+        if (chordData && chordData.slots) {
+          let acc = 0, si = -1;
+          for (let s = 0; s < chordData.slots.length; s++) {
+            const b = (chordData.slots[s].beats || 4) * 4;
+            if (curStep >= acc && curStep < acc + b) { si = s; break; }
+            acc += b;
+          }
+          if (si >= 0 && curStep === acc) playChordAudio('chords', chordData, chordData.slots[si].chord, dur * (chordData.slots[si].beats || 4) * 4);
+        }
+
+        const strData = sec.tracks['strings'];
+        if (strData && strData.bars) {
+          const spb = Math.floor(totalStepsInSection / Math.max(strData.bars.length, 1));
+          const bi = Math.floor(curStep / spb);
+          if (bi < strData.bars.length && curStep % spb === 0) playChordAudio('strings', strData, strData.bars[bi].chord, spb * dur);
+        }
+      }
+
+      updatePos();
+      timer = setTimeout(tick, dur * 1000);
+    }
+
+    // ---- Controls ----
+    document.getElementById('playBtn').addEventListener('click', startPlay);
+    document.getElementById('stopBtn').addEventListener('click', stopPlay);
+    document.getElementById('bpm').addEventListener('change', e => { bpm = +e.target.value; broadcastState(); });
+    document.getElementById('vol').addEventListener('input', e => { master.gain.value = +e.target.value; });
+
+    function broadcastState() {
+      const secNames = Object.keys(sections);
+      mup.updateState(
+        `Arranger: ${secNames.length} sections, ${arrangement.length} blocks, ${bpm} BPM${playing ? ', playing' : ''}`,
+        { sections, arrangement, bpm, playing }
+      );
+    }
+
+    // ---- MUP Functions ----
+    mup.registerFunction('addSection', ({ name, bars = 4, tracks = {} }) => {
+      sections[name] = { bars, tracks };
+      render(); broadcastState();
+      const trackList = Object.keys(tracks).filter(t => tracks[t]);
+      return { content: [{ type: 'text', text: `Section "${name}" (${bars} bars): ${trackList.join(', ') || 'empty'}` }], isError: false };
+    });
+
+    mup.registerFunction('removeSection', ({ name }) => {
+      if (!sections[name]) return { content: [{ type: 'text', text: `Section "${name}" not found.` }], isError: true };
+      delete sections[name];
+      arrangement = arrangement.filter(n => n !== name);
+      render(); broadcastState();
+      return { content: [{ type: 'text', text: `Removed "${name}"` }], isError: false };
+    });
+
+    mup.registerFunction('setArrangement', ({ order }) => {
+      arrangement = order;
+      render(); broadcastState();
+      return { content: [{ type: 'text', text: `Arrangement: ${order.join(' → ')}` }], isError: false };
+    });
+
+    mup.registerFunction('setBPM', ({ bpm: b }) => {
+      bpm = b; document.getElementById('bpm').value = b; broadcastState();
+      return { content: [{ type: 'text', text: `BPM: ${b}` }], isError: false };
+    });
+
+    mup.registerFunction('setMasterVolume', ({ volume }) => {
+      master.gain.value = Math.max(0, Math.min(1, volume)); document.getElementById('vol').value = master.gain.value;
+      return { content: [{ type: 'text', text: `Volume: ${Math.round(volume * 100)}%` }], isError: false };
+    });
+
+    mup.registerFunction('play', () => { startPlay(); return { content: [{ type: 'text', text: 'Playing arrangement' }], isError: false }; });
+    mup.registerFunction('stop', () => { stopPlay(); return { content: [{ type: 'text', text: 'Stopped' }], isError: false }; });
+
+    mup.registerFunction('getState', () => {
+      const secInfo = Object.entries(sections).map(([k, v]) => `${k} (${v.bars}b): ${Object.keys(v.tracks || {}).join(',')}`);
+      return {
+        content: [
+          { type: 'text', text: `Sections: ${secInfo.join('; ') || 'none'}\nArrangement: ${arrangement.join(' → ') || 'none'}` },
+          { type: 'data', data: { sections: Object.fromEntries(Object.entries(sections).map(([k, v]) => [k, { bars: v.bars, tracks: Object.keys(v.tracks || {}) }])), arrangement, bpm } }
+        ],
+        isError: false
+      };
+    });
+
+    mup.onReady(p => {
+      if (p?.savedState) {
+        if (p.savedState.sections) sections = p.savedState.sections;
+        if (p.savedState.arrangement) arrangement = p.savedState.arrangement;
+        if (p.savedState.bpm) { bpm = p.savedState.bpm; document.getElementById('bpm').value = bpm; }
+      }
+      render(); broadcastState();
+    });
+  </script>
+</body>
+</html>

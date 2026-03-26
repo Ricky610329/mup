@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Strings</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Strings",
+    "description": "A string pad sequencer. 8 bars, each with a chord selection and volume. Lush detuned oscillators for ambient string sounds. Use getPattern to export to the Mixer.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "functions": [
+      { "name": "setPattern", "description": "Set the chord sequence. Each bar: {chord, volume}.", "inputSchema": { "type": "object", "properties": { "bars": { "type": "array", "items": { "type": "object", "properties": { "chord": { "type": "string" }, "volume": { "type": "number" } } } } }, "required": ["bars"] } },
+      { "name": "setParams", "description": "Adjust string sound.", "inputSchema": { "type": "object", "properties": { "brightness": { "type": "number" }, "attack": { "type": "number" }, "release": { "type": "number" }, "detune": { "type": "number" } } } },
+      { "name": "setBPM", "description": "Set tempo.", "inputSchema": { "type": "object", "properties": { "bpm": { "type": "integer" } }, "required": ["bpm"] } },
+      { "name": "play", "description": "Start playback.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "stop", "description": "Stop playback.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "getPattern", "description": "Get chord sequence, params, BPM for export to Mixer.", "inputSchema": { "type": "object", "properties": {} } }
+    ]
+  }
+  </script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,sans-serif;background:#141418;color:#999;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+    .bar{display:flex;align-items:center;gap:4px;padding:4px 8px;background:#101014;border-bottom:1px solid#222228;flex-shrink:0}
+    .bar button{width:28px;height:24px;border:1px solid#2a2a30;border-radius:4px;background:#1a1a20;color:#999;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;font-family:inherit}
+    .bar button:hover{background:#222228} .bar button.on{background:#2a3050;border-color:#4466aa;color:#aaccee}
+    .bar input[type=number]{width:40px;padding:2px 4px;border:1px solid#2a2a30;border-radius:3px;background:#1a1a20;color:#999;font-size:11px;font-family:inherit;text-align:center}
+    .bar .sep{width:1px;height:16px;background:#222228} .bar .spacer{flex:1} .bar .lbl{font-size:9px;color:#555}
+    .params{display:none;padding:5px 8px;background:#121216;border-bottom:1px solid#222228;flex-shrink:0;gap:8px;flex-wrap:wrap;align-items:center}
+    .params.open{display:flex}
+    .params label{font-size:9px;color:#555} .params input[type=range]{width:50px;accent-color:#4466aa;height:18px}
+    .bars-grid{flex:1;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:1fr 1fr;gap:3px;padding:6px;overflow:hidden}
+    .bx{border:1px solid#222228;border-radius:5px;background:#18181e;padding:6px;display:flex;flex-direction:column;gap:4px;transition:all .3s;position:relative;overflow:hidden}
+    .bx.on{border-color:#4466aa;background:#1a2040;box-shadow:0 0 12px rgba(68,102,170,.1)}
+    .bx .num{font-size:9px;color:#444;text-align:center}
+    .bx select{width:100%;padding:3px;border:1px solid#2a2a30;border-radius:3px;background:#141418;color:#aab;font-size:12px;font-weight:600;font-family:inherit;text-align:center}
+    .bx .vw{display:flex;align-items:center;gap:3px;font-size:9px;color:#555}
+    .bx .vw input{flex:1;accent-color:#4466aa;height:14px}
+    .bx .glow{position:absolute;inset:0;background:radial-gradient(circle at center,rgba(68,102,170,0) 0%,transparent 70%);opacity:0;transition:opacity .5s;pointer-events:none}
+    .bx.on .glow{opacity:1;background:radial-gradient(circle at center,rgba(68,102,170,.12) 0%,transparent 70%)}
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <button id="playBtn">&#9654;</button><button id="stopBtn">&#9632;</button><div class="sep"></div>
+    <span class="lbl">BPM</span><input type="number" id="bpm" value="120" min="40" max="200"><div class="spacer"></div><button id="paramBtn">&#9881;</button>
+  </div>
+  <div class="params" id="params">
+    <label>Bright</label><input type="range" id="bright" min="400" max="3000" value="1200">
+    <label>Atk</label><input type="range" id="atk" min="0.1" max="2" step="0.05" value="0.6">
+    <label>Rel</label><input type="range" id="rel" min="0.2" max="3" step="0.05" value="0.8">
+    <label>Detune</label><input type="range" id="det" min="1" max="10" step="0.5" value="4">
+  </div>
+  <div class="bars-grid" id="barsGrid"></div>
+
+  <script>
+    const CD={'':[],'Cmaj':[48,52,55,60],'Dmin':[50,53,57,62],'Emin':[52,55,59,64],'Fmaj':[53,57,60,65],'Gmaj':[55,59,62,67],'Amin':[45,48,52,57],'Bdim':[47,50,53,59],'Cmaj7':[48,52,55,59],'Amin7':[45,48,52,55],'Fmaj7':[53,57,60,64],'Gmaj7':[55,59,62,66],'Dmin7':[50,53,57,60]};
+    const NUM=8,ctx=new AudioContext(),master=ctx.createGain();master.gain.value=.7;master.connect(ctx.destination);
+    const barsEl=document.getElementById('barsGrid');
+    let bars=Array.from({length:NUM},()=>({chord:'',volume:.7})),params={brightness:1200,attack:.6,release:.8,detune:4};
+    let bpm=120,playing=false,cur=-1,timer=null;
+    const barEls=[],freq=m=>440*Math.pow(2,(m-69)/12);
+
+    for(let i=0;i<NUM;i++){
+      const el=document.createElement('div');el.className='bx';
+      const opts=Object.keys(CD).map(c=>`<option value="${c}">${c||'—'}</option>`).join('');
+      el.innerHTML=`<div class="glow"></div><div class="num">${i+1}</div><select>${opts}</select><div class="vw"><span>vol</span><input type="range" min="0" max="1" step="0.05" value="0.7"></div>`;
+      el.querySelector('select').addEventListener('change',e=>{bars[i].chord=e.target.value;broadcastState()});
+      el.querySelector('input[type=range]').addEventListener('input',e=>{bars[i].volume=+e.target.value});
+      barsEl.appendChild(el);barEls.push(el);
+    }
+
+    document.getElementById('paramBtn').addEventListener('click',()=>{document.getElementById('params').classList.toggle('open');document.getElementById('paramBtn').classList.toggle('on')});
+
+    function renderBars(){barEls.forEach((el,i)=>{el.querySelector('select').value=bars[i].chord;el.querySelector('input[type=range]').value=bars[i].volume})}
+
+    function playChord(notes,vol,dur){
+      if(!notes.length)return;const pg=ctx.createGain();pg.gain.setValueAtTime(0,ctx.currentTime);pg.gain.linearRampToValueAtTime(vol*.1,ctx.currentTime+params.attack);pg.connect(master);
+      const oscs=[];notes.forEach(midi=>{[-params.detune,0,params.detune].forEach(det=>{const o=ctx.createOscillator(),f=ctx.createBiquadFilter();o.type='sawtooth';o.frequency.value=freq(midi);o.detune.value=det;f.type='lowpass';f.frequency.value=params.brightness;f.Q.value=.5;o.connect(f);f.connect(pg);o.start();oscs.push(o)})});
+      const rt=ctx.currentTime+dur;pg.gain.setValueAtTime(vol*.1,rt);pg.gain.linearRampToValueAtTime(.001,rt+params.release);
+      setTimeout(()=>{oscs.forEach(o=>{try{o.stop()}catch{}});pg.disconnect()},(dur+params.release+.1)*1000);
+    }
+
+    function startPlay(){if(playing)return;ctx.resume();playing=true;cur=-1;document.getElementById('playBtn').classList.add('on');tickBar()}
+    function stopPlay(){playing=false;clearTimeout(timer);document.getElementById('playBtn').classList.remove('on');barEls.forEach(el=>el.classList.remove('on'));cur=-1}
+    function tickBar(){
+      if(!playing)return;barEls.forEach(el=>el.classList.remove('on'));cur=(cur+1)%NUM;
+      const b=bars[cur];if(!b.chord&&cur>0){stopPlay();return}
+      barEls[cur].classList.add('on');const notes=CD[b.chord]||[];const dur=60/bpm*4;
+      if(notes.length)playChord(notes,b.volume,dur*.95);timer=setTimeout(tickBar,dur*1000);
+    }
+
+    document.getElementById('playBtn').addEventListener('click',startPlay);
+    document.getElementById('stopBtn').addEventListener('click',stopPlay);
+    document.getElementById('bpm').addEventListener('change',e=>{bpm=+e.target.value;broadcastState()});
+    document.getElementById('bright').addEventListener('input',e=>{params.brightness=+e.target.value});
+    document.getElementById('atk').addEventListener('input',e=>{params.attack=+e.target.value});
+    document.getElementById('rel').addEventListener('input',e=>{params.release=+e.target.value});
+    document.getElementById('det').addEventListener('input',e=>{params.detune=+e.target.value});
+
+    function broadcastState(){const f=bars.filter(b=>b.chord).length;mup.updateState(`Strings: ${f}/${NUM} bars, ${bpm} BPM${playing?', playing':''}`,{bars,params,bpm,playing})}
+
+    mup.registerFunction('setPattern',({bars:b})=>{for(let i=0;i<NUM;i++)bars[i]=b[i]?{chord:b[i].chord||'',volume:b[i].volume??.7}:{chord:'',volume:.7};renderBars();broadcastState();return{content:[{type:'text',text:`Sequence: ${bars.filter(b=>b.chord).map(b=>b.chord).join(' → ')}`}],isError:false}});
+    mup.registerFunction('setParams',(p)=>{const c=[];if(p.brightness!==undefined){params.brightness=p.brightness;document.getElementById('bright').value=p.brightness;c.push('bright:'+p.brightness)}if(p.attack!==undefined){params.attack=p.attack;document.getElementById('atk').value=p.attack;c.push('atk:'+p.attack)}if(p.release!==undefined){params.release=p.release;document.getElementById('rel').value=p.release;c.push('rel:'+p.release)}if(p.detune!==undefined){params.detune=p.detune;document.getElementById('det').value=p.detune;c.push('det:'+p.detune)}return{content:[{type:'text',text:`Params: ${c.join(', ')}`}],isError:false}});
+    mup.registerFunction('setBPM',({bpm:b})=>{bpm=b;document.getElementById('bpm').value=b;broadcastState();return{content:[{type:'text',text:`BPM: ${b}`}],isError:false}});
+    mup.registerFunction('play',()=>{startPlay();return{content:[{type:'text',text:'Playing'}],isError:false}});
+    mup.registerFunction('stop',()=>{stopPlay();return{content:[{type:'text',text:'Stopped'}],isError:false}});
+    mup.registerFunction('getPattern',()=>({content:[{type:'text',text:`Strings: ${bars.filter(b=>b.chord).map(b=>b.chord).join(' → ')}`},{type:'data',data:{track:'strings',bars,params,bpm}}],isError:false}));
+
+    mup.onReady(p=>{if(p?.savedState){const s=p.savedState;if(s.bars){bars=s.bars;renderBars()}if(s.params)Object.assign(params,s.params);if(s.bpm){bpm=s.bpm;document.getElementById('bpm').value=bpm}}broadcastState()});
+  </script>
+</body>
+</html>

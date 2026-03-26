@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MUP Agent</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='white'/%3E%3Crect x='5' y='5' width='9' height='22' rx='2' fill='%231a1a1a'/%3E%3Crect x='17' y='5' width='10' height='12' rx='2' fill='%231a1a1a'/%3E%3Crect x='17' y='20' width='10' height='7' rx='2' fill='%231a1a1a'/%3E%3C/svg%3E">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/gridstack/dist/gridstack.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/gridstack/dist/gridstack-all.js"></script>
+  <style>
+    :root {
+      --bg-base: #f5f5f5;
+      --bg-panel: rgba(255, 255, 255, 0.92);
+      --bg-mup-body: #ffffff;
+      --text-primary: #1a1a1a;
+      --text-secondary: rgba(0, 0, 0, 0.5);
+      --text-tertiary: rgba(0, 0, 0, 0.25);
+      --border: rgba(0, 0, 0, 0.08);
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+      --radius-full: 9999px;
+      --chat-width: 420px;
+      --cell-size: 260px;
+      --cell-gap: 10px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      height: 100vh;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    /* ===== Main Layout ===== */
+    #app {
+      display: flex;
+      height: 100vh;
+      padding: 10px;
+      gap: 10px;
+      /* min-width: chat + gap + 2 cols grid → horizontal scroll on body when too small */
+      min-width: calc(var(--chat-width) + 10px + 540px + 20px);
+    }
+
+    /* ===== Chat Panel (left, fixed) ===== */
+    .chat-panel {
+      width: var(--chat-width);
+      min-width: var(--chat-width);
+      max-width: var(--chat-width);
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border);
+      background: var(--bg-panel);
+      backdrop-filter: blur(20px);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .chat-header {
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .chat-header-logo {
+      width: 28px; height: 28px;
+      background: var(--text-primary);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: white;
+      flex-shrink: 0;
+    }
+    .chat-header-brand { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .chat-header-brand span { font-size: 14px; font-weight: 600; letter-spacing: -0.3px; }
+
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: var(--green); }
+    .status-dot.disconnected { background: var(--red); }
+    .status-dot.connecting { background: var(--amber); animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    .chat-reset-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-tertiary); padding: 4px;
+      border-radius: 6px; display: flex; align-items: center;
+      transition: color 0.2s, background 0.2s;
+    }
+    .chat-reset-btn:hover { color: var(--text-secondary); background: rgba(0,0,0,0.04); }
+    .save-status {
+      font-size: 10px; color: var(--text-tertiary);
+      transition: opacity 0.3s;
+      white-space: nowrap;
+    }
+    .save-status.flash { color: var(--green); }
+
+    /* Session sidebar */
+    .session-panel {
+      position: absolute; top: 0; left: 0; bottom: 0;
+      width: 50%;
+      background: var(--bg-mup-body); z-index: 20;
+      display: flex; flex-direction: column;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+      box-shadow: none;
+    }
+    .session-panel.open { transform: translateX(0); box-shadow: 4px 0 20px rgba(0,0,0,0.08); }
+    /* Click-away overlay on the other half */
+    .session-overlay {
+      position: absolute; top: 0; right: 0; bottom: 0; width: 50%;
+      z-index: 19; display: none; cursor: pointer;
+    }
+    .session-panel.open ~ .session-overlay { display: block; }
+    .session-header {
+      padding: 14px 18px; display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .session-header-title { flex: 1; font-size: 14px; font-weight: 600; }
+    .session-close-btn {
+      background: none; border: none; cursor: pointer; color: var(--text-tertiary);
+      padding: 4px; border-radius: 6px; display: flex; align-items: center;
+      transition: color 0.15s;
+    }
+    .session-close-btn:hover { color: var(--text-primary); }
+    .session-new-btn {
+      padding: 8px 16px; margin: 10px 16px; border-radius: var(--radius-full);
+      background: var(--text-primary); color: white; border: none;
+      font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit;
+      transition: opacity 0.15s;
+    }
+    .session-new-btn:hover { opacity: 0.85; }
+    .session-list {
+      flex: 1; overflow-y: auto; padding: 4px 8px;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .session-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-radius: 10px; cursor: pointer;
+      transition: background 0.1s; font-size: 13px;
+    }
+    .session-item:hover { background: rgba(0,0,0,0.04); }
+    .session-item.active { background: rgba(0,0,0,0.06); font-weight: 500; }
+    .session-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-item-time { font-size: 10px; color: var(--text-tertiary); flex-shrink: 0; }
+    .session-item-del {
+      background: none; border: none; cursor: pointer; color: var(--text-tertiary);
+      font-size: 14px; padding: 0 2px; line-height: 1; opacity: 0; transition: opacity 0.15s;
+    }
+    .session-item:hover .session-item-del { opacity: 1; }
+    .session-item-del:hover { color: var(--red); }
+
+    /* Settings panel */
+    .settings-panel {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%) scale(0.95);
+      width: 380px; max-height: 80vh;
+      background: var(--bg-mup-body); z-index: 101;
+      display: flex; flex-direction: column;
+      border-radius: var(--radius-xl);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.06);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .settings-panel.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+    .settings-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.2);
+      z-index: 100; display: none; cursor: pointer;
+    }
+    .settings-panel.open ~ .settings-overlay { display: block; }
+    .settings-header {
+      padding: 14px 18px; display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .settings-header-title { flex: 1; font-size: 14px; font-weight: 600; }
+    .settings-body {
+      flex: 1; overflow-y: auto; padding: 16px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .settings-group label {
+      display: block; font-size: 11px; font-weight: 600;
+      color: var(--text-secondary); text-transform: uppercase;
+      letter-spacing: 0.3px; margin-bottom: 6px;
+    }
+    .settings-input {
+      width: 100%; padding: 8px 12px; border-radius: 10px;
+      border: 1.5px solid var(--border); font-family: inherit;
+      font-size: 13px; outline: none; background: #fff;
+      transition: border-color 0.2s;
+    }
+    .settings-input:focus { border-color: rgba(0,0,0,0.2); }
+    .settings-select { cursor: pointer; appearance: none; }
+    .settings-textarea {
+      resize: vertical; min-height: 60px; max-height: 150px;
+      line-height: 1.4;
+    }
+    .settings-section-title {
+      font-size: 11px; font-weight: 700; color: var(--text-primary);
+      letter-spacing: 0.3px; text-transform: uppercase;
+    }
+    .settings-divider {
+      height: 1px; background: var(--border); margin: 4px 0;
+    }
+    .settings-save-btn {
+      padding: 10px 20px; border-radius: var(--radius-full);
+      background: var(--text-primary); color: white; border: none;
+      font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit;
+      transition: opacity 0.15s; align-self: flex-start;
+    }
+    .settings-save-btn:hover { opacity: 0.85; }
+    .settings-status {
+      font-size: 12px; margin-left: 10px;
+    }
+
+    /* Messages */
+    .chat-messages {
+      flex: 1; overflow-y: auto; overflow-x: hidden; padding: 16px;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .chat-message { display: flex; gap: 10px; animation: msgIn 0.2s ease-out; min-width: 0; }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(4px); } }
+    .chat-message--user { justify-content: flex-end; padding: 6px 0; }
+    .chat-message--user .chat-message-content {
+      background: var(--text-primary); color: white;
+      border-radius: 18px 18px 4px 18px; padding: 10px 16px;
+      max-width: 85%; font-size: 14px; line-height: 1.5;
+      overflow-wrap: break-word; min-width: 0;
+    }
+    .chat-message--assistant { padding: 10px 0; }
+    .chat-message--assistant .chat-message-content { font-size: 14px; line-height: 1.6; color: var(--text-primary); min-width: 0; overflow-wrap: break-word; }
+    .chat-message--system .chat-message-content { font-size: 12px; color: var(--text-secondary); padding: 2px 0; }
+    .chat-avatar {
+      width: 26px; height: 26px; border-radius: 8px;
+      background: var(--text-primary); color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; flex-shrink: 0;
+    }
+    .chat-divider { height: 1px; background: var(--border); margin: 10px 0; }
+    .chat-message-content code { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+    .chat-message-content pre { background: rgba(0,0,0,0.04); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 6px 0; }
+    .chat-message-content pre code { background: none; padding: 0; }
+    .chat-message-content ul, .chat-message-content ol {
+      padding-left: 18px; margin: 4px 0;
+    }
+    .chat-message-content li { margin: 2px 0; }
+
+    .chat-loading-dots { display: flex; gap: 4px; padding: 8px 0; }
+    .chat-loading-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); animation: dot 1.4s ease-in-out infinite; }
+    .chat-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .chat-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dot { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+    /* Event Badges */
+    .event-badge-area { padding: 0 16px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .event-badge {
+      display: flex; align-items: center; gap: 5px; padding: 3px 8px;
+      background: rgba(0,0,0,0.03); border-radius: var(--radius-full);
+      font-size: 10px; animation: badgeIn 0.2s ease-out;
+      transition: opacity 0.5s ease;
+    }
+    .event-badge.fading { opacity: 0; }
+    @keyframes badgeIn { from { opacity: 0; transform: scale(0.95); } }
+    .event-badge-name { font-weight: 600; color: var(--text-secondary); }
+    .event-badge-text { color: var(--text-tertiary); }
+
+    /* Chat Input */
+    .chat-input-area { padding: 12px 14px; display: flex; align-items: flex-end; gap: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .chat-input-wrapper {
+      flex: 1; display: flex; align-items: flex-end;
+      background: #fff; border: 1.5px solid var(--border);
+      border-radius: 22px; padding: 4px 4px 4px 14px;
+      transition: border-color 0.2s;
+    }
+    .chat-input-wrapper:focus-within { border-color: rgba(0,0,0,0.2); }
+    .chat-input {
+      flex: 1; border: none; outline: none; font-family: inherit;
+      font-size: 14px; resize: none; line-height: 1.4;
+      max-height: 120px; padding: 6px 0; background: transparent;
+    }
+    .chat-send-btn {
+      width: 34px; height: 34px; border: none; border-radius: 50%;
+      background: var(--text-primary); color: white; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: opacity 0.15s;
+    }
+    .chat-send-btn:hover { opacity: 0.8; }
+
+    /* ===== Dashboard (right, scrollable) ===== */
+    .dashboard {
+      flex: 1;
+      min-width: 0;
+      width: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0 4px;
+      border-radius: var(--radius-xl);
+    }
+
+    /* GridStack overrides */
+    .grid-stack { min-height: 100%; width: 100% !important; }
+    .grid-stack-item-content {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-panel);
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 0 0 0.5px rgba(0,0,0,0.04);
+      transition: box-shadow 0.2s;
+    }
+    .grid-stack-item-content:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.06);
+    }
+    .grid-stack > .grid-stack-item > .ui-resizable-se {
+      width: 20px; height: 20px;
+      background: none;
+      right: 2px; bottom: 2px;
+      cursor: se-resize;
+    }
+    .grid-stack > .grid-stack-item > .ui-resizable-se::before {
+      content: '';
+      position: absolute;
+      right: 5px; bottom: 5px;
+      width: 8px; height: 8px;
+      background: radial-gradient(circle, rgba(0,0,0,0.2) 1.5px, transparent 1.5px);
+      background-size: 4px 4px;
+      background-position: right bottom;
+    }
+    .grid-stack-placeholder > .placeholder-content {
+      border: 2px dashed rgba(0,0,0,0.15) !important;
+      border-radius: var(--radius-lg) !important;
+      background: rgba(0,0,0,0.03) !important;
+    }
+
+    /* MUP Card inside grid item */
+    .mup-card-header {
+      padding: 6px 12px;
+      font-size: 11px; font-weight: 600;
+      color: var(--text-primary);
+      background: rgba(0, 0, 0, 0.03);
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      display: flex; align-items: center; gap: 6px;
+      user-select: none; cursor: grab;
+      flex-shrink: 0;
+    }
+    .mup-card-header:active { cursor: grabbing; }
+    .mup-card-header::before {
+      content: ''; width: 6px; height: 6px;
+      border-radius: 50%; background: var(--green); flex-shrink: 0;
+    }
+    .mup-card-header .mup-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mup-close-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-tertiary); font-size: 14px; padding: 0 2px;
+      line-height: 1; transition: color 0.15s;
+    }
+    .mup-close-btn:hover { color: var(--red); }
+
+    /* Manager card */
+    .manager-list {
+      flex: 1; overflow-y: auto; padding: 4px 0;
+      display: flex; flex-direction: column; gap: 0;
+    }
+    .manager-file {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 10px; font-size: 13px;
+      cursor: default; user-select: none;
+      transition: background 0.1s;
+    }
+    .manager-file:hover { background: rgba(0,0,0,0.04); }
+    .manager-file.active { background: rgba(34,197,94,0.08); }
+    .manager-file-icon {
+      width: 14px; height: 14px; flex-shrink: 0;
+      fill: var(--text-tertiary);
+    }
+    .manager-file.active .manager-file-icon { fill: var(--green); }
+    .manager-file.invalid .manager-file-icon { fill: var(--red); }
+    .manager-file-name {
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: var(--text-primary); font-weight: 400;
+    }
+    .manager-file.invalid .manager-file-name { color: var(--text-tertiary); text-decoration: line-through; }
+
+    .manager-file.is-folder { cursor: pointer; }
+    .manager-file.is-folder .manager-file-name { font-weight: 500; }
+
+    .manager-empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 24px 16px; text-align: center; flex: 1;
+      color: var(--text-secondary); font-size: 13px;
+    }
+    .manager-empty-icon {
+      opacity: 0.3; margin-bottom: 4px;
+    }
+    .manager-empty-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 8px;
+      background: var(--accent); color: #fff; border: none;
+      cursor: pointer; font-size: 13px; font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    .manager-empty-btn:hover { opacity: 0.85; }
+
+    .mup-card-body {
+      flex: 1; position: relative; overflow: hidden;
+      background: var(--bg-mup-body);
+    }
+    .mup-card-body iframe { width: 100%; height: 100%; border: none; display: block; }
+
+    /* Disable iframe mouse events during drag/resize to prevent lag */
+    .grid-stack-item.ui-draggable-dragging .mup-card-body iframe,
+    .grid-stack-item.ui-resizable-resizing .mup-card-body iframe,
+    body.grid-stack-dragging .mup-card-body iframe {
+      pointer-events: none;
+    }
+    .grid-stack-item { will-change: auto; }
+    .grid-stack-item.ui-draggable-dragging { will-change: transform; z-index: 100; }
+
+    /* Disconnect banner */
+    .disconnect-banner {
+      display: none; position: fixed; top: 0; left: 0; right: 0;
+      background: var(--red); color: white; text-align: center;
+      padding: 6px; font-size: 12px; font-weight: 500; z-index: 100;
+    }
+    .disconnect-banner.show { display: block; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.07); border-radius: 10px; }
+  </style>
+</head>
+<body>
+
+<div class="disconnect-banner" id="disconnectBanner">Disconnected from agent — reconnecting...</div>
+<div id="app">
+  <!-- Settings (floating modal) -->
+  <div class="settings-panel" id="settingsPanel">
+    <div class="settings-header">
+      <span class="settings-header-title">Settings</span>
+      <button class="session-close-btn" id="settingsCloseBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="settings-body">
+      <div class="settings-section-title">LLM</div>
+        <div class="settings-group">
+          <label>Provider</label>
+          <select class="settings-input settings-select" id="settingsProvider">
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+            <option value="google">Google</option>
+            <option value="groq">Groq</option>
+            <option value="xai">xAI</option>
+            <option value="mistral">Mistral</option>
+          </select>
+        </div>
+        <div class="settings-group">
+          <label>Model</label>
+          <input class="settings-input" id="settingsModel" placeholder="e.g. claude-sonnet-4-6, o4-mini, gpt-4o">
+        </div>
+        <div class="settings-group">
+          <label>API Key</label>
+          <input class="settings-input" id="settingsApiKey" type="password" placeholder="sk-...">
+        </div>
+        <div class="settings-divider"></div>
+        <div class="settings-section-title">Agent</div>
+        <div class="settings-group">
+          <label>System Prompt (prefix)</label>
+          <textarea class="settings-input settings-textarea" id="settingsPrompt" placeholder="Optional: prepended to auto-generated prompt"></textarea>
+        </div>
+        <div class="settings-divider"></div>
+        <div class="settings-section-title">Grid Layout</div>
+        <div class="settings-group">
+          <label>Cell Size (px)</label>
+          <input class="settings-input" id="settingsCellSize" type="number" min="150" max="400" step="10">
+        </div>
+        <div class="settings-group">
+          <label>Max Columns</label>
+          <input class="settings-input" id="settingsMaxCols" type="number" min="2" max="10">
+        </div>
+        <div class="settings-group">
+          <label>Min Columns</label>
+          <input class="settings-input" id="settingsMinCols" type="number" min="1" max="5">
+        </div>
+        <button class="settings-save-btn" id="settingsDefaultBtn" style="background:transparent;color:var(--text-tertiary);border:none;font-size:11px;padding:4px 0;">Reset Grid to Default</button>
+        <div class="settings-divider"></div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="settings-save-btn" id="settingsSaveBtn">Save</button>
+          <span class="settings-status" id="settingsStatus"></span>
+        </div>
+    </div>
+  </div>
+  <div class="settings-overlay" id="settingsOverlay"></div>
+
+  <!-- Chat (left, fixed) -->
+  <div class="chat-panel" id="chatPanel" style="position:relative;">
+    <div class="session-panel" id="sessionPanel">
+      <div class="session-header">
+        <span class="session-header-title">Chats</span>
+        <button class="session-close-btn" id="sessionCloseBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <button class="session-new-btn" id="sessionNewBtn">+ New chat</button>
+      <div class="session-list" id="sessionList"></div>
+    </div>
+
+    <div class="session-overlay" id="sessionOverlay"></div>
+
+    <div class="chat-header">
+      <button class="chat-reset-btn" id="sessionMenuBtn" title="Chat history">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="chat-header-brand">
+        <div class="chat-header-logo">M</div>
+        <span id="chatTitle" title="Click to rename" style="cursor:pointer">MUP Agent</span>
+      </div>
+      <span class="save-status" id="saveStatus"></span>
+      <div class="status-dot connecting" id="statusDot"></div>
+      <button class="chat-reset-btn" id="settingsBtn" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
+      <button class="chat-reset-btn" id="resetBtn" title="New chat">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="event-badge-area" id="eventBadges"></div>
+    <div class="chat-input-area">
+      <div class="chat-input-wrapper">
+        <textarea class="chat-input" id="chatInput" placeholder="Message MUP..." rows="1"></textarea>
+        <button class="chat-send-btn" id="sendBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard (right, scrollable grid) -->
+  <div class="dashboard" id="dashboard">
+    <div class="grid-stack" id="grid"></div>
+  </div>
+</div>
+
+<script>
+// ---- MUP SDK (injected into each iframe) ----
+const MUP_SDK_SOURCE = `
+class MupSDK {
+  constructor() {
+    this._port = null; this._functions = new Map(); this._readyCallback = null;
+    this._pendingRequests = new Map(); this._nextId = 1; this._initialized = false;
+    this._themeCallback = null; this.theme = 'light';
+    window.addEventListener("message", (event) => {
+      if (event.data && event.data.type === "mup:init" && event.ports[0]) {
+        this._port = event.ports[0];
+        this._port.onmessage = (msg) => this._handleMessage(msg.data);
+      }
+    });
+  }
+  registerFunction(name, handler) { this._functions.set(name, handler); }
+  onReady(callback) { this._readyCallback = callback; if (this._initialized && this._initParams) callback(this._initParams); }
+  onThemeChange(callback) { this._themeCallback = callback; if (this.theme) callback(this.theme); }
+  updateState(summary, data) { this._notify("notifications/state/update", { summary, data }); }
+  notifyInteraction(action, summary, data) { this._notify("notifications/interaction", { action, summary, data }); }
+  system(action, params) { return this._request("system/request", { action, params }); }
+  _handleMessage(data) {
+    if (!data || data.jsonrpc !== "2.0") return;
+    if ("id" in data && !("method" in data)) {
+      const p = this._pendingRequests.get(data.id);
+      if (p) { this._pendingRequests.delete(data.id); data.error ? p.reject(new Error(data.error.message)) : p.resolve(data.result); }
+      return;
+    }
+    if ("id" in data && "method" in data) { this._handleRequest(data); return; }
+    if ("method" in data) { this._handleNotification(data); return; }
+  }
+  _handleNotification(msg) {
+    if (msg.method === "notifications/shutdown") this._notify("notifications/shutdown/complete", {});
+    if (msg.method === "notifications/theme") {
+      this.theme = msg.params?.theme || 'light';
+      if (this._themeCallback) this._themeCallback(this.theme);
+    }
+  }
+  async _handleRequest(msg) {
+    const { id, method, params } = msg;
+    if (method === "initialize") {
+      this._initParams = params; this._initialized = true;
+      if (params.theme) { this.theme = params.theme; }
+      this._sendResponse(id, { protocolVersion: "mup/2026-03-17", mupInfo: { name: document.title || "MUP", version: "1.0.0" } });
+      if (this._themeCallback) this._themeCallback(this.theme);
+      if (this._readyCallback) this._readyCallback(params);
+      return;
+    }
+    if (method === "functions/call") {
+      const handler = this._functions.get(params.name);
+      if (!handler) { this._sendError(id, -32603, "Function not registered: " + params.name); return; }
+      try { this._sendResponse(id, await handler(params.arguments, params.source)); }
+      catch (e) { this._sendError(id, -32603, e.message || "Internal error"); }
+      return;
+    }
+    this._sendError(id, -32601, "Method not found: " + method);
+  }
+  _sendResponse(id, result) { if (this._port) this._port.postMessage({ jsonrpc: "2.0", id, result }); }
+  _sendError(id, code, message) { if (this._port) this._port.postMessage({ jsonrpc: "2.0", id, error: { code, message } }); }
+  _notify(method, params) { if (this._port) this._port.postMessage({ jsonrpc: "2.0", method, params }); }
+  _request(method, params) {
+    if (!this._port) return Promise.reject(new Error("Not connected"));
+    const id = this._nextId++;
+    return new Promise((resolve, reject) => { this._pendingRequests.set(id, { resolve, reject }); this._port.postMessage({ jsonrpc: "2.0", id, method, params }); });
+  }
+}
+const mup = new MupSDK();
+`;
+
+// ---- State ----
+const mups = new Map();
+const initResolvers = new Map();
+const callMap = new Map();
+let nextMsgId = 1;
+let ws = null;
+let streamingEl = null;
+
+const chatMessages = document.getElementById("chatMessages");
+const chatInput = document.getElementById("chatInput");
+const sendBtn = document.getElementById("sendBtn");
+const resetBtn = document.getElementById("resetBtn");
+const statusDot = document.getElementById("statusDot");
+const eventBadges = document.getElementById("eventBadges");
+
+const sendIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';
+const stopIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>';
+let isGenerating = false;
+
+// ---- GridStack init ----
+// Fixed-size grid: each cell is exactly CELL_SIZE x CELL_SIZE pixels
+// Gridstack margin is half the gap (applied to each side = full gap between items)
+let CELL_SIZE = parseInt(localStorage.getItem('mup-cell-size')) || 260;
+const CELL_GAP = 10;
+let GS_MARGIN = CELL_GAP / 2;
+let MAX_COLS = parseInt(localStorage.getItem('mup-max-cols')) || 5;
+let MIN_COLS = parseInt(localStorage.getItem('mup-min-cols')) || 2;
+let grid;
+let currentCols = MAX_COLS;
+
+// Gridstack item pixel width = containerWidth/cols - 2*margin
+// We want that to equal CELL_SIZE, so:
+// containerWidth/cols = CELL_SIZE + 2*margin
+// containerWidth = cols * (CELL_SIZE + 2*margin)
+let COL_SLOT = CELL_SIZE + 2 * GS_MARGIN;
+
+function calcColumns() {
+  const dashboard = document.getElementById('dashboard');
+  const available = dashboard.clientWidth;
+  let cols = Math.floor(available / COL_SLOT);
+  return Math.max(MIN_COLS, Math.min(MAX_COLS, cols));
+}
+
+function setGridWidth(cols) {
+  const gridEl = document.getElementById('grid');
+  const totalW = cols * COL_SLOT;
+  gridEl.style.width = totalW + 'px';
+  gridEl.style.maxWidth = totalW + 'px';
+  gridEl.style.minWidth = totalW + 'px';
+  gridEl.style.margin = '0 auto'; // 置中
+}
+
+function initGrid() {
+  currentCols = calcColumns();
+  setGridWidth(currentCols);
+
+  grid = GridStack.init({
+    column: currentCols,
+    cellHeight: COL_SLOT, // same as column slot so cells are square
+    margin: GS_MARGIN,
+    float: false,
+    animate: false,
+    draggable: { handle: '.mup-card-header' },
+    resizable: { handles: 'se' },
+    minRow: 1,
+    disableOneColumnMode: true,
+  }, '#grid');
+
+  grid.on('dragstart resizestart', () => document.body.classList.add('grid-stack-dragging'));
+  grid.on('dragstop resizestop', () => {
+    document.body.classList.remove('grid-stack-dragging');
+    saveGridLayout(); // persist layout after drag/resize
+  });
+}
+
+function handleResize() {
+  if (!grid) return;
+  const newCols = calcColumns();
+  if (newCols !== currentCols) {
+    currentCols = newCols;
+    setGridWidth(newCols);
+    grid.column(newCols, 'compact');
+  }
+  // Always ensure min width so horizontal scroll kicks in
+  const gridEl = document.getElementById('grid');
+  const minW = MIN_COLS * COL_SLOT;
+  gridEl.style.minWidth = minW + 'px';
+}
+
+window.addEventListener('resize', handleResize);
+
+// Init after layout is ready
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    try {
+      initGrid();
+      // Render manager card if catalog already arrived
+      if (catalog.length > 0) renderManagerCard();
+      // Process pending MUPs
+      for (const p of pendingMups) loadMup(p.mupId, p.html, p.manifest, p.savedState);
+      pendingMups.length = 0;
+    } catch(e) {
+      console.error('[MUP] Init error:', e);
+      document.getElementById('dashboard').innerHTML = '<div style="padding:20px;color:red;">Init error: ' + e.message + '</div>';
+    }
+  }, 100);
+});
+
+// ---- Markdown ----
+function renderMarkdown(text) {
+  let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // Code blocks
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Bold + italic
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+  // Unordered lists (- or •)
+  html = html.replace(/^[\-•]\s+(.+)/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Ordered lists
+  html = html.replace(/^\d+\.\s+(.+)/gm, '<li>$1</li>');
+  // Line breaks
+  html = html.replace(/\n{2,}/g, "<br>");
+  html = html.replace(/\n/g, "<br>");
+  return html;
+}
+function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+// ---- Chat UI ----
+function addChatMessage(role, content) {
+  finalizeStreaming();
+  if (role === "user") {
+    const divider = document.createElement("div");
+    divider.className = "chat-divider";
+    chatMessages.appendChild(divider);
+  }
+  const msgEl = document.createElement("div");
+  msgEl.className = `chat-message chat-message--${role}`;
+  if (role === "assistant") {
+    const avatar = document.createElement("div");
+    avatar.className = "chat-avatar";
+    avatar.textContent = "M";
+    msgEl.appendChild(avatar);
+  }
+  const contentEl = document.createElement("div");
+  contentEl.className = "chat-message-content";
+  contentEl.innerHTML = role === "assistant" ? renderMarkdown(content) : escapeHtml(content);
+  msgEl.appendChild(contentEl);
+  chatMessages.appendChild(msgEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function appendStreamDelta(delta) {
+  if (!streamingEl) {
+    const msgEl = document.createElement("div");
+    msgEl.className = "chat-message chat-message--assistant";
+    const avatar = document.createElement("div");
+    avatar.className = "chat-avatar";
+    avatar.textContent = "M";
+    msgEl.appendChild(avatar);
+    const contentEl = document.createElement("div");
+    contentEl.className = "chat-message-content";
+    msgEl.appendChild(contentEl);
+    chatMessages.appendChild(msgEl);
+    streamingEl = { container: msgEl, contentEl, text: "" };
+  }
+  streamingEl.text += delta;
+  streamingEl.contentEl.innerHTML = renderMarkdown(streamingEl.text);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function finalizeStreaming() {
+  if (streamingEl) {
+    streamingEl.contentEl.innerHTML = renderMarkdown(streamingEl.text);
+    streamingEl = null;
+  }
+}
+
+function setLoading(loading) {
+  const existing = document.getElementById("chat-loading");
+  if (loading && !existing) {
+    const el = document.createElement("div");
+    el.className = "chat-message chat-message--assistant";
+    el.id = "chat-loading";
+    const av = document.createElement("div");
+    av.className = "chat-avatar";
+    av.textContent = "M";
+    const dots = document.createElement("div");
+    dots.className = "chat-loading-dots";
+    dots.innerHTML = "<span></span><span></span><span></span>";
+    el.appendChild(av);
+    el.appendChild(dots);
+    chatMessages.appendChild(el);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  } else if (!loading && existing) {
+    existing.remove();
+  }
+}
+
+function addEventBadge(sourceName, summary) {
+  const existing = eventBadges.querySelector(`[data-source="${sourceName}"]`);
+  if (existing) existing.remove();
+  const badge = document.createElement("div");
+  badge.className = "event-badge";
+  badge.dataset.source = sourceName;
+  badge.innerHTML = `<span class="event-badge-name">${escapeHtml(sourceName)}</span><span class="event-badge-text">${escapeHtml(summary)}</span>`;
+  eventBadges.appendChild(badge);
+  // Fade out then remove
+  setTimeout(() => badge.classList.add("fading"), 3000);
+  setTimeout(() => badge.remove(), 3500);
+}
+
+// ---- Grid layout save ----
+function saveGridLayout() {
+  if (!grid || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const items = grid.getGridItems();
+  const layout = [];
+  for (const item of items) {
+    const id = item.getAttribute('gs-id');
+    if (id && id !== '__manager__') {
+      layout.push({
+        id,
+        x: parseInt(item.getAttribute('gs-x') || '0'),
+        y: parseInt(item.getAttribute('gs-y') || '0'),
+        w: parseInt(item.getAttribute('gs-w') || '1'),
+        h: parseInt(item.getAttribute('gs-h') || '1'),
+      });
+    }
+  }
+  ws.send(JSON.stringify({ type: "save-session", data: { gridLayout: layout } }));
+}
+
+function handleSend() {
+  const text = chatInput.value.trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+  chatInput.value = "";
+  chatInput.style.height = "auto";
+  addChatMessage("user", text);
+  ws.send(JSON.stringify({ type: "user-message", text }));
+}
+
+function handleReset() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "new-session" }));
+  }
+}
+
+// ---- Settings panel ----
+const settingsPanel = document.getElementById("settingsPanel");
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsCloseBtn = document.getElementById("settingsCloseBtn");
+const settingsSaveBtn = document.getElementById("settingsSaveBtn");
+const settingsStatus = document.getElementById("settingsStatus");
+
+settingsBtn.addEventListener("click", () => {
+  settingsPanel.classList.toggle("open");
+  if (settingsPanel.classList.contains("open")) {
+    // Pre-populate grid settings from local state
+    document.getElementById("settingsCellSize").value = CELL_SIZE;
+    document.getElementById("settingsMaxCols").value = MAX_COLS;
+    document.getElementById("settingsMinCols").value = MIN_COLS;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "get-settings" }));
+    }
+  }
+});
+settingsCloseBtn.addEventListener("click", () => settingsPanel.classList.remove("open"));
+document.getElementById("settingsOverlay").addEventListener("click", () => settingsPanel.classList.remove("open"));
+
+document.getElementById("settingsDefaultBtn").addEventListener("click", () => {
+  document.getElementById("settingsCellSize").value = 260;
+  document.getElementById("settingsMaxCols").value = 5;
+  document.getElementById("settingsMinCols").value = 2;
+  document.getElementById("settingsPrompt").value = "";
+  settingsStatus.textContent = "Defaults restored — click Save to apply";
+  settingsStatus.style.color = "var(--text-secondary)";
+});
+
+settingsSaveBtn.addEventListener("click", () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const settings = {
+    provider: document.getElementById("settingsProvider").value,
+    model: document.getElementById("settingsModel").value,
+    apiKey: document.getElementById("settingsApiKey").value,
+    systemPromptPrefix: document.getElementById("settingsPrompt").value,
+  };
+  ws.send(JSON.stringify({ type: "update-settings", settings }));
+
+  // Apply grid settings immediately
+  const newCellSize = parseInt(document.getElementById("settingsCellSize").value) || 260;
+  const newMaxCols = parseInt(document.getElementById("settingsMaxCols").value) || 5;
+  const newMinCols = parseInt(document.getElementById("settingsMinCols").value) || 2;
+  localStorage.setItem('mup-cell-size', newCellSize);
+  localStorage.setItem('mup-max-cols', newMaxCols);
+  localStorage.setItem('mup-min-cols', newMinCols);
+  if (newCellSize !== CELL_SIZE || newMaxCols !== MAX_COLS || newMinCols !== MIN_COLS) {
+    CELL_SIZE = newCellSize;
+    MAX_COLS = newMaxCols;
+    MIN_COLS = newMinCols;
+    COL_SLOT = CELL_SIZE + 2 * GS_MARGIN;
+    if (grid) {
+      grid.cellHeight(COL_SLOT);
+      handleResize();
+    }
+  }
+
+  settingsStatus.textContent = "Saving...";
+  settingsStatus.style.color = "var(--text-secondary)";
+});
+
+function populateSettings(settings) {
+  document.getElementById("settingsProvider").value = settings.provider || "anthropic";
+  document.getElementById("settingsModel").value = settings.model || "";
+  document.getElementById("settingsApiKey").value = settings.apiKey || "";
+  document.getElementById("settingsPrompt").value = settings.systemPromptPrefix || "";
+  // Grid settings from localStorage
+  document.getElementById("settingsCellSize").value = CELL_SIZE;
+  document.getElementById("settingsMaxCols").value = MAX_COLS;
+  document.getElementById("settingsMinCols").value = MIN_COLS;
+}
+
+// ---- Save status indicator ----
+const saveStatusEl = document.getElementById("saveStatus");
+let saveStatusTimer = null;
+function showSaveStatus() {
+  saveStatusEl.textContent = "saved";
+  saveStatusEl.classList.add("flash");
+  clearTimeout(saveStatusTimer);
+  saveStatusTimer = setTimeout(() => {
+    saveStatusEl.classList.remove("flash");
+    saveStatusTimer = setTimeout(() => { saveStatusEl.textContent = ""; }, 300);
+  }, 2000);
+}
+
+// ---- Session UI ----
+const sessionPanel = document.getElementById("sessionPanel");
+const sessionList = document.getElementById("sessionList");
+const sessionMenuBtn = document.getElementById("sessionMenuBtn");
+const sessionCloseBtn = document.getElementById("sessionCloseBtn");
+const sessionNewBtn = document.getElementById("sessionNewBtn");
+const chatTitle = document.getElementById("chatTitle");
+let currentSessionId = null;
+
+sessionMenuBtn.addEventListener("click", () => {
+  sessionPanel.classList.toggle("open");
+  if (sessionPanel.classList.contains("open") && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "list-sessions" }));
+  }
+});
+sessionCloseBtn.addEventListener("click", () => sessionPanel.classList.remove("open"));
+document.getElementById("sessionOverlay").addEventListener("click", () => sessionPanel.classList.remove("open"));
+
+chatTitle.addEventListener("click", () => {
+  const current = chatTitle.textContent;
+  const newTitle = prompt("Rename chat:", current);
+  if (newTitle && newTitle !== current && ws && ws.readyState === WebSocket.OPEN) {
+    chatTitle.textContent = newTitle;
+    ws.send(JSON.stringify({ type: "rename-session", title: newTitle }));
+  }
+});
+sessionNewBtn.addEventListener("click", () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "new-session" }));
+  }
+  sessionPanel.classList.remove("open");
+});
+
+function renderSessionList(sessions, currentId) {
+  currentSessionId = currentId;
+  sessionList.innerHTML = sessions.map(s => {
+    const active = s.id === currentId ? ' active' : '';
+    const time = new Date(s.updatedAt).toLocaleDateString();
+    return `<div class="session-item${active}" data-id="${s.id}">
+      <span class="session-item-title">${escapeHtml(s.title)}</span>
+      <span class="session-item-time">${time}</span>
+      <button class="session-item-del" data-id="${s.id}" title="Delete">&times;</button>
+    </div>`;
+  }).join('');
+
+  sessionList.querySelectorAll('.session-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('session-item-del')) return;
+      const id = el.dataset.id;
+      if (id && id !== currentSessionId && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "load-session", sessionId: id }));
+        sessionPanel.classList.remove("open");
+      }
+    });
+  });
+
+  sessionList.querySelectorAll('.session-item-del').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (id && ws && ws.readyState === WebSocket.OPEN) {
+        const isDeletingCurrent = id === currentSessionId;
+        ws.send(JSON.stringify({ type: "delete-session", sessionId: id }));
+        if (isDeletingCurrent) sessionPanel.classList.remove("open");
+      }
+    });
+  });
+}
+
+let pendingGridLayout = null; // layout to apply after MUPs load
+
+function handleSessionLoaded(session) {
+  chatMessages.innerHTML = '';
+  streamingEl = null;
+  chatTitle.textContent = session.title || 'MUP Agent';
+
+  // Remove all current MUP widgets
+  if (grid) {
+    const items = grid.getGridItems();
+    for (const item of items) {
+      if (item.getAttribute('gs-id') !== '__manager__') {
+        grid.removeWidget(item);
+      }
+    }
+  }
+  mups.clear();
+
+  // Reset all catalog active flags + re-render manager
+  for (const c of catalog) c.active = false;
+  renderManagerCard();
+
+  // Save layout to apply after MUPs are loaded
+  pendingGridLayout = session.gridLayout || null;
+
+  // Replay messages to chat UI (including tool calls)
+  for (const msg of (session.messages || [])) {
+    const role = msg.role;
+    if (role === 'user') {
+      const text = Array.isArray(msg.content)
+        ? msg.content.filter(c => c.type === 'text').map(c => c.text).join('')
+        : String(msg.content || '');
+      if (text) addChatMessage('user', text);
+    } else if (role === 'assistant') {
+      const contentArr = Array.isArray(msg.content) ? msg.content : [];
+      // Show tool calls
+      for (const c of contentArr) {
+        if (c.type === 'toolCall') {
+          addChatMessage('system', `Called ${c.name}`);
+        }
+      }
+      // Show text
+      const text = contentArr.filter(c => c.type === 'text').map(c => c.text).join('');
+      if (text) addChatMessage('assistant', text);
+    }
+  }
+}
+
+sendBtn.addEventListener("click", () => {
+  if (isGenerating) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "user-abort" }));
+  } else {
+    handleSend();
+  }
+});
+chatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+});
+chatInput.addEventListener("input", () => {
+  chatInput.style.height = "auto";
+  chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + "px";
+});
+resetBtn.addEventListener("click", handleReset);
+
+// ---- WebSocket ----
+function connect() {
+  const wsUrl = `ws://${location.hostname}:__WS_PORT__`;
+  ws = new WebSocket(wsUrl);
+  ws.onopen = () => {
+    statusDot.className = "status-dot connected";
+    document.getElementById("disconnectBanner").classList.remove("show");
+    ws.send(JSON.stringify({ type: "ready" }));
+  };
+  ws.onclose = () => {
+    statusDot.className = "status-dot disconnected";
+    document.getElementById("disconnectBanner").classList.add("show");
+    setTimeout(connect, 3000);
+  };
+  ws.onerror = () => { statusDot.className = "status-dot disconnected"; };
+  ws.onmessage = (e) => {
+    try { handleServerMessage(JSON.parse(e.data)); }
+    catch (err) { console.error("Invalid message:", err); }
+  };
+}
+
+let catalog = [];
+let folderTree = []; // tree from scan-folder
+
+function handleServerMessage(msg) {
+  switch (msg.type) {
+    case "initial-folder":
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "scan-folder", path: msg.path }));
+      }
+      break;
+    case "mup-catalog": catalog = msg.catalog; renderManagerCard(); break;
+    case "folder-contents":
+      folderTree = msg.tree || [];
+      if (msg.error) addChatMessage("system", `Folder error: ${msg.error}`);
+      renderManagerCard();
+      break;
+    case "load-mup": loadMup(msg.mupId, msg.html, msg.manifest, msg.savedState); break;
+    case "call": callMupFunction(msg.callId, msg.mupId, msg.fn, msg.args); break;
+    case "chat-message":
+      finalizeStreaming();
+      addChatMessage(msg.role, msg.content);
+      break;
+    case "chat-delta":
+      document.getElementById("chat-loading")?.remove();
+      appendStreamDelta(msg.delta);
+      break;
+    case "chat-stream-end":
+      finalizeStreaming();
+      break;
+    case "chat-loading":
+      if (msg.loading) { finalizeStreaming(); setLoading(true); isGenerating = true; sendBtn.innerHTML = stopIcon; }
+      else { setLoading(false); isGenerating = false; sendBtn.innerHTML = sendIcon; }
+      break;
+    case "chat-tool-call":
+      // Silent — tool calls visible via loading indicator only
+      break;
+    case "session-list":
+      renderSessionList(msg.sessions, msg.currentId);
+      break;
+    case "session-loaded":
+      handleSessionLoaded(msg.session);
+      break;
+    case "session-title":
+      chatTitle.textContent = msg.title;
+      break;
+    case "no-api-key":
+      // Auto-open settings and show hint
+      settingsPanel.classList.add("open");
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "get-settings" }));
+      }
+      settingsStatus.textContent = "Enter your API key to get started";
+      settingsStatus.style.color = "var(--accent)";
+      break;
+    case "settings":
+      populateSettings(msg.settings);
+      break;
+    case "settings-saved":
+      if (msg.success) {
+        settingsStatus.textContent = "Saved!";
+        settingsStatus.style.color = "var(--green)";
+        setTimeout(() => { settingsStatus.textContent = ""; }, 2000);
+      } else {
+        settingsStatus.textContent = "Error: " + (msg.error || "Unknown");
+        settingsStatus.style.color = "var(--red)";
+      }
+      break;
+    case "session-saved":
+      showSaveStatus();
+      break;
+  }
+}
+
+// ---- MUP Loading with GridStack ----
+const pendingMups = [];
+function loadMup(mupId, html, manifest, savedState) {
+  if (!grid) {
+    pendingMups.push({ mupId, html, manifest, savedState });
+    return;
+  }
+  // All MUPs start at 1×1, user resizes as needed
+
+  // Build DOM element with gs- attributes for gridstack v12
+  const el = document.createElement('div');
+  el.classList.add('grid-stack-item');
+  el.setAttribute('gs-w', '1');
+  el.setAttribute('gs-h', '1');
+  el.setAttribute('gs-min-w', '1');
+  el.setAttribute('gs-min-h', '1');
+  el.setAttribute('gs-auto-position', 'true');
+  el.setAttribute('gs-id', mupId);
+  el.innerHTML = `
+    <div class="grid-stack-item-content">
+      <div class="mup-card-header">
+        <span class="mup-name">${escapeHtml(manifest.name)}</span>
+        <button class="mup-close-btn" data-mup-id="${mupId}" title="Remove">&times;</button>
+      </div>
+      <div class="mup-card-body">
+        <iframe sandbox="allow-scripts allow-same-origin allow-popups" ${
+          (manifest.permissions || []).length ? `allow="${manifest.permissions.map(p => p + " 'src'").join('; ')}"` : ''
+        }></iframe>
+      </div>
+    </div>`;
+
+  // Close button handler
+  el.querySelector('.mup-close-btn').addEventListener('click', () => removeMup(mupId));
+
+  // Add to gridstack
+  const widget = grid.addWidget(el);
+
+  const iframe = widget.querySelector('iframe');
+  setupMupIframe(mupId, manifest, iframe, html, 1, 1, savedState);
+}
+
+function setupMupIframe(mupId, manifest, iframe, html, w, h, savedState) {
+  // Inject SDK
+  const sdkScript = `<script>${MUP_SDK_SOURCE}<\/script>`;
+  let injected = html;
+  if (injected.includes("</head>")) {
+    injected = injected.replace("</head>", sdkScript + "\n</head>");
+  } else if (injected.includes("<body")) {
+    injected = injected.replace(/<body([^>]*)>/, `<body$1>\n${sdkScript}`);
+  } else {
+    injected = sdkScript + "\n" + injected;
+  }
+  injected = injected.replace(/<script[^>]*src="[^"]*mup-sdk\.js"[^>]*><\/script>/g, "");
+
+  const blob = new Blob([injected], { type: "text/html" });
+  const blobUrl = URL.createObjectURL(blob);
+
+  const channel = new MessageChannel();
+  const port = channel.port1;
+  port.onmessage = (e) => handleMupMessage(mupId, manifest.name, e.data);
+
+  iframe.onload = () => {
+    URL.revokeObjectURL(blobUrl);
+    iframe.contentWindow.postMessage({ type: "mup:init" }, "*", [channel.port2]);
+    const initId = nextMsgId++;
+    initResolvers.set(initId, mupId);
+    port.postMessage({
+      jsonrpc: "2.0", id: initId, method: "initialize",
+      params: Object.assign({
+        protocolVersion: "mup/2026-03-17",
+        hostInfo: { name: "MUP Agent Panel", version: "0.1.0" },
+        gridAllocation: { width: w, height: h },
+      }, savedState ? { savedState } : {}),
+    });
+  };
+
+  iframe.src = blobUrl;
+  mups.set(mupId, { iframe, port, manifest });
+}
+
+function handleMupMessage(mupId, mupName, data) {
+  if (!data || data.jsonrpc !== "2.0") return;
+
+  if ("id" in data && !("method" in data)) {
+    if (initResolvers.has(data.id)) {
+      initResolvers.delete(data.id);
+      // Silent — no chat notification for MUP load
+      const catEntry = catalog.find(c => c.id === mupId);
+      if (catEntry) catEntry.active = true;
+      renderManagerCard();
+      // Apply saved layout if restoring a session
+      if (pendingGridLayout) {
+        const saved = pendingGridLayout.find(l => l.id === mupId);
+        if (saved) {
+          const items = grid.getGridItems();
+          for (const item of items) {
+            if (item.getAttribute('gs-id') === mupId) {
+              grid.update(item, { x: saved.x, y: saved.y, w: saved.w, h: saved.h });
+              break;
+            }
+          }
+        }
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "mup-loaded", mupId }));
+      return;
+    }
+    if (callMap.has(data.id)) {
+      const callId = callMap.get(data.id);
+      callMap.delete(data.id);
+      const result = data.error
+        ? { content: [{ type: "text", text: data.error.message || "Error" }], isError: true }
+        : (data.result || { content: [{ type: "text", text: "No result" }], isError: false });
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "result", callId, result }));
+      return;
+    }
+    return;
+  }
+
+  if ("method" in data && !("id" in data)) {
+    if (data.method === "notifications/state/update") {
+      if (ws && ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: "state", mupId, summary: data.params?.summary || "", data: data.params?.data }));
+    } else if (data.method === "notifications/interaction") {
+      addEventBadge(mupName, data.params?.summary || data.params?.action);
+      if (ws && ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: "interaction", mupId, action: data.params?.action || "", summary: data.params?.summary || "", data: data.params?.data }));
+    }
+    return;
+  }
+
+  // Request from MUP (e.g. system/request) → forward to agent
+  if ("id" in data && "method" in data) {
+    if (data.method === "system/request" && ws && ws.readyState === WebSocket.OPEN) {
+      const sysCallId = 'sys' + (++nextMsgId);
+      callMap.set(data.id, sysCallId); // reuse callMap for tracking
+      ws.send(JSON.stringify({ type: "system-request", mupId, requestId: sysCallId, action: data.params?.action, params: data.params?.params }));
+      // Response comes back via "system-response" message
+      const mup = mups.get(mupId);
+      if (mup) {
+        const origId = data.id;
+        const handler = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === "system-response" && msg.requestId === sysCallId) {
+              ws.removeEventListener("message", handler);
+              if (msg.error) {
+                mup.port.postMessage({ jsonrpc: "2.0", id: origId, error: { code: -32603, message: msg.error } });
+              } else {
+                mup.port.postMessage({ jsonrpc: "2.0", id: origId, result: msg.result });
+              }
+            }
+          } catch {}
+        };
+        ws.addEventListener("message", handler);
+        // Timeout after 30s
+        setTimeout(() => { ws.removeEventListener("message", handler); }, 30000);
+      }
+    } else {
+      const mup = mups.get(mupId);
+      if (mup) mup.port.postMessage({ jsonrpc: "2.0", id: data.id, error: { code: -32601, message: "Method not found: " + data.method } });
+    }
+  }
+}
+
+function callMupFunction(callId, mupId, fn, args) {
+  const mup = mups.get(mupId);
+  if (!mup) {
+    if (ws && ws.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify({ type: "result", callId, result: { content: [{ type: "text", text: `MUP not loaded: ${mupId}` }], isError: true } }));
+    return;
+  }
+  const msgId = nextMsgId++;
+  callMap.set(msgId, callId);
+  mup.port.postMessage({ jsonrpc: "2.0", id: msgId, method: "functions/call", params: { name: fn, arguments: args || {}, source: "llm" } });
+}
+
+// ---- Browser-side folder scanning via File System Access API ----
+async function scanDirectoryHandle(dirHandle) {
+  const items = [];
+  const folders = [];
+  const files = [];
+
+  for await (const [name, handle] of dirHandle) {
+    if (handle.kind === 'directory' && !name.startsWith('.')) {
+      folders.push({ name, handle });
+    } else if (handle.kind === 'file' && name.endsWith('.html')) {
+      files.push({ name, handle });
+    }
+  }
+
+  // Folders first
+  for (const f of folders.sort((a, b) => a.name.localeCompare(b.name))) {
+    const children = await scanDirectoryHandle(f.handle);
+    if (children.length > 0) {
+      items.push({ type: 'folder', name: f.name, children });
+    }
+  }
+
+  // Then files
+  for (const f of files.sort((a, b) => a.name.localeCompare(b.name))) {
+    try {
+      const file = await f.handle.getFile();
+      const html = await file.text();
+      // Parse manifest client-side to show in tree
+      const match = html.match(/<script\s+type=["']application\/mup-manifest["']\s*>([\s\S]*?)<\/script>/);
+      if (!match) {
+        items.push({ type: 'file', name: f.name, id: null, valid: false, error: 'No manifest' });
+        continue;
+      }
+      const raw = JSON.parse(match[1].trim());
+      const id = raw.id || 'mup-' + f.name.replace('.html', '');
+      const manifestName = raw.name || f.name;
+      const functions = (raw.functions || []).length;
+
+      // Store HTML for later activation
+      browserMupCache.set(id, { html, name: f.name, manifest: raw });
+
+      const isActive = catalog.some(c => c.id === id && c.active);
+      items.push({ type: 'file', name: f.name, id, valid: true, manifestName, functions, active: isActive });
+    } catch (e) {
+      items.push({ type: 'file', name: f.name, id: null, valid: false, error: e.message });
+    }
+  }
+  return items;
+}
+
+// Cache for MUPs loaded from browser file picker
+const browserMupCache = new Map();
+
+// ---- Remove MUP ----
+function removeMup(mupId) {
+  // Remove from gridstack
+  const items = grid.getGridItems();
+  for (const item of items) {
+    if (item.getAttribute('gs-id') === mupId) {
+      grid.removeWidget(item);
+      break;
+    }
+  }
+  mups.delete(mupId);
+  // Tell agent
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "deactivate-mup", mupId }));
+  }
+  // Update catalog state and re-render manager
+  const entry = catalog.find(c => c.id === mupId);
+  if (entry) entry.active = false;
+  renderManagerCard();
+}
+
+// ---- Manager Card ----
+let managerWidget = null;
+
+const FOLDER_ICON_SM = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>';
+const FILE_ICON_SM = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" opacity="0.3"><path d="M3 1a1 1 0 00-1 1v12a1 1 0 001 1h8l4-4V2a1 1 0 00-1-1H3zm6 0v4h4"/></svg>';
+const BACK_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 2L4 8l6 6"/></svg>';
+
+// Navigation state: stack of folder items arrays
+let navStack = []; // [{name, items}]
+let currentItems = []; // items currently displayed
+
+function getCurrentViewItems() {
+  if (navStack.length === 0) {
+    // Root: use folderTree or flat catalog
+    return folderTree.length > 0 ? folderTree : catalog.map(c => ({
+      type: 'file', name: c.name, id: c.id, valid: true,
+      manifestName: c.name, functions: c.functions, active: c.active,
+    }));
+  }
+  return navStack[navStack.length - 1].items;
+}
+
+function renderCurrentView() {
+  const items = getCurrentViewItems();
+  currentItems = items;
+
+  // Empty state: no folder loaded and no catalog items
+  if (items.length === 0 && navStack.length === 0) {
+    return `<div class="manager-empty">
+      <svg class="manager-empty-icon" width="36" height="36" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1"><path d="M2 4v8a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z"/></svg>
+      <span>No MUPs loaded</span>
+      <button class="manager-empty-btn" id="emptyOpenFolderBtn">${FOLDER_ICON_SM} Open Folder</button>
+    </div>`;
+  }
+
+  let html = '';
+
+  // ".." back button if inside a subfolder
+  if (navStack.length > 0) {
+    html += `<div class="manager-file is-folder" data-action="back">${BACK_ICON}<span class="manager-file-name">..</span></div>`;
+  }
+
+  // Folders first, then files
+  const folders = items.filter(i => i.type === 'folder');
+  const files = items.filter(i => i.type === 'file');
+
+  for (const f of folders) {
+    html += `<div class="manager-file is-folder" data-folder="${escapeHtml(f.name)}">${FOLDER_ICON_SM}<span class="manager-file-name">${escapeHtml(f.name)}</span></div>`;
+  }
+  for (const f of files) {
+    const isActive = f.valid && catalog.some(c => c.id === f.id && c.active);
+    const cls = !f.valid ? 'manager-file invalid' : isActive ? 'manager-file active' : 'manager-file';
+    const title = f.valid ? (f.manifestName || f.name) : `${f.name} — ${f.error || 'invalid'}`;
+    html += `<div class="${cls}" data-id="${f.id || ''}" data-valid="${f.valid}" title="${escapeHtml(title)}">${FILE_ICON_SM}<span class="manager-file-name">${escapeHtml(f.name)}</span></div>`;
+  }
+  return html;
+}
+
+function renderManagerCard() {
+  if (!grid) return;
+
+  const listHtml = renderCurrentView();
+
+  if (!managerWidget) {
+    const el = document.createElement('div');
+    el.classList.add('grid-stack-item');
+    el.setAttribute('gs-w', '1');
+    el.setAttribute('gs-h', '1');
+    el.setAttribute('gs-x', '0');
+    el.setAttribute('gs-y', '0');
+    el.setAttribute('gs-id', '__manager__');
+    el.innerHTML = `
+      <div class="grid-stack-item-content">
+        <div class="mup-card-header" style="cursor:grab;">
+          <span class="mup-name">MUPs</span>
+        </div>
+        <div class="manager-list" id="managerList">${listHtml}</div>
+      </div>`;
+    managerWidget = grid.addWidget(el);
+  } else {
+    const listEl = managerWidget.querySelector('#managerList');
+    if (listEl) listEl.innerHTML = listHtml;
+  }
+
+  bindManagerEvents();
+}
+
+function updateManagerList() {
+  if (!managerWidget) return;
+  const listEl = managerWidget.querySelector('#managerList');
+  if (listEl) listEl.innerHTML = renderCurrentView();
+  bindManagerEvents();
+}
+
+function bindManagerEvents() {
+  if (!managerWidget) return;
+
+  // Click folder → navigate in
+  managerWidget.querySelectorAll('.manager-file.is-folder').forEach(el => {
+    el.onclick = () => {
+      if (el.dataset.action === 'back') {
+        navStack.pop();
+        updateManagerList();
+        return;
+      }
+      const folderName = el.dataset.folder;
+      const items = getCurrentViewItems();
+      const folder = items.find(i => i.type === 'folder' && i.name === folderName);
+      if (folder && folder.children) {
+        navStack.push({ name: folderName, items: folder.children });
+        updateManagerList();
+      }
+    };
+  });
+
+  // Double-click file to activate
+  managerWidget.querySelectorAll('.manager-file:not(.is-folder)').forEach(el => {
+    el.ondblclick = () => {
+      const id = el.dataset.id;
+      if (el.dataset.valid !== 'true' || !id) return;
+      if (catalog.some(c => c.id === id && c.active)) return;
+
+      const cached = browserMupCache.get(id);
+      if (cached && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "register-and-activate", mupId: id, html: cached.html, fileName: cached.name }));
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "activate-mup", mupId: id }));
+      }
+    };
+  });
+
+}
+
+// ---- Start ----
+connect();
+addChatMessage("assistant", "Welcome to MUP Agent!");
+</script>
+</body>
+</html>

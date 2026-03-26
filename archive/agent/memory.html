@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Memory</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Memory",
+    "description": "Cross-session knowledge store for the agent. Key-value entries with tags. Functions: getAll, get(key), set(key, value, tags?), remove(key), search(query).",
+    "grid": { "minWidth": 1, "minHeight": 2 },
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "getAll",
+        "description": "Get all memory entries as a summary list.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "get",
+        "description": "Get a specific memory entry by key.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "key": { "type": "string", "description": "Memory key to retrieve" }
+          },
+          "required": ["key"]
+        }
+      },
+      {
+        "name": "set",
+        "description": "Set a memory entry. Creates or updates.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "key": { "type": "string", "description": "Memory key (unique identifier)" },
+            "value": { "type": "string", "description": "Memory value (markdown supported)" },
+            "tags": { "type": "array", "items": { "type": "string" }, "description": "Optional tags for categorization" }
+          },
+          "required": ["key", "value"]
+        }
+      },
+      {
+        "name": "remove",
+        "description": "Remove a memory entry by key.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "key": { "type": "string", "description": "Memory key to remove" }
+          },
+          "required": ["key"]
+        }
+      },
+      {
+        "name": "search",
+        "description": "Search memory entries by keyword (matches key, value, and tags).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "Search keyword" }
+          },
+          "required": ["query"]
+        }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    :root {
+      --bg: #fff; --bg-toolbar: #f8f9fa; --bg-card: #fff;
+      --text: #333; --text-sec: #666; --text-ter: #999;
+      --border: #e0e0e0; --hover: rgba(0,0,0,0.04);
+      --accent: #0066cc; --accent-bg: #e3f2fd;
+      --tag-bg: #f0f0f0; --tag-text: #555;
+    }
+    body.dark {
+      --bg: #1e1e1e; --bg-toolbar: #2d2d2d; --bg-card: #252526;
+      --text: #d4d4d4; --text-sec: #858585; --text-ter: #5a5a5a;
+      --border: #404040; --hover: rgba(255,255,255,0.06);
+      --accent: #569cd6; --accent-bg: #37373d;
+      --tag-bg: #333; --tag-text: #aaa;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100vh; display: flex; flex-direction: column;
+      background: var(--bg); color: var(--text);
+    }
+
+    .toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-bottom: 1px solid var(--border);
+      background: var(--bg-toolbar); flex-shrink: 0;
+    }
+    .toolbar-title { font-size: 12px; font-weight: 600; color: var(--text-sec); }
+    .toolbar-spacer { flex: 1; }
+    .toolbar-count { font-size: 10px; color: var(--text-ter); }
+    .toolbar-btn {
+      background: none; border: 1px solid var(--border); cursor: pointer;
+      color: var(--text-sec); font-size: 11px; padding: 3px 8px;
+      border-radius: 4px; font-family: inherit;
+    }
+    .toolbar-btn:hover { background: var(--hover); color: var(--text); }
+
+    .search-bar {
+      padding: 4px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .search-bar input {
+      width: 100%; border: 1px solid var(--border); border-radius: 4px;
+      padding: 4px 8px; font-size: 12px; font-family: inherit;
+      background: var(--bg); color: var(--text); outline: none;
+    }
+    .search-bar input:focus { border-color: var(--accent); }
+
+    .entries { flex: 1; overflow-y: auto; padding: 4px 8px; }
+
+    .entry {
+      border: 1px solid var(--border); border-radius: 6px;
+      margin-bottom: 6px; overflow: hidden; background: var(--bg-card);
+    }
+    .entry-header {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 8px; cursor: pointer;
+    }
+    .entry-header:hover { background: var(--hover); }
+    .entry-key {
+      font-size: 12px; font-weight: 600; color: var(--accent);
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .entry-tags { display: flex; gap: 3px; flex-shrink: 0; }
+    .entry-tag {
+      font-size: 9px; padding: 1px 5px; border-radius: 8px;
+      background: var(--tag-bg); color: var(--tag-text);
+    }
+    .entry-actions { opacity: 0; display: flex; gap: 2px; }
+    .entry-header:hover .entry-actions { opacity: 1; }
+    .entry-act {
+      background: none; border: none; cursor: pointer; color: var(--text-ter);
+      font-size: 12px; padding: 2px 4px; border-radius: 3px;
+    }
+    .entry-act:hover { background: var(--hover); color: var(--text); }
+    .entry-act.danger:hover { color: #e53935; }
+    .entry-body {
+      padding: 4px 8px 6px; font-size: 12px; color: var(--text-sec);
+      line-height: 1.5; display: none; white-space: pre-wrap; word-wrap: break-word;
+    }
+    .entry.expanded .entry-body { display: block; }
+    .entry-preview {
+      font-size: 11px; color: var(--text-ter);
+      max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 8px; padding: 40px 16px;
+      color: var(--text-ter); font-size: 13px; text-align: center; flex: 1;
+    }
+
+    /* Add/Edit form */
+    .form-overlay {
+      display: none; flex-direction: column;
+      border-top: 1px solid var(--border); padding: 8px;
+      background: var(--bg-toolbar); flex-shrink: 0;
+    }
+    .form-overlay.open { display: flex; }
+    .form-overlay input, .form-overlay textarea {
+      width: 100%; border: 1px solid var(--border); border-radius: 4px;
+      padding: 4px 8px; font-size: 12px; font-family: inherit;
+      background: var(--bg); color: var(--text); outline: none; margin-bottom: 4px;
+    }
+    .form-overlay textarea { resize: none; min-height: 60px; }
+    .form-overlay input:focus, .form-overlay textarea:focus { border-color: var(--accent); }
+    .form-actions { display: flex; gap: 4px; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span class="toolbar-title">Memory</span>
+    <span class="toolbar-count" id="countEl">0</span>
+    <span class="toolbar-spacer"></span>
+    <button class="toolbar-btn" id="addBtn">+ Add</button>
+  </div>
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="Search..." spellcheck="false">
+  </div>
+  <div class="entries" id="entriesEl"></div>
+  <div class="form-overlay" id="formEl">
+    <input type="text" id="formKey" placeholder="Key (unique identifier)..." spellcheck="false">
+    <textarea id="formValue" placeholder="Value (markdown supported)..." rows="4"></textarea>
+    <input type="text" id="formTags" placeholder="Tags (comma separated)..." spellcheck="false">
+    <div class="form-actions">
+      <button class="toolbar-btn" id="formCancel">Cancel</button>
+      <button class="toolbar-btn" id="formSave" style="background:var(--accent);color:#fff;border-color:var(--accent);">Save</button>
+    </div>
+  </div>
+
+  <script>
+    const entriesEl = document.getElementById('entriesEl');
+    const searchInput = document.getElementById('searchInput');
+    const countEl = document.getElementById('countEl');
+    const formEl = document.getElementById('formEl');
+
+    let entries = {}; // { key: { value, tags, updatedAt } }
+    let searchQuery = '';
+    let editingKey = null;
+    let stateTimer = null;
+
+    const STORAGE_KEY = 'mup-memory-data';
+    function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    // ---- Rendering ----
+    function render() {
+      const keys = Object.keys(entries).sort((a, b) => entries[b].updatedAt - entries[a].updatedAt);
+      const filtered = searchQuery
+        ? keys.filter(k => {
+            const e = entries[k];
+            const q = searchQuery.toLowerCase();
+            return k.toLowerCase().includes(q) || e.value.toLowerCase().includes(q) || (e.tags || []).some(t => t.toLowerCase().includes(q));
+          })
+        : keys;
+
+      countEl.textContent = `${filtered.length}/${keys.length}`;
+
+      if (keys.length === 0) {
+        entriesEl.innerHTML = '<div class="empty-state"><span>No memories stored</span><span style="font-size:11px">Click <b>+ Add</b> or let the agent use <b>set</b></span></div>';
+        return;
+      }
+      if (filtered.length === 0) {
+        entriesEl.innerHTML = '<div class="empty-state"><span>No matches</span></div>';
+        return;
+      }
+
+      entriesEl.innerHTML = '';
+      for (const key of filtered) {
+        const e = entries[key];
+        const div = document.createElement('div');
+        div.className = 'entry' + (e._expanded ? ' expanded' : '');
+        const tagsHtml = (e.tags || []).map(t => `<span class="entry-tag">${esc(t)}</span>`).join('');
+        const preview = e.value.length > 60 ? e.value.slice(0, 60) + '...' : e.value;
+        div.innerHTML = `
+          <div class="entry-header">
+            <span class="entry-key">${esc(key)}</span>
+            <span class="entry-preview">${esc(preview)}</span>
+            <div class="entry-tags">${tagsHtml}</div>
+            <div class="entry-actions">
+              <button class="entry-act" data-action="edit" title="Edit">&#9998;</button>
+              <button class="entry-act danger" data-action="delete" title="Delete">&times;</button>
+            </div>
+          </div>
+          <div class="entry-body">${esc(e.value)}</div>
+        `;
+        div.querySelector('.entry-header').addEventListener('click', () => {
+          e._expanded = !e._expanded;
+          div.classList.toggle('expanded', e._expanded);
+        });
+        div.querySelector('[data-action="edit"]').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openForm(key);
+        });
+        div.querySelector('[data-action="delete"]').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          delete entries[key];
+          render(); debouncedSave();
+        });
+        entriesEl.appendChild(div);
+      }
+    }
+
+    // ---- Search ----
+    searchInput.addEventListener('input', () => { searchQuery = searchInput.value.trim(); render(); });
+
+    // ---- Form ----
+    document.getElementById('addBtn').addEventListener('click', () => openForm(null));
+    document.getElementById('formCancel').addEventListener('click', closeForm);
+    document.getElementById('formSave').addEventListener('click', saveForm);
+
+    function openForm(key) {
+      editingKey = key;
+      const fKey = document.getElementById('formKey');
+      const fVal = document.getElementById('formValue');
+      const fTags = document.getElementById('formTags');
+      if (key && entries[key]) {
+        fKey.value = key;
+        fKey.readOnly = true;
+        fVal.value = entries[key].value;
+        fTags.value = (entries[key].tags || []).join(', ');
+      } else {
+        fKey.value = '';
+        fKey.readOnly = false;
+        fVal.value = '';
+        fTags.value = '';
+      }
+      formEl.classList.add('open');
+      (key ? fVal : fKey).focus();
+    }
+
+    function closeForm() {
+      formEl.classList.remove('open');
+      editingKey = null;
+    }
+
+    function saveForm() {
+      const key = document.getElementById('formKey').value.trim();
+      const value = document.getElementById('formValue').value;
+      const tagsStr = document.getElementById('formTags').value.trim();
+      if (!key) return;
+      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+      entries[key] = { value, tags, updatedAt: Date.now() };
+      closeForm();
+      render(); debouncedSave();
+      mup.notifyInteraction('memorySet', `Memory set: ${key}`);
+    }
+
+    // ---- State (localStorage + summary to server) ----
+    function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 500); }
+
+    function save() {
+      const clean = {};
+      for (const [k, v] of Object.entries(entries)) {
+        clean[k] = { value: v.value, tags: v.tags, updatedAt: v.updatedAt };
+      }
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, entries: clean })); } catch {}
+      const count = Object.keys(entries).length;
+      const summary = count === 0
+        ? 'Memory: empty'
+        : `Memory: ${count} entries — ${Object.keys(entries).slice(0, 5).join(', ')}${count > 5 ? '...' : ''}`;
+      mup.updateState(summary);
+    }
+
+    function loadState() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1 && d.entries) return d.entries; }
+      } catch {}
+      return {};
+    }
+
+    // ---- Theme ----
+    function applyTheme(t) { document.body.classList.toggle('dark', t === 'dark'); }
+
+    // ---- MUP functions ----
+    mup.registerFunction('getAll', () => {
+      const keys = Object.keys(entries);
+      if (keys.length === 0) return { content: [{ type: 'text', text: 'Memory is empty.' }], isError: false };
+      const lines = keys.map(k => {
+        const e = entries[k];
+        const tags = e.tags?.length ? ` [${e.tags.join(', ')}]` : '';
+        return `**${k}**${tags}: ${e.value.slice(0, 100)}${e.value.length > 100 ? '...' : ''}`;
+      });
+      return { content: [{ type: 'text', text: lines.join('\n') }], isError: false };
+    });
+
+    mup.registerFunction('get', ({ key }) => {
+      const e = entries[key];
+      if (!e) return { content: [{ type: 'text', text: `Key "${key}" not found.` }], isError: true };
+      const tags = e.tags?.length ? `Tags: ${e.tags.join(', ')}\n\n` : '';
+      return { content: [{ type: 'text', text: `**${key}**\n${tags}${e.value}` }], isError: false };
+    });
+
+    mup.registerFunction('set', ({ key, value, tags }) => {
+      const isNew = !entries[key];
+      entries[key] = { value, tags: tags || [], updatedAt: Date.now() };
+      render(); save();
+      return { content: [{ type: 'text', text: `${isNew ? 'Created' : 'Updated'} memory: "${key}".` }], isError: false };
+    });
+
+    mup.registerFunction('remove', ({ key }) => {
+      if (!entries[key]) return { content: [{ type: 'text', text: `Key "${key}" not found.` }], isError: true };
+      delete entries[key];
+      render(); save();
+      return { content: [{ type: 'text', text: `Removed memory: "${key}".` }], isError: false };
+    });
+
+    mup.registerFunction('search', ({ query }) => {
+      const q = query.toLowerCase();
+      const matches = Object.entries(entries).filter(([k, e]) =>
+        k.toLowerCase().includes(q) || e.value.toLowerCase().includes(q) || (e.tags || []).some(t => t.toLowerCase().includes(q))
+      );
+      if (matches.length === 0) return { content: [{ type: 'text', text: `No matches for "${query}".` }], isError: false };
+      const lines = matches.map(([k, e]) => `**${k}**: ${e.value.slice(0, 80)}`);
+      return { content: [{ type: 'text', text: `${matches.length} match(es):\n${lines.join('\n')}` }], isError: false };
+    });
+
+    // ---- Init ----
+    mup.onThemeChange(applyTheme);
+    mup.onReady((params) => {
+      if (params?.theme) applyTheme(params.theme);
+      entries = loadState();
+      render(); save();
+    });
+  </script>
+</body>
+</html>

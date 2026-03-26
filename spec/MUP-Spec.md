@@ -130,6 +130,8 @@ Every MUP declares a JSON manifest inside a `<script type="application/mup-manif
 | `permissions` | string[] | `[]` | Browser permissions you need (e.g., `["camera", "microphone"]`). The host restricts your container to only these. |
 | `author` | string | — | Your name. |
 | `icon` | string | — | URL or data URI for an icon. |
+| `multiInstance` | boolean | `false` | Allow multiple instances of this MUP. |
+| `notifications` | object | — | Default notification level configuration. Has `level` (`"immediate"` \| `"notify"` \| `"silent"`) and `overridable` (boolean). |
 
 ---
 
@@ -434,7 +436,7 @@ A host MAY save a MUP's state between sessions and restore it on reload. This is
   "method": "initialize",
   "params": {
     "protocolVersion": "mup/2026-03-17",
-    "hostInfo": { "name": "MUP Agent", "version": "0.1.0" },
+    "hostInfo": { "name": "MUP Host", "version": "0.1.0" },
     "gridAllocation": { "width": 2, "height": 2 },
     "savedState": { "count": 42 }
   }

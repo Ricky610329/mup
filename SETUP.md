@@ -37,27 +37,52 @@ Once connected, Claude Code has access to a single `mup` tool that handles every
 - Create new panel instance: `{ "action": "new-instance", "mupId": "mup-chart" }`
 - Manage data pipes: `{ "action": "pipe", "subAction": "create", ... }`
 - Set notification level: `{ "action": "setNotificationLevel", "mupId": "...", "level": "immediate" }`
+- Set layout: `{ "action": "setLayout", "layout": { "mup-chat": { "x": 0, "y": 0, "w": 1, "h": 1 } } }`
 
 MUPs are auto-activated on first use — no need to activate manually.
 
 ## Available MUPs
 
-Built-in:
+Built-in (no file needed):
 
 | MUP ID | Name | What it does |
 |--------|------|-------------|
-| mup-chat | Chat | Built-in chat widget (always available, no file needed) |
+| mup-chat | Chat | Built-in chat widget (always available) |
 
-MUPs in `mups/slides/`:
+MUPs in `mups/`:
 
 | MUP ID | Name | What it does |
 |--------|------|-------------|
 | mup-slides | Slides | Presentation builder with themes and layouts |
-| mup-chart | Chart | Data visualization (bar, line, pie, etc.) |
-| mup-table | Table | Structured data table with export |
-| mup-diagram | Diagram | Mermaid-based diagrams with SVG export |
+| mup-voice | Voice | Always-on voice assistant with speech recognition and TTS |
+| mup-progress | Progress | Task progress tracker with multiple progress bars |
 
-Archived examples in `archive/examples/` (basic, music, productivity, etc.).
+Archived examples in `archive/examples/` (not tracked by git):
+
+| Category | Examples |
+|----------|----------|
+| `basic/` | Counter, Timer, Dice, Pixel Art, Sticky Notes |
+| `creative/` | Slides, Kanban |
+| `data/` | Chart |
+| `games/` | Snake Engine |
+| `media/` | Camera, Voice |
+| `music/` | Drums, and 7 other music MUPs |
+| `productivity/` | Markdown, Notes, Chess |
+
+## First-time CLAUDE.md Setup
+
+`CLAUDE.md` is not included in the repo — each user generates their own. Copy the template or paste this prompt to Claude Code:
+
+```
+I just set up MUP. Please create a CLAUDE.md file for this project based on CLAUDE.md.example.
+Customize it for me:
+- My preferred language is: [your language, e.g., English / 繁體中文 / 日本語]
+- When I speak through Voice MUP, respond via speak(). When I type in Chat MUP, respond via sendMessage().
+- All heavy tasks should run in the background so I can keep chatting.
+- If mup-progress is active, track all task progress there.
+```
+
+You can also copy `CLAUDE.md.example` directly and edit the language section yourself.
 
 ## Notes
 
