@@ -19,7 +19,7 @@ npm run build
 
 3. Register as MCP server:
 ```bash
-claude mcp add --transport stdio --scope user mup -- node /absolute/path/to/mup-mcp-server/dist/index.js --mups-dir /absolute/path/to/mup/examples
+claude mcp add --transport stdio --scope user mup -- node /absolute/path/to/mup-mcp-server/dist/index.js --mups-dir /absolute/path/to/mup/mups
 ```
 
 **Important:** Use absolute paths, not relative ones.
@@ -30,44 +30,39 @@ claude mcp add --transport stdio --scope user mup -- node /absolute/path/to/mup-
 
 Once connected, Claude Code has access to a single `mup` tool that handles everything:
 
-- Call MUP functions: `{ "mupId": "mup-pixel-art", "functionName": "fillRect", "functionArgs": { "x": 0, "y": 0, "width": 4, "height": 4, "color": "#ff0000" } }`
+- Call MUP functions: `{ "mupId": "mup-chess", "functionName": "makeMove", "functionArgs": { "move": "e2e4" } }`
 - Check user interactions: `{ "action": "checkInteractions" }`
-- Save workspace: `{ "action": "save", "name": "my project", "description": "..." }`
-- Load workspace: `{ "action": "load", "name": "my project" }`
-- List workspaces: `{ "action": "workspaces" }`
 - List available MUPs: `{ "action": "list" }`
-- View history: `{ "action": "history" }`
+- View call history: `{ "action": "history" }`
+- Create new panel instance: `{ "action": "new-instance", "mupId": "mup-chart" }`
+- Manage data pipes: `{ "action": "pipe", "subAction": "create", ... }`
+- Set notification level: `{ "action": "setNotificationLevel", "mupId": "...", "level": "immediate" }`
 
 MUPs are auto-activated on first use — no need to activate manually.
 
 ## Available MUPs
 
+Built-in:
+
 | MUP ID | Name | What it does |
 |--------|------|-------------|
-| mup-counter | Counter | Simple counter with +/- buttons |
-| mup-dice | Dice | Roll dice with animation |
-| mup-timer | Timer | Countdown timer with progress ring |
-| mup-chess | Chess | Play chess (coordinate notation: e2e4) |
-| mup-pixel-art | Pixel Art | 16x16 pixel canvas |
-| mup-slides | Slides | Create presentations |
+| mup-chat | Chat | Built-in chat widget (always available, no file needed) |
+
+MUPs in `mups/slides/`:
+
+| MUP ID | Name | What it does |
+|--------|------|-------------|
+| mup-slides | Slides | Presentation builder with themes and layouts |
 | mup-chart | Chart | Data visualization (bar, line, pie, etc.) |
-| mup-camera | Camera | Live camera + photo capture |
-| mup-voice | Voice | Speech-to-text + text-to-speech |
-| mup-drum-machine | Drum Machine | 4-track step sequencer |
-| mup-piano | Keys | Piano roll step sequencer (2 octaves, polyphonic) |
-| mup-bass | Bass | Bass step sequencer (C2–B2) |
-| mup-guitar | Chords | Chord progression sequencer (8 slots) |
-| mup-strings | Strings | String pad sequencer (detuned oscillators) |
-| mup-synth | Synth | Lead synth sequencer (waveform, filter, ADSR) |
-| mup-mixer | Mixer | Multi-track mixing console |
-| mup-arranger | Arranger | Song structure arranger (sections, arrangement) |
-| mup-sticky-notes | Sticky Notes | Draggable notes board |
-| mup-kanban | Kanban | Task board with columns |
-| mup-markdown | Markdown | Live Markdown editor with preview |
+| mup-table | Table | Structured data table with export |
+| mup-diagram | Diagram | Mermaid-based diagrams with SVG export |
+
+Archived examples in `archive/examples/` (basic, music, productivity, etc.).
 
 ## Notes
 
 - The browser panel opens at `http://localhost:3200` (auto-finds available port if taken)
 - `functionArgs` can be passed as JSON object or JSON string — both work
-- Workspaces are saved in `~/.mup-mcp/workspaces/`
-- Users can manage workspaces from the browser panel (Workspaces button in header)
+- Workspace state is saved automatically in `.mup/workspace.json` (relative to working directory)
+- MUPs manage their own state via browser `localStorage`
+- Use the browser panel's MUPs folder path input to load MUP files from any directory

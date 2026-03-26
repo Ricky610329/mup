@@ -29,8 +29,8 @@ export function buildFolderTree(dir: string, manager: MupManager): FolderTreeNod
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       if (ext === ".html") {
+        const content = fs.readFileSync(path.join(dir, entry.name), "utf-8");
         try {
-          const content = fs.readFileSync(path.join(dir, entry.name), "utf-8");
           const manifest = manager.parseManifest(content, path.join(dir, entry.name));
           const catalogEntry = manager.getCatalog().find((e) => e.manifest.id === manifest.id);
           files.push({
@@ -39,7 +39,6 @@ export function buildFolderTree(dir: string, manager: MupManager): FolderTreeNod
             multiInstance: manifest.multiInstance || false, isMup: true, ext,
           });
         } catch (err) {
-          const content = fs.readFileSync(path.join(dir, entry.name), "utf-8");
           if (content.includes("application/mup-manifest")) {
             console.error(`[mup-mcp] Skipping ${entry.name}: ${(err as Error).message}`);
           }

@@ -1,6 +1,64 @@
 // ---- Shared Types for MUP MCP Server ----
 
-import type { MupManifest, LoadedMup } from "./manager.js";
+// ---- MUP Core Types ----
+
+export interface MupFunction {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export type NotificationLevel = "immediate" | "notify" | "silent";
+
+export interface MupNotifications {
+  level: NotificationLevel;
+  overridable: boolean;
+}
+
+export interface MupManifest {
+  protocol: string;
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  grid?: {
+    minWidth?: number;
+    minHeight?: number;
+    maxWidth?: number;
+    maxHeight?: number;
+    preferredWidth?: number;
+    preferredHeight?: number;
+    resizable?: boolean;
+  };
+  functions: MupFunction[];
+  permissions?: string[];
+  multiInstance?: boolean;
+  darkMode?: boolean;
+  notifications?: MupNotifications;
+}
+
+export interface LoadedMup {
+  manifest: MupManifest;
+  html: string;
+  filePath: string;
+  stateSummary: string;
+  pendingEvents: MupEvent[];
+  _overflowWarned?: boolean;
+}
+
+export interface MupEvent {
+  action: string;
+  summary: string;
+  data?: unknown;
+  timestamp: number;
+}
+
+export interface CatalogEntry {
+  manifest: MupManifest;
+  html: string;
+  filePath: string;
+  active: boolean;
+}
 
 // ---- Function Call Result ----
 

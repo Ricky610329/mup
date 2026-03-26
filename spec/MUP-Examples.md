@@ -1,6 +1,6 @@
 # MUP Examples
 
-> **Note:** The original example MUPs have been moved to `archive/examples/`. The active MUPs are now the **agent suite** in `mups/agent/` — see the [main README](../README.md) for details.
+> **Note:** The original example MUPs have been moved to `archive/examples/`. The active MUPs are now the **slides suite** in `mups/slides/` — see the [main README](../README.md) for details.
 
 This document describes the original example MUPs. Each demonstrates a different protocol capability.
 

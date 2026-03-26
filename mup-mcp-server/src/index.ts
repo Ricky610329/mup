@@ -159,6 +159,87 @@ function setupFileWatching(
   }
 }
 
+// ---- Folder Switching ----
+
+interface FolderSwitchDeps {
+  mupsDirs: string[];  // mutated in-place (shared reference with main)
+  manager: MupManager;
+  bridge: UiBridge;
+  ws: WorkspaceManager;
+  pipeline: PipelineManager;
+  sendLoadMup: SendLoadMupFn;
+  rebuildFolderTree: () => void;
+}
+
+let _lastFolderSwitch = 0;
+
+function switchMupsFolder(newPath: string, deps: FolderSwitchDeps): { ok: boolean; warnings: string[] } {
+  const { mupsDirs, manager, bridge, ws, pipeline, sendLoadMup, rebuildFolderTree } = deps;
+  const now = Date.now();
+  if (now - _lastFolderSwitch < 1000) return { ok: false, warnings: ["Folder switch rate limited (1s cooldown)."] };
+  _lastFolderSwitch = now;
+  const resolved = path.resolve(newPath);
+  if (!fs.existsSync(resolved)) return { ok: false, warnings: [`Directory not found: ${resolved}`] };
+
+  // Scan new folder
+  const newFiles = scanHtmlFiles(resolved);
+  const newIds = new Set<string>();
+  for (const file of newFiles) {
+    try { const m = manager.parseManifest(fs.readFileSync(file, "utf-8"), file); newIds.add(m.id); }
+    catch { /* skip non-MUP HTML */ }
+  }
+
+  // Check active MUPs against new folder
+  const warnings: string[] = [];
+  const activeMups = manager.getAll();
+  const unsupported = activeMups.filter((m) => !newIds.has(m.manifest.id) && !manager.isSystemMup(m.manifest.id));
+  if (unsupported.length > 0) {
+    warnings.push(
+      `The following active MUPs are not available in the new folder: ${unsupported.map((m) => m.manifest.name).join(", ")}. ` +
+      `Consider copying their .html files to ${resolved} to keep using them.`
+    );
+    for (const m of unsupported) {
+      manager.deactivate(m.manifest.id);
+      ws.onMupDeactivated(m.manifest.id);
+      bridge.sendRaw({ type: "mup-deactivated", mupId: m.manifest.id });
+      pipeline.onMupDeactivated(m.manifest.id);
+    }
+  }
+
+  // Replace catalog with new folder
+  manager.clearCatalog();
+  for (const file of newFiles) {
+    try { manager.scanFile(file); } catch { /* skip */ }
+  }
+
+  // Re-activate MUPs that exist in both old and new
+  for (const m of activeMups) {
+    if (newIds.has(m.manifest.id)) {
+      const mup = manager.activate(m.manifest.id);
+      if (mup) {
+        sendLoadMup(m.manifest.id, mup);
+      }
+    }
+  }
+
+  // Update folder tree and paths
+  mupsDirs.length = 0;
+  mupsDirs.push(resolved);
+  bridge.folderPath = resolved;
+  rebuildFolderTree();
+
+  // Re-bind file watcher for new directory
+  setupFileWatching([resolved], manager, bridge, sendLoadMup, rebuildFolderTree);
+
+  // Persist
+  ws.setMupsPath(resolved);
+  bridge.sendRaw({ type: "mup-catalog", catalog: bridge.buildCatalogSummary() });
+  bridge.sendRaw({ type: "mups-path-changed", path: resolved });
+
+  console.error(`[mup-mcp] Switched MUP source to: ${resolved}`);
+  return { ok: true, warnings };
+}
+
 // ---- MCP Server Setup ----
 
 // Track the mupId currently being called by the LLM (to suppress self-notifications)
@@ -212,7 +293,7 @@ function setupMcpServer(
     // Track which MUP is being called to suppress self-notifications
     activeCallMupId = (args.mupId as string) || null;
     try {
-      return await handleToolCall(request, manager, bridge, ws, port, sendLoadMup, ensureActive, pipeline);
+      return await handleToolCall(request, { manager, bridge, ws, sendLoadMup, ensureActive, pipeline });
     } finally {
       activeCallMupId = null;
     }
@@ -315,73 +396,6 @@ async function main() {
     bridge.sendRaw({ type: "folder-tree", tree: serverFolderTree, path: bridge.folderPath });
   }
 
-  let _lastFolderSwitch = 0;
-  function switchMupsFolder(newPath: string): { ok: boolean; warnings: string[] } {
-    const now = Date.now();
-    if (now - _lastFolderSwitch < 1000) return { ok: false, warnings: ["Folder switch rate limited (1s cooldown)."] };
-    _lastFolderSwitch = now;
-    const resolved = path.resolve(newPath);
-    if (!fs.existsSync(resolved)) return { ok: false, warnings: [`Directory not found: ${resolved}`] };
-
-    // Scan new folder
-    const newFiles = scanHtmlFiles(resolved);
-    const newIds = new Set<string>();
-    for (const file of newFiles) {
-      try { const m = manager.parseManifest(fs.readFileSync(file, "utf-8"), file); newIds.add(m.id); }
-      catch { /* skip non-MUP HTML */ }
-    }
-
-    // Check active MUPs against new folder
-    const warnings: string[] = [];
-    const activeMups = manager.getAll();
-    const unsupported = activeMups.filter((m) => !newIds.has(m.manifest.id) && !manager.isSystemMup(m.manifest.id));
-    if (unsupported.length > 0) {
-      warnings.push(
-        `The following active MUPs are not available in the new folder: ${unsupported.map((m) => m.manifest.name).join(", ")}. ` +
-        `Consider copying their .html files to ${resolved} to keep using them.`
-      );
-      for (const m of unsupported) {
-        manager.deactivate(m.manifest.id);
-        ws.onMupDeactivated(m.manifest.id);
-        bridge.sendRaw({ type: "mup-deactivated", mupId: m.manifest.id });
-        pipeline.onMupDeactivated(m.manifest.id);
-      }
-    }
-
-    // Replace catalog with new folder
-    manager.clearCatalog();
-    for (const file of newFiles) {
-      try { manager.scanFile(file); } catch { /* skip */ }
-    }
-
-    // Re-activate MUPs that exist in both old and new
-    for (const m of activeMups) {
-      if (newIds.has(m.manifest.id)) {
-        const mup = manager.activate(m.manifest.id);
-        if (mup) {
-          sendLoadMup(m.manifest.id, mup);
-        }
-      }
-    }
-
-    // Update folder tree and paths
-    mupsDirs.length = 0;
-    mupsDirs.push(resolved);
-    bridge.folderPath = resolved;
-    rebuildFolderTree();
-
-    // Re-bind file watcher for new directory
-    setupFileWatching([resolved], manager, bridge, sendLoadMup, rebuildFolderTree);
-
-    // Persist
-    ws.setMupsPath(resolved);
-    bridge.sendRaw({ type: "mup-catalog", catalog: bridge.buildCatalogSummary() });
-    bridge.sendRaw({ type: "mups-path-changed", path: resolved });
-
-    console.error(`[mup-mcp] Switched MUP source to: ${resolved}`);
-    return { ok: true, warnings };
-  }
-
   // --- Pipeline ---
   const pipeline = new PipelineManager(
     (mupId, fn, args) => bridge.callFunction(mupId, fn, args),
@@ -395,7 +409,7 @@ async function main() {
   // --- Wire up events ---
   setupBrowserEvents(bridge, manager, ws, sendLoadMup);
   bridge.typedOn("set-mups-path", (newPath) => {
-    const result = switchMupsFolder(newPath);
+    const result = switchMupsFolder(newPath, { mupsDirs, manager, bridge, ws, pipeline, sendLoadMup, rebuildFolderTree });
     if (!result.ok) bridge.sendRaw({ type: "mups-path-error", errors: result.warnings });
     else if (result.warnings.length > 0) bridge.sendRaw({ type: "mups-path-warnings", warnings: result.warnings });
   });

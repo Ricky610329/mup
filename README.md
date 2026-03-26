@@ -109,22 +109,6 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-## Agent Suite MUPs
-
-The repo includes an agent-oriented MUP suite in `mups/agent/`:
-
-| MUP | Description |
-|-----|-------------|
-| **Agent Core** | Task queue with priority, chain execution via channel notifications |
-| **Principles** | Execution handbook — agent reads this before every task |
-| **Markdown** | Multi-file workspace with sidebar, inline rename, download |
-| **Memory** | Cross-session key-value store with tags and search |
-| **Logger** | Color-coded execution log with level filters and export |
-
-Plus a **built-in Chat** widget (always available, no file needed) for direct conversation with the LLM.
-
-All MUPs manage their own state via `localStorage` — the server only handles layout. Dark mode support across all panels.
-
 ## Quick Example
 
 ```html
@@ -157,19 +141,19 @@ Drop this into a MUP-compatible host, and it works.
 │        manifest + UI + functions         │
 └──────────────────┬───────────────────────┘
                    │ loaded by
-        ┌──────────┴──────────┐
-        ▼                     ▼
-┌──────────────┐    ┌──────────────────┐
-│  MCP Server  │    │   mup-agent      │
-│ (Claude Code │    │ (standalone with │
-│  / Desktop)  │    │  built-in chat)  │
-└──────┬───────┘    └────────┬─────────┘
-       │ WebSocket           │ WebSocket
-       ▼                     ▼
-┌─────────────────────────────────────┐
-│          Browser Panel              │
-│  (MUP grid + workspace manager)    │
-└─────────────────────────────────────┘
+                   ▼
+            ┌──────────────┐
+            │  MCP Server  │
+            │ (Claude Code │
+            │  / Desktop)  │
+            └──────┬───────┘
+                   │ WebSocket
+                   ▼
+      ┌─────────────────────────────┐
+      │        Browser Panel        │
+      │  (MUP grid + Chat widget   │
+      │   + workspace manager)     │
+      └─────────────────────────────┘
 ```
 
 ## Star History

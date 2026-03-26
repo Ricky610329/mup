@@ -8,11 +8,6 @@ dist/
 # MUP workspace state
 .mup/
 
-# MUP Agent build output and user data
-mup-agent/dist/
-mup-agent/node_modules/
-.mup-agent/
-
 # MUP archive (moved out of tracking)
 archive/
 

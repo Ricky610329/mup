@@ -222,45 +222,17 @@ export class UiBridge extends EventEmitter {
         this.typedEmit("interaction", msg.mupId, msg.action, msg.summary, msg.data);
         break;
 
-      case "activate-mup":
-        this.typedEmit("activate-mup", msg.mupId);
-        break;
-
-      case "deactivate-mup":
-        this.typedEmit("deactivate-mup", msg.mupId);
-        break;
-
-      case "register-and-activate":
-        this.typedEmit("register-and-activate", msg.mupId, msg.html, msg.fileName);
-        break;
-
-      case "load-folder":
-        this.typedEmit("load-folder", msg.mups);
-        break;
-
-      case "new-instance":
-        this.typedEmit("new-instance", msg.mupId, msg.customName);
-        break;
-
-      case "save-grid-layout":
-        this.typedEmit("save-grid-layout", msg.layout);
-        break;
-
-      case "rename-mup":
-        this.typedEmit("rename-mup", msg.mupId, msg.customName);
-        break;
-
-      case "flush-save":
-        this.typedEmit("flush-save");
-        break;
-
-      case "rename-workspace":
-        this.typedEmit("rename-workspace", msg.name);
-        break;
-
-      case "set-mups-path":
-        this.typedEmit("set-mups-path", msg.path);
-        break;
+      // ---- Pure event forwarding ----
+      case "activate-mup":         this.typedEmit("activate-mup", msg.mupId); break;
+      case "deactivate-mup":       this.typedEmit("deactivate-mup", msg.mupId); break;
+      case "register-and-activate": this.typedEmit("register-and-activate", msg.mupId, msg.html, msg.fileName); break;
+      case "load-folder":          this.typedEmit("load-folder", msg.mups); break;
+      case "new-instance":         this.typedEmit("new-instance", msg.mupId, msg.customName); break;
+      case "save-grid-layout":     this.typedEmit("save-grid-layout", msg.layout); break;
+      case "rename-mup":           this.typedEmit("rename-mup", msg.mupId, msg.customName); break;
+      case "flush-save":           this.typedEmit("flush-save"); break;
+      case "rename-workspace":     this.typedEmit("rename-workspace", msg.name); break;
+      case "set-mups-path":        this.typedEmit("set-mups-path", msg.path); break;
     }
   }
 

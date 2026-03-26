@@ -109,22 +109,6 @@ claude --dangerously-load-development-channels server:mup
 }
 ```
 
-## Agent Suite MUPs
-
-repo 中包含一組 agent 導向的 MUP 套件，位於 `mups/agent/`：
-
-| MUP | 說明 |
-|-----|------|
-| **Agent Core** | 任務佇列，支援優先級排序、透過 channel notification 鏈式執行 |
-| **Principles** | 執行原則手冊 — agent 每次執行任務前先讀取 |
-| **Markdown** | 多檔案工作區，側邊欄、行內重新命名、下載匯出 |
-| **Memory** | 跨 session 鍵值儲存，支援標籤與搜尋 |
-| **Logger** | 彩色執行日誌，支援等級篩選與匯出 |
-
-另外有**內建 Chat** widget（永遠可用，不需要檔案），可直接與 LLM 對話。
-
-所有 MUP 透過 `localStorage` 自行管理狀態 — server 只負責版面配置。全面板支援深色模式。
-
 ## 快速範例
 
 ```html
@@ -157,19 +141,19 @@ repo 中包含一組 agent 導向的 MUP 套件，位於 `mups/agent/`：
 │        manifest + UI + functions         │
 └──────────────────┬───────────────────────┘
                    │ 載入
-        ┌──────────┴──────────┐
-        ▼                     ▼
-┌──────────────┐    ┌──────────────────┐
-│  MCP Server  │    │   mup-agent      │
-│ (Claude Code │    │（獨立使用，       │
-│  / Desktop)  │    │  自帶聊天介面）   │
-└──────┬───────┘    └────────┬─────────┘
-       │ WebSocket           │ WebSocket
-       ▼                     ▼
-┌─────────────────────────────────────┐
-│           瀏覽器面板                 │
-│   （MUP 格狀面板 + 工作區管理）      │
-└─────────────────────────────────────┘
+                   ▼
+            ┌──────────────┐
+            │  MCP Server  │
+            │ (Claude Code │
+            │  / Desktop)  │
+            └──────┬───────┘
+                   │ WebSocket
+                   ▼
+      ┌─────────────────────────────┐
+      │          瀏覽器面板          │
+      │  （MUP 格狀面板 + Chat     │
+      │    widget + 工作區管理）    │
+      └─────────────────────────────┘
 ```
 
 ## Star History
