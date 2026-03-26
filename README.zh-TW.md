@@ -11,12 +11,7 @@
 
 ## 示範
 
-- **[Stop Making Apps. Make MUP.](https://youtu.be/HkmWpmfX46o)** — 完整展示：音樂、簡報、像素畫、便利貼
-- **[畫圖 & 分析](https://youtu.be/14-4sgN2hSk)** — Pixel Art + Chart
-- **[打節拍](https://youtu.be/vp6W5ZiFfuM)** — Drum Machine
-- **[看到什麼畫什麼](https://youtu.be/jk7Hlzcy4ko)** — Camera + Pixel Art
-- **[智慧便利貼](https://youtu.be/9EG0XhwVn1c)** — Sticky Notes
-- **[檔案報表](https://youtu.be/wcM7zEUrIHY)** — Workspace + Chart
+即將推出 — v0.2.5 新版示範影片。
 
 ---
 

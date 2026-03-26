@@ -9,14 +9,9 @@
 
 Current version: 0.2.4 | Protocol: `mup/2026-03-17`
 
-## Demos
+## Demo
 
-- **[Stop Making Apps. Make MUP.](https://youtu.be/HkmWpmfX46o)** — Full demo: Music, Slides, Pixel Art, Notes
-- **[Draw & Analyze](https://youtu.be/14-4sgN2hSk)** — Pixel Art + Chart
-- **[Beat Making](https://youtu.be/vp6W5ZiFfuM)** — Drum Machine
-- **[See & Draw](https://youtu.be/jk7Hlzcy4ko)** — Camera + Pixel Art
-- **[Smart Notes](https://youtu.be/9EG0XhwVn1c)** — Sticky Notes
-- **[File Report](https://youtu.be/wcM7zEUrIHY)** — Workspace + Chart
+Coming soon — new demo video for v0.2.5.
 
 ---
 
