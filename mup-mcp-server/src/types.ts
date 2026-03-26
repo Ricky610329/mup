@@ -4,13 +4,13 @@ import type { MupManifest, LoadedMup } from "./manager.js";
 
 // ---- Function Call Result ----
 
+export type FunctionContentItem =
+  | { type: "text"; text: string; data?: never; mimeType?: never }
+  | { type: "image"; data: string; mimeType: string; text?: never }
+  | { type: "data"; data: unknown; text?: never; mimeType?: never };
+
 export interface FunctionResult {
-  content: Array<{
-    type: string;
-    text?: string;
-    data?: unknown;
-    mimeType?: string;
-  }>;
+  content: FunctionContentItem[];
   isError: boolean;
 }
 

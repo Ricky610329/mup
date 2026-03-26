@@ -25,4 +25,8 @@ export const CONFIG = {
   recentHistoryCount: 5,
   /** Max result string length stored in call history */
   maxHistoryResultLength: 200,
+  /** WebSocket max payload size (bytes) */
+  wsMaxPayloadBytes: 10 * 1024 * 1024,
+  /** Channel notification debounce (ms) */
+  channelDebounceMs: 500,
 } as const;

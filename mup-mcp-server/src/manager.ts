@@ -43,6 +43,7 @@ export interface LoadedMup {
   filePath: string;
   stateSummary: string;
   pendingEvents: MupEvent[];
+  _overflowWarned?: boolean;
 }
 
 export interface MupEvent {
@@ -280,8 +281,14 @@ export class MupManager {
   addEvent(mupId: string, action: string, summary: string, data?: unknown): void {
     const mup = this.mups.get(mupId);
     if (mup) {
+      if (mup.pendingEvents.length >= CONFIG.maxPendingEvents) {
+        mup.pendingEvents.shift();
+        if (!mup._overflowWarned) {
+          mup._overflowWarned = true;
+          console.error(`[mup-mcp] Event queue overflow for ${mupId}: oldest events discarded (max ${CONFIG.maxPendingEvents})`);
+        }
+      }
       mup.pendingEvents.push({ action, summary, data, timestamp: Date.now() });
-      if (mup.pendingEvents.length > CONFIG.maxPendingEvents) mup.pendingEvents.shift();
     }
   }
 
@@ -309,6 +316,7 @@ export class MupManager {
         // Events with timestamp <= since are discarded (already seen)
       }
       mup.pendingEvents = []; // Drain all processed events
+      mup._overflowWarned = false;
     }
     return events;
   }

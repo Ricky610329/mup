@@ -550,7 +550,7 @@ async function main() {
         }).catch((err) => {
           console.error(`[mup-mcp] Channel notification failed: ${(err as Error).message}`);
         });
-      }, 500));
+      }, CONFIG.channelDebounceMs));
     }
     // level === "notify": already queued via manager.addEvent in bridge.ts
   });

@@ -32,9 +32,11 @@ export interface PipeExecution {
 
 export type CallFn = (mupId: string, fnName: string, args: Record<string, unknown>) => Promise<any>;
 
+import { CONFIG } from "./config.js";
+
 const MAX_PIPES = 50;
 const MAX_LOG = 30;
-const DEFAULT_DEBOUNCE_MS = 500;
+const DEFAULT_DEBOUNCE_MS = CONFIG.channelDebounceMs;
 
 export class PipelineManager {
   private pipes = new Map<string, PipeDefinition>();
