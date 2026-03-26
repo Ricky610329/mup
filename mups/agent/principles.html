@@ -306,7 +306,7 @@
 
     function save() {
       const clean = sections.map(s => ({ title: s.title, content: s.content }));
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ sections: clean })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, sections: clean })); } catch {}
       const summary = sections.length === 0
         ? 'Principles: empty'
         : `Principles: ${sections.length} section(s) — ${sections.map(s => s.title).join(', ')}`;
@@ -316,7 +316,7 @@
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) { const d = JSON.parse(stored); if (d.sections) return d.sections; }
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1 && d.sections) return d.sections; }
       } catch {}
       return [];
     }

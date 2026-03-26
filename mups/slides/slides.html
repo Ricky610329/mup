@@ -655,7 +655,7 @@
     // ---- State ----
     function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 500); }
     function save() {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ slides, theme, presentationTitle, currentIndex })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, slides, theme, presentationTitle, currentIndex })); } catch {}
       const summary = slides.length === 0
         ? 'Slides: empty'
         : `Slides: "${presentationTitle || 'Untitled'}" — ${slides.length} slide(s), theme: ${theme}`;
@@ -664,7 +664,7 @@
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) return JSON.parse(stored);
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1) return d; }
       } catch {}
       return null;
     }

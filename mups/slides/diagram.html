@@ -234,7 +234,7 @@
     function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 500); }
     function save() {
       const code = editor.value;
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ code })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, code })); } catch {}
       const firstLine = code.split('\n')[0] || '';
       const summary = code ? `Diagram: ${firstLine.slice(0, 40)}` : 'Diagram: empty';
       mup.updateState(summary);
@@ -242,7 +242,7 @@
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) return JSON.parse(stored);
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1) return d; }
       } catch {}
       return null;
     }

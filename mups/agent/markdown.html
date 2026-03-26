@@ -587,7 +587,7 @@
 
     function broadcastState() {
       saveEditorToFile();
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ files, activeFileId, mode, sidebarOpen })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, files, activeFileId, mode, sidebarOpen })); } catch {}
       const f = getActiveFile();
       const content = f ? f.content : '';
       const lines = content.split('\n').length;
@@ -601,7 +601,7 @@
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) return JSON.parse(stored);
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1) return d; }
       } catch {}
       return null;
     }

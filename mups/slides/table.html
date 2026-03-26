@@ -322,7 +322,7 @@
     // ---- State ----
     function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 500); }
     function save() {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ headers, rows })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, headers, rows })); } catch {}
       const summary = headers.length === 0
         ? 'Table: empty'
         : `Table: ${rows.length} rows x ${headers.length} cols — ${headers.join(', ')}`;
@@ -331,7 +331,7 @@
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) return JSON.parse(stored);
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1) return d; }
       } catch {}
       return null;
     }

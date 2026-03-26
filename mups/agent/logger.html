@@ -239,7 +239,7 @@
     function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 1000); }
 
     function save() {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ logs })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, logs })); } catch {}
       const summary = logs.length === 0
         ? 'Logger: empty'
         : `Logger: ${logs.length} entries, last: [${logs[logs.length - 1].level}] ${logs[logs.length - 1].message.slice(0, 60)}`;
@@ -249,7 +249,7 @@
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) { const d = JSON.parse(stored); if (d.logs) return d.logs; }
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1 && d.logs) return d.logs; }
       } catch {}
       return [];
     }

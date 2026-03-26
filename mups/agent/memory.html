@@ -320,7 +320,7 @@
       for (const [k, v] of Object.entries(entries)) {
         clean[k] = { value: v.value, tags: v.tags, updatedAt: v.updatedAt };
       }
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ entries: clean })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, entries: clean })); } catch {}
       const count = Object.keys(entries).length;
       const summary = count === 0
         ? 'Memory: empty'
@@ -331,7 +331,7 @@
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) { const d = JSON.parse(stored); if (d.entries) return d.entries; }
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1 && d.entries) return d.entries; }
       } catch {}
       return {};
     }

@@ -1199,7 +1199,7 @@ function chatArchiveCurrent() {
 const CHAT_STORAGE_KEY = 'mup-chat-data';
 function chatSyncState() {
   // Persist to localStorage
-  try { localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ messages: chatMessages, history: chatHistory })); } catch {}
+  try { localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ _v: 1, messages: chatMessages, history: chatHistory })); } catch {}
   // Send summary only to server (no data)
   const last = chatMessages[chatMessages.length - 1];
   const summary = chatMessages.length === 0
@@ -1546,11 +1546,13 @@ function initChatWidget() {
     const stored = localStorage.getItem(CHAT_STORAGE_KEY);
     if (stored) {
       const data = JSON.parse(stored);
-      if (data.history) chatHistory = data.history;
-      if (data.messages?.length > 0) {
-        chatMessages = data.messages;
-        chatArchiveCurrent();
-        chatMessages = [];
+      if (data._v === 1) {
+        if (data.history) chatHistory = data.history;
+        if (data.messages?.length > 0) {
+          chatMessages = data.messages;
+          chatArchiveCurrent();
+          chatMessages = [];
+        }
       }
     }
   } catch {}

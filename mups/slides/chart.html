@@ -228,7 +228,7 @@
     // ---- State ----
     function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 500); }
     function save() {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ config: chartConfig })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, config: chartConfig })); } catch {}
       const summary = chartConfig
         ? `Chart: ${chartConfig.type} — ${chartConfig.title || chartConfig.labels?.length + ' labels'}`
         : 'Chart: empty';
@@ -237,7 +237,7 @@
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) return JSON.parse(stored);
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1) return d; }
       } catch {}
       return null;
     }

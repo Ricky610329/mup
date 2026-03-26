@@ -375,7 +375,7 @@
     function debouncedSave() { clearTimeout(stateTimer); stateTimer = setTimeout(save, 500); }
     function save() {
       const clean = tasks.map(({ _expanded, ...t }) => t);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks: clean, paused, autoChain })); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, tasks: clean, paused, autoChain })); } catch {}
       const running = getRunning();
       const pending = getPending().length;
       let summary = `Agent Core: ${tasks.length} task(s), ${pending} pending`;
@@ -386,7 +386,7 @@
     function loadState() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) return JSON.parse(stored);
+        if (stored) { const d = JSON.parse(stored); if (d._v === 1) return d; }
       } catch {}
       return {};
     }
