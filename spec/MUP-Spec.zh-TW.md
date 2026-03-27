@@ -10,7 +10,7 @@
 
 **MUP** 是嵌入在 LLM 聊天介面中的互動式 UI 元件。它把視覺介面和可呼叫的函式綁在一起 — 使用者透過 UI 操作它，LLM 透過 function call 操作它，雙方都能看到彼此的動作。
 
-最簡單的 MUP 就是一個 `.html` 檔案。不需要建置工具、不需要框架、不需要安裝 SDK。
+最簡單的 MUP 就是一個 `.html` 檔案 — 不需要建置工具、不需要框架、不需要安裝 SDK。較大的 MUP 可以使用[目錄格式](#11-檔案格式)以提升可維護性。
 
 ```
           使用者
@@ -464,11 +464,56 @@ mup.onReady((params) => {
 
 ### 保持 MUP 自包含
 
-MUP 應該零外部依賴就能運作。內嵌你的 CSS、打包你的 JS、嵌入你的素材。Host 會原封不動載入你的 HTML — 不保證有模組解析或 CDN 存取。
+**單檔 MUP** 應完全自包含 — 內嵌你的 CSS、打包你的 JS、嵌入你的素材。
+
+**目錄 MUP** 將檔案分開以提升可維護性。Host 會解析本地的 `<link>` 和 `<script>` 引用，產生等同自包含的結果。請確保所有本地引用使用 MUP 目錄內的相對路徑。
+
+外部資源的可用性（CDN 腳本、遠端 API）取決於執行環境，不在本規格的範疇內。
 
 ### 權限
 
 如果你需要瀏覽器 API（相機、麥克風、地理位置），在 `permissions` 中宣告。Host 只會授予你宣告的權限。不要要求你不需要的權限。
+
+---
+
+## 11. 檔案格式
+
+MUP 可以使用兩種格式撰寫：**單檔**或**目錄**。
+
+### 單檔格式
+
+一個 `.html` 檔案，包含 manifest、樣式、標記和腳本。這是最簡單的格式，適用於小型到中型的 MUP。
+
+```
+my-counter.html
+```
+
+未在 manifest 中指定 `id` 時，預設 ID 從檔名（去除 `.html` 副檔名）推導：`my-counter.html` → `mup-my-counter`。
+
+### 目錄格式
+
+一個目錄，包含帶有 manifest 的 `index.html` 以及輔助檔案。當單一檔案變得難以維護時使用此格式。
+
+```
+my-slides/
+  index.html        ← manifest + 標記 + 本地檔案引用
+  styles.css
+  app.js
+```
+
+**規則：**
+
+1. 目錄內必須（MUST）包含一個帶有有效 `<script type="application/mup-manifest">` 區塊的 `index.html`。
+2. `index.html` 可以（MAY）使用相對路徑引用本地檔案（例如 `<link href="./styles.css">`、`<script src="./app.js">`）。
+3. 引用必須（MUST）使用相對於 MUP 目錄的路徑。引用不得（MUST NOT）跳出目錄（例如 `../` 無效）。
+4. Host 必須（MUST）解析所有本地 `<link>` 和 `<script>` 引用，使 MUP 正確運作。解析機制（內嵌、HTTP 提供或其他方式）是 host 的實作細節。
+5. 超出靜態 `<link>` 和 `<script>` 標籤的本地檔案存取（例如 `fetch()`、動態 `import()`）不保證（NOT guaranteed）在所有 host 上可用。
+6. MUP 目錄內的子目錄屬於該 MUP 的一部分，不是巢狀 MUP。Host 不得（MUST NOT）在已識別的 MUP 目錄內部掃描其他 MUP。
+7. 預設 `id` 從目錄名稱推導：`my-slides/` → `mup-my-slides`。
+
+### 格式等價性
+
+從 host 和 LLM 的角度來看，兩種格式在功能上完全等價。目錄 MUP 在所有引用解析後，產生的結果與單檔 MUP 相同。格式的選擇純粹是撰寫上的便利性考量。
 
 ---
 
@@ -506,7 +551,7 @@ MUP 和 MCP 是互補的 — MCP 負責連接 LLM 與後端工具及資料；MUP
 | **有 UI** | 否 | 是 |
 | **使用者能互動** | 否 | 是 |
 | **執行環境** | 伺服器（任何語言） | 瀏覽器 |
-| **格式** | 伺服器程序 | HTML 檔案 |
+| **格式** | 伺服器程序 | HTML 檔案或目錄 |
 | **傳輸** | JSON-RPC 2.0 (stdio/SSE/HTTP) | JSON-RPC 2.0 (MessageChannel) |
 | **LLM 看到** | Tool 定義 | Tool 定義 |
 | **使用者看到** | 無 | 互動式 UI |

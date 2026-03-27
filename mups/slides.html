@@ -645,13 +645,10 @@
       const availH = areaRect.height - pad;
       const scale = Math.min(availW / designW, availH / designH, 1);
       wrapper.style.transform = `scale(${scale})`;
-      wrapper.style.width = designW + 'px';
-      wrapper.style.height = designH + 'px';
-      // Center the wrapper
-      const scaledW = designW * scale;
-      const scaledH = designH * scale;
-      wrapper.style.marginLeft = Math.max(0, (areaRect.width - scaledW) / 2) + 'px';
-      wrapper.style.marginTop = Math.max(0, (areaRect.height - scaledH) / 2) + 'px';
+      wrapper.style.width = (designW * scale) + 'px';
+      wrapper.style.height = (designH * scale) + 'px';
+      wrapper.style.marginLeft = '';
+      wrapper.style.marginTop = '';
 
       // Edit panel
       renderEditPanel(slide);

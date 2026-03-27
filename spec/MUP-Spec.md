@@ -10,7 +10,7 @@ Version: `mup/2026-03-17` (Draft)
 
 A **MUP** is an interactive UI component that lives inside an LLM chat interface. It bundles a visual interface with callable functions — the user operates it through the UI, the LLM operates it through function calls, and both sides see each other's actions.
 
-The simplest MUP is a single `.html` file. No build step, no framework, no SDK install.
+The simplest MUP is a single `.html` file — no build step, no framework, no SDK install. Larger MUPs can use a [directory format](#11-file-formats) for better maintainability.
 
 ```
           User
@@ -464,11 +464,56 @@ mup.onReady((params) => {
 
 ### Keep your MUP self-contained
 
-A MUP should work with zero external dependencies. Inline your CSS, bundle your JS, embed your assets. The host loads your HTML as-is — there's no module resolution or CDN access guaranteed.
+**Single-file MUPs** should be fully self-contained — inline your CSS, bundle your JS, embed your assets.
+
+**Directory MUPs** keep files separate for maintainability. The host resolves local `<link>` and `<script>` references, producing a self-contained result. Ensure all local references use relative paths within the MUP directory.
+
+External resource availability (CDN scripts, remote APIs) depends on the runtime environment and is outside the scope of this spec.
 
 ### Permissions
 
 If you need browser APIs (camera, microphone, geolocation), declare them in `permissions`. The host will only grant what you declare. Don't request permissions you don't need.
+
+---
+
+## 11. File Formats
+
+A MUP can be authored in two formats: **single-file** or **directory**.
+
+### Single-File Format
+
+A single `.html` file containing the manifest, styles, markup, and scripts. This is the simplest format and ideal for small to medium MUPs.
+
+```
+my-counter.html
+```
+
+The default `id` (when not specified in the manifest) is derived from the filename without the `.html` extension: `my-counter.html` → `mup-my-counter`.
+
+### Directory Format
+
+A directory containing an `index.html` with the manifest, plus supporting files. Use this when a single file becomes difficult to maintain.
+
+```
+my-slides/
+  index.html        ← manifest + markup + local file references
+  styles.css
+  app.js
+```
+
+**Rules:**
+
+1. The directory MUST contain an `index.html` with a valid `<script type="application/mup-manifest">` block.
+2. `index.html` MAY reference local files using relative paths (e.g., `<link href="./styles.css">`, `<script src="./app.js">`).
+3. References MUST use paths relative to the MUP directory. References MUST NOT escape the directory (e.g., `../` is invalid).
+4. The host MUST resolve all local `<link>` and `<script>` references so that the MUP functions correctly. The resolution mechanism (inlining, HTTP serving, or otherwise) is a host implementation detail.
+5. Local file access beyond static `<link>` and `<script>` tags (e.g., `fetch()`, dynamic `import()`) is NOT guaranteed to work across hosts.
+6. Subdirectories within a MUP directory are part of that MUP, not nested MUPs. The host MUST NOT scan inside a recognized MUP directory for additional MUPs.
+7. The default `id` is derived from the directory name: `my-slides/` → `mup-my-slides`.
+
+### Format Equivalence
+
+Both formats are functionally equivalent from the host and LLM perspective. A directory MUP with all references resolved produces the same result as a single-file MUP. The choice of format is purely an authoring convenience.
 
 ---
 
@@ -506,7 +551,7 @@ MUP and MCP are complementary — MCP connects LLMs to backend tools and data; M
 | **Has UI** | No | Yes |
 | **User can interact** | No | Yes |
 | **Runs in** | Server (any language) | Browser |
-| **Format** | Server process | HTML file |
+| **Format** | Server process | HTML file or directory |
 | **Transport** | JSON-RPC 2.0 (stdio/SSE/HTTP) | JSON-RPC 2.0 (MessageChannel) |
 | **LLM sees** | Tool definitions | Tool definitions |
 | **User sees** | Nothing | Interactive UI |
