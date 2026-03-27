@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { CONFIG } from "./config.js";
+import { bundleHtml } from "./bundler.js";
 import type {
   MupManifest, LoadedMup, CatalogEntry, NotificationLevel,
 } from "./types.js";
@@ -32,8 +33,16 @@ export class MupManager {
     return null;
   }
 
+  /** Read and resolve a MUP's HTML. Directory MUPs are bundled; single-file MUPs are read as-is. */
+  resolveHtml(filePath: string): string {
+    if (path.basename(filePath) === "index.html") {
+      return bundleHtml(filePath);
+    }
+    return fs.readFileSync(filePath, "utf-8");
+  }
+
   scanFile(filePath: string): MupManifest {
-    const html = fs.readFileSync(filePath, "utf-8");
+    const html = this.resolveHtml(filePath);
     const manifest = this.parseManifest(html, filePath);
     this.catalog.set(manifest.id, { manifest, html, filePath, active: false });
     return manifest;
@@ -180,7 +189,11 @@ export class MupManager {
     const raw = JSON.parse(match[1].trim());
     return {
       protocol: raw.protocol ?? "mup/2026-03-17",
-      id: raw.id ?? "mup-" + path.basename(filePath, ".html"),
+      id: raw.id ?? "mup-" + (
+        path.basename(filePath) === "index.html"
+          ? path.basename(path.dirname(filePath))
+          : path.basename(filePath, ".html")
+      ),
       name: raw.name,
       version: raw.version ?? "1.0.0",
       description: raw.description ?? raw.name,

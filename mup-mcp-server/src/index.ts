@@ -135,12 +135,32 @@ function setupFileWatching(
   for (const dir of mupsDirs) {
     try {
       fs.watch(dir, { recursive: true }, (_, filename) => {
-        if (!filename || !filename.endsWith(".html")) return;
+        if (!filename) return;
+        const ext = path.extname(filename).toLowerCase();
+        if (![".html", ".js", ".css"].includes(ext)) return;
         // Ignore files inside .mup/ directory
         if (filename.startsWith(".mup")) return;
         const filePath = path.join(dir, filename);
-        if (!fs.existsSync(filePath)) {
-          const entry = manager.findByFilePath(filePath);
+
+        // For .js/.css changes, find the owning directory MUP's index.html
+        let targetPath = filePath;
+        if (ext !== ".html") {
+          const dirIndex = path.join(path.dirname(filePath), "index.html");
+          if (fs.existsSync(dirIndex)) {
+            targetPath = dirIndex;
+          } else {
+            // Check parent directory (for files in subdirectories of a MUP)
+            const parentIndex = path.join(path.dirname(path.dirname(filePath)), "index.html");
+            if (fs.existsSync(parentIndex)) {
+              targetPath = parentIndex;
+            } else {
+              return; // Not part of a directory MUP
+            }
+          }
+        }
+
+        if (!fs.existsSync(targetPath)) {
+          const entry = manager.findByFilePath(targetPath);
           if (!entry) return;
           const mupId = entry.manifest.id;
           for (const m of manager.getAll()) {
@@ -158,11 +178,11 @@ function setupFileWatching(
           return;
         }
         try {
-          const html = fs.readFileSync(filePath, "utf-8");
-          const manifest = manager.parseManifest(html, filePath);
+          const html = manager.resolveHtml(targetPath);
+          const manifest = manager.parseManifest(html, targetPath);
           const entry = manager.getCatalog().find((e) => e.manifest.id === manifest.id);
           if (entry) { entry.html = html; entry.manifest = manifest; }
-          else { manager.scanFile(filePath); rebuildFolderTree(); console.error(`[mup-mcp] Discovered: ${manifest.name}`); }
+          else { manager.scanFile(targetPath); rebuildFolderTree(); console.error(`[mup-mcp] Discovered: ${manifest.name}`); }
           if (manager.isActive(manifest.id)) {
             const mup = manager.get(manifest.id);
             if (mup) { mup.html = html; mup.manifest = manifest; sendLoadMup(manifest.id, mup); console.error(`[mup-mcp] Hot-reloaded: ${manifest.name}`); }

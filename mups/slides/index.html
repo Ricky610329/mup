@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Slides</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Slides",
+    "description": "Professional presentation editor. BEST PRACTICES: (1) Prefer 'content' and 'two-column' layouts — they handle sizing automatically and avoid overflow. Only use 'embed' or 'blank' for custom visuals like charts/SVGs. (2) Use setTheme() to change themes — do NOT recreate the presentation just to switch themes. (3) Use saveToLibrary() to save, exportHTML() to export. (4) After adding/updating a slide, call getSlidePreview() to visually verify the layout before proceeding. (5) Keep embed HTML simple: max 6 grid items per slide, use 11-14px body text, generous padding. Layouts: title, content, two-column, image, embed, blank. Aspect ratios: 16:9, 4:3, 1:1, 9:16. Themes: light, dark, blue, green, midnight, warm.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "createPresentation",
+        "description": "Create a new presentation, replacing all existing slides.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string", "description": "Presentation title (used on auto-created title slide)" },
+            "subtitle": { "type": "string", "description": "Subtitle for the title slide" },
+            "theme": { "type": "string", "enum": ["light", "dark", "blue", "green", "midnight", "warm"], "description": "Color theme (default: light)" },
+            "aspectRatio": { "type": "string", "enum": ["16:9", "4:3", "1:1", "9:16"], "description": "Slide aspect ratio (default: 16:9)" }
+          },
+          "required": ["title"]
+        }
+      },
+      {
+        "name": "addSlide",
+        "description": "Add a slide to the end of the presentation.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "layout": { "type": "string", "enum": ["title", "content", "two-column", "image", "embed", "blank"], "description": "Slide layout. Use 'embed' for HTML/SVG content from charts, diagrams, or other tools." },
+            "content": {
+              "type": "object",
+              "description": "Content fields depend on layout. title: {title, subtitle}. content: {title, body}. two-column: {title, left, right}. image: {title, imageUrl, caption}. embed: {title, html, caption}. blank: {html}.",
+              "properties": {
+                "title": { "type": "string" },
+                "subtitle": { "type": "string" },
+                "body": { "type": "string", "description": "Markdown supported" },
+                "left": { "type": "string", "description": "Left column markdown" },
+                "right": { "type": "string", "description": "Right column markdown" },
+                "imageUrl": { "type": "string" },
+                "caption": { "type": "string" },
+                "html": { "type": "string", "description": "Raw HTML/SVG content" }
+              }
+            }
+          },
+          "required": ["layout", "content"]
+        }
+      },
+      {
+        "name": "updateSlide",
+        "description": "Update a slide's content by index (0-based).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "index": { "type": "integer", "description": "Slide index (0-based)" },
+            "layout": { "type": "string", "enum": ["title", "content", "two-column", "image", "embed", "blank"] },
+            "content": { "type": "object", "description": "Same content fields as addSlide" }
+          },
+          "required": ["index"]
+        }
+      },
+      {
+        "name": "removeSlide",
+        "description": "Remove a slide by index (0-based).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "index": { "type": "integer", "description": "Slide index (0-based)" }
+          },
+          "required": ["index"]
+        }
+      },
+      {
+        "name": "getSlides",
+        "description": "Get all slides with their layout and content.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setTheme",
+        "description": "Change the presentation theme.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "theme": { "type": "string", "enum": ["light", "dark", "blue", "green", "midnight", "warm"], "description": "Color theme" }
+          },
+          "required": ["theme"]
+        }
+      },
+      {
+        "name": "setAspectRatio",
+        "description": "Change the slide aspect ratio.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "aspectRatio": { "type": "string", "enum": ["16:9", "4:3", "1:1", "9:16"], "description": "Slide aspect ratio" }
+          },
+          "required": ["aspectRatio"]
+        }
+      },
+      {
+        "name": "embedContent",
+        "description": "Add a slide with embedded HTML/SVG content — ideal for integrating charts, diagrams, or other visual outputs from other tools.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "html": { "type": "string", "description": "HTML or SVG content to embed" },
+            "title": { "type": "string", "description": "Optional slide title" },
+            "caption": { "type": "string", "description": "Optional caption below the content" }
+          },
+          "required": ["html"]
+        }
+      },
+      {
+        "name": "exportHTML",
+        "description": "Get the full presentation as a self-contained HTML string for download.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "saveToLibrary",
+        "description": "Save the current presentation to the library for later retrieval.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Optional name override. Defaults to current presentation title." }
+          }
+        }
+      },
+      {
+        "name": "listLibrary",
+        "description": "List all saved presentations in the library.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "loadFromLibrary",
+        "description": "Load a saved presentation from the library by its ID, replacing current slides.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "The saved presentation ID" }
+          },
+          "required": ["id"]
+        }
+      },
+      {
+        "name": "deleteFromLibrary",
+        "description": "Delete a saved presentation from the library.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "The saved presentation ID to delete" }
+          },
+          "required": ["id"]
+        }
+      },
+      {
+        "name": "getSlidePreview",
+        "description": "Capture a screenshot of a slide for visual review. Use this after creating or updating a slide to verify the layout looks correct before proceeding.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "index": { "type": "integer", "description": "Slide index (0-based). Defaults to current slide." }
+          }
+        }
+      }
+    ]
+  }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <link href="./styles.css" rel="stylesheet">
+</head>
+<body>
+  <div class="toolbar">
+    <span class="toolbar-title">Slides</span>
+    <span class="toolbar-info" id="slideInfo">0 slides</span>
+    <span class="toolbar-spacer"></span>
+    <select class="toolbar-select" id="ratioSelect" title="Aspect ratio">
+      <option value="16:9">16:9</option>
+      <option value="4:3">4:3</option>
+      <option value="1:1">1:1</option>
+      <option value="9:16">9:16</option>
+    </select>
+    <div class="toolbar-sep"></div>
+    <select class="toolbar-select" id="layoutSelect">
+      <option value="title">Title</option>
+      <option value="content" selected>Content</option>
+      <option value="two-column">Two Column</option>
+      <option value="image">Image</option>
+      <option value="embed">Embed</option>
+      <option value="blank">Blank</option>
+    </select>
+    <button class="toolbar-btn" id="addSlideBtn">+ Slide</button>
+    <div class="toolbar-sep"></div>
+    <select class="toolbar-select" id="themeSelect">
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+      <option value="blue">Blue</option>
+      <option value="green">Green</option>
+      <option value="midnight">Midnight</option>
+      <option value="warm">Warm</option>
+    </select>
+    <button class="toolbar-btn" id="presentBtn">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> Present
+    </button>
+    <button class="toolbar-btn" id="saveBtn">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Save
+    </button>
+    <button class="toolbar-btn" id="pdfBtn">PDF</button>
+    <button class="toolbar-btn" id="htmlBtn">HTML</button>
+    <div class="toolbar-sep"></div>
+    <button class="toolbar-btn" id="libraryBtn">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Library
+    </button>
+  </div>
+  <div class="main">
+    <div class="sidebar">
+      <div class="slide-list" id="slideList"></div>
+    </div>
+    <div class="canvas-area" id="canvasArea">
+      <div class="empty-state" id="emptyState">
+        <span>No slides yet</span>
+        <span style="font-size:11px">Click <b>+ Slide</b> or let the agent create a presentation</span>
+      </div>
+    </div>
+    <div class="edit-panel" id="editPanel" style="display:none;"></div>
+    <div class="library-panel" id="libraryPanel">
+      <div class="library-header">
+        <span class="library-header-title">Presentation Library</span>
+        <button class="library-close" id="libraryCloseBtn">&times;</button>
+      </div>
+      <button class="library-save-btn" id="librarySaveBtn">+ Save current presentation</button>
+      <div class="library-list" id="libraryList"></div>
+    </div>
+  </div>
+  <div class="print-container" id="printContainer"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

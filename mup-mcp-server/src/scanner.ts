@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { MupManager } from "./manager.js";
 import type { FolderTreeNode } from "./types.js";
+import { isDirectoryMup } from "./bundler.js";
 
 const SKIP_DIRS = new Set(["node_modules", "dist", ".git"]);
 
@@ -9,7 +10,13 @@ export function scanHtmlFiles(dir: string): string[] {
   const results: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory() && !entry.name.startsWith(".") && !SKIP_DIRS.has(entry.name)) {
-      results.push(...scanHtmlFiles(path.join(dir, entry.name)));
+      const subdir = path.join(dir, entry.name);
+      if (isDirectoryMup(subdir)) {
+        // Directory-based MUP: treat index.html as the entry point, don't recurse
+        results.push(path.join(subdir, "index.html"));
+      } else {
+        results.push(...scanHtmlFiles(subdir));
+      }
     } else if (entry.isFile() && entry.name.endsWith(".html")) {
       results.push(path.join(dir, entry.name));
     }
@@ -24,8 +31,27 @@ export function buildFolderTree(dir: string, manager: MupManager): FolderTreeNod
 
   for (const entry of entries) {
     if (entry.isDirectory() && !entry.name.startsWith(".") && !SKIP_DIRS.has(entry.name)) {
-      const children = buildFolderTree(path.join(dir, entry.name), manager);
-      folders.push({ type: "folder", name: entry.name, children });
+      const subdir = path.join(dir, entry.name);
+      if (isDirectoryMup(subdir)) {
+        // Directory-based MUP: show as a single MUP entry, not a folder
+        const indexPath = path.join(subdir, "index.html");
+        const content = manager.resolveHtml(indexPath);
+        try {
+          const manifest = manager.parseManifest(content, indexPath);
+          const catalogEntry = manager.getCatalog().find((e) => e.manifest.id === manifest.id);
+          files.push({
+            type: "file", name: manifest.name, id: manifest.id,
+            description: manifest.description, active: catalogEntry?.active || false,
+            multiInstance: manifest.multiInstance || false, isMup: true, ext: ".html",
+          });
+        } catch (err) {
+          console.error(`[mup-mcp] Skipping directory MUP ${entry.name}: ${(err as Error).message}`);
+          files.push({ type: "file", name: entry.name, isMup: false, ext: "" });
+        }
+      } else {
+        const children = buildFolderTree(subdir, manager);
+        folders.push({ type: "folder", name: entry.name, children });
+      }
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       if (ext === ".html") {
