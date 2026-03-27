@@ -54,6 +54,217 @@
       document.body.classList.toggle('editor-dark', t === 'dark');
     }
 
+    // ---- Theme variable resolver (for present/export where CSS vars don't work in SVG) ----
+    function resolveThemeVars(html, th) {
+      return html
+        .replace(/var\(--slide-bg\)/g, th.bg)
+        .replace(/var\(--slide-text\)/g, th.text)
+        .replace(/var\(--slide-heading\)/g, th.heading)
+        .replace(/var\(--slide-accent\)/g, th.accent)
+        .replace(/var\(--slide-muted\)/g, th.muted)
+        .replace(/var\(--slide-code-bg\)/g, th.codeBg);
+    }
+
+    // ---- Chart Engine ----
+    function chartPalette(th) {
+      return [th.accent, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+    }
+
+    function generateChart(type, data, options, th) {
+      const opts = options || {};
+      const palette = chartPalette(th);
+      if (type === 'line') return generateLineChart(data, opts, th, palette);
+      if (type === 'bar') return generateBarChart(data, opts, th, palette);
+      if (type === 'pie') return generatePieChart(data, opts, th, palette);
+      return `<svg viewBox="0 0 800 400"><text x="400" y="200" text-anchor="middle" fill="${th.muted}">Unknown chart type: ${type}</text></svg>`;
+    }
+
+    function generateLineChart(data, opts, th, palette) {
+      const W = 800, H = 400, padL = 70, padR = 30, padT = 40, padB = 60;
+      const labels = data.labels || [];
+      const datasets = data.datasets || [];
+      const allVals = datasets.flatMap(d => d.values);
+      const dataMin = Math.min(...allVals);
+      const dataMax = Math.max(...allVals);
+      const range = dataMax - dataMin || 1;
+      const yMin = opts.yMin ?? Math.floor(dataMin - range * 0.1);
+      const yMax = opts.yMax ?? Math.ceil(dataMax + range * 0.1);
+      const yRange = yMax - yMin || 1;
+      const chartW = W - padL - padR;
+      const chartH = H - padT - padB;
+      const suffix = opts.ySuffix || '';
+      const toX = (i) => padL + (labels.length > 1 ? i / (labels.length - 1) : 0.5) * chartW;
+      const toY = (v) => padT + chartH - ((v - yMin) / yRange) * chartH;
+
+      let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;font-family:system-ui,sans-serif">`;
+      // Grid lines
+      const gridSteps = 5;
+      for (let i = 0; i <= gridSteps; i++) {
+        const v = yMin + (yRange / gridSteps) * i;
+        const y = toY(v);
+        svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${th.muted}" stroke-width="0.5" opacity="0.3"/>`;
+        svg += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="${th.muted}" font-size="11">${Math.round(v * 10) / 10}${suffix}</text>`;
+      }
+      // X axis labels
+      labels.forEach((label, i) => {
+        svg += `<text x="${toX(i)}" y="${H - padB + 20}" text-anchor="middle" fill="${th.muted}" font-size="11">${label}</text>`;
+      });
+      // Lines + dots
+      datasets.forEach((ds, di) => {
+        const color = palette[di % palette.length];
+        const dashed = ds.style === 'dashed' ? ' stroke-dasharray="8,4"' : '';
+        const points = ds.values.map((v, i) => `${toX(i)},${toY(v)}`);
+        svg += `<polyline points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="2.5"${dashed}/>`;
+        ds.values.forEach((v, i) => {
+          svg += `<circle cx="${toX(i)}" cy="${toY(v)}" r="4" fill="${color}" stroke="${th.bg}" stroke-width="2"/>`;
+          if (opts.showValues) {
+            svg += `<text x="${toX(i)}" y="${toY(v) - 10}" text-anchor="middle" fill="${color}" font-size="11" font-weight="600">${v}${suffix}</text>`;
+          }
+        });
+      });
+      // Legend
+      if (opts.showLegend !== false && datasets.length > 1) {
+        const legendX = padL + 10;
+        datasets.forEach((ds, di) => {
+          const y = padT + 5 + di * 18;
+          const color = palette[di % palette.length];
+          const dashed = ds.style === 'dashed';
+          svg += `<line x1="${legendX}" y1="${y}" x2="${legendX + 20}" y2="${y}" stroke="${color}" stroke-width="2.5"${dashed ? ' stroke-dasharray="6,3"' : ''}/>`;
+          svg += `<text x="${legendX + 26}" y="${y + 4}" fill="${th.text}" font-size="11">${ds.label}</text>`;
+        });
+      }
+      svg += '</svg>';
+      return svg;
+    }
+
+    function generateBarChart(data, opts, th, palette) {
+      const W = 800, H = 400, padL = 70, padR = 30, padT = 30, padB = 60;
+      const labels = data.labels || [];
+      const datasets = data.datasets || [];
+      const stacked = opts.stacked || false;
+      const allVals = stacked
+        ? labels.map((_, i) => datasets.reduce((sum, ds) => sum + (ds.values[i] || 0), 0))
+        : datasets.flatMap(d => d.values);
+      const dataMax = Math.max(...allVals, 0);
+      const yMin = opts.yMin ?? 0;
+      const yMax = opts.yMax ?? Math.ceil(dataMax * 1.15);
+      const yRange = yMax - yMin || 1;
+      const chartW = W - padL - padR;
+      const chartH = H - padT - padB;
+      const suffix = opts.ySuffix || '';
+      const toY = (v) => padT + chartH - ((v - yMin) / yRange) * chartH;
+      const groupW = chartW / labels.length;
+      const gap = groupW * 0.2;
+      const barGroupW = groupW - gap;
+
+      let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;font-family:system-ui,sans-serif">`;
+      // Grid
+      const gridSteps = 5;
+      for (let i = 0; i <= gridSteps; i++) {
+        const v = yMin + (yRange / gridSteps) * i;
+        const y = toY(v);
+        svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${th.muted}" stroke-width="0.5" opacity="0.3"/>`;
+        svg += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="${th.muted}" font-size="11">${Math.round(v)}${suffix}</text>`;
+      }
+      // Bars
+      labels.forEach((label, gi) => {
+        const groupX = padL + gi * groupW + gap / 2;
+        if (stacked) {
+          let cumY = 0;
+          datasets.forEach((ds, di) => {
+            const v = ds.values[gi] || 0;
+            const color = palette[di % palette.length];
+            const barH = (v / yRange) * chartH;
+            const y = toY(yMin + cumY + v);
+            svg += `<rect x="${groupX}" y="${y}" width="${barGroupW}" height="${barH}" rx="3" fill="${color}" opacity="0.85"/>`;
+            cumY += v;
+          });
+        } else {
+          const barW = barGroupW / datasets.length;
+          datasets.forEach((ds, di) => {
+            const v = ds.values[gi] || 0;
+            const color = palette[di % palette.length];
+            const x = groupX + di * barW;
+            const barH = ((v - yMin) / yRange) * chartH;
+            const y = toY(v);
+            svg += `<rect x="${x}" y="${y}" width="${barW - 2}" height="${barH}" rx="3" fill="${color}" opacity="0.85"/>`;
+            if (opts.showValues) {
+              svg += `<text x="${x + barW / 2 - 1}" y="${y - 5}" text-anchor="middle" fill="${color}" font-size="10" font-weight="600">${v}${suffix}</text>`;
+            }
+          });
+        }
+        svg += `<text x="${groupX + barGroupW / 2}" y="${H - padB + 20}" text-anchor="middle" fill="${th.muted}" font-size="11">${label}</text>`;
+      });
+      // Legend
+      if (opts.showLegend !== false && datasets.length > 1) {
+        datasets.forEach((ds, di) => {
+          const lx = padL + 10 + di * 120;
+          const color = palette[di % palette.length];
+          svg += `<rect x="${lx}" y="${padT}" width="12" height="12" rx="2" fill="${color}" opacity="0.85"/>`;
+          svg += `<text x="${lx + 18}" y="${padT + 10}" fill="${th.text}" font-size="11">${ds.label}</text>`;
+        });
+      }
+      svg += '</svg>';
+      return svg;
+    }
+
+    function generatePieChart(data, opts, th, palette) {
+      const W = 800, H = 400;
+      const cx = W / 2, cy = H / 2;
+      const R = 140;
+      const innerR = opts.donut ? R * 0.55 : 0;
+      const labels = data.labels || [];
+      const ds = (data.datasets && data.datasets[0]) || { values: [] };
+      const values = ds.values || [];
+      const total = values.reduce((a, b) => a + b, 0) || 1;
+
+      let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;font-family:system-ui,sans-serif">`;
+      let startAngle = -Math.PI / 2;
+      values.forEach((v, i) => {
+        const sliceAngle = (v / total) * Math.PI * 2;
+        const endAngle = startAngle + sliceAngle;
+        const midAngle = startAngle + sliceAngle / 2;
+        const color = palette[i % palette.length];
+        const largeArc = sliceAngle > Math.PI ? 1 : 0;
+        // Outer arc
+        const x1 = cx + R * Math.cos(startAngle), y1 = cy + R * Math.sin(startAngle);
+        const x2 = cx + R * Math.cos(endAngle), y2 = cy + R * Math.sin(endAngle);
+        let d;
+        if (innerR > 0) {
+          const ix1 = cx + innerR * Math.cos(endAngle), iy1 = cy + innerR * Math.sin(endAngle);
+          const ix2 = cx + innerR * Math.cos(startAngle), iy2 = cy + innerR * Math.sin(startAngle);
+          d = `M${x1},${y1} A${R},${R} 0 ${largeArc},1 ${x2},${y2} L${ix1},${iy1} A${innerR},${innerR} 0 ${largeArc},0 ${ix2},${iy2} Z`;
+        } else {
+          d = `M${cx},${cy} L${x1},${y1} A${R},${R} 0 ${largeArc},1 ${x2},${y2} Z`;
+        }
+        svg += `<path d="${d}" fill="${color}" opacity="0.85" stroke="${th.bg}" stroke-width="2"/>`;
+        // Label
+        const labelR = R + 24;
+        const lx = cx + labelR * Math.cos(midAngle);
+        const ly = cy + labelR * Math.sin(midAngle);
+        const anchor = lx > cx ? 'start' : lx < cx ? 'end' : 'middle';
+        const pct = Math.round(v / total * 100);
+        svg += `<text x="${lx}" y="${ly - 2}" text-anchor="${anchor}" fill="${th.text}" font-size="12" font-weight="600">${labels[i] || ''}</text>`;
+        svg += `<text x="${lx}" y="${ly + 13}" text-anchor="${anchor}" fill="${th.muted}" font-size="11">${pct}%</text>`;
+        startAngle = endAngle;
+      });
+      // Donut center
+      if (opts.donut && ds.label) {
+        svg += `<text x="${cx}" y="${cy + 5}" text-anchor="middle" fill="${th.heading}" font-size="16" font-weight="700">${ds.label}</text>`;
+      }
+      svg += '</svg>';
+      return svg;
+    }
+
+    function rerenderCharts() {
+      const th = themes[theme] || themes.light;
+      slides.forEach(s => {
+        if (s._chart) {
+          s.content.html = generateChart(s._chart.type, s._chart.data, s._chart.options, th);
+        }
+      });
+    }
+
     // ---- Render slide HTML ----
     function renderSlideHTML(slide, index, total) {
       const c = slide.content || {};
@@ -85,23 +296,26 @@
     }
 
     // ---- Render UI ----
-    function render() {
-      applySlideTheme(theme);
-      applyAspectRatio(aspectRatio);
-      document.getElementById('themeSelect').value = theme;
-      document.getElementById('ratioSelect').value = aspectRatio;
-      document.getElementById('slideInfo').textContent = `${slides.length} slide${slides.length !== 1 ? 's' : ''}`;
-
-      // Sidebar thumbnails
+    function renderThumbnails() {
       const listEl = document.getElementById('slideList');
       listEl.innerHTML = '';
+      const [designW, designH] = DESIGN_SIZES[aspectRatio] || DESIGN_SIZES['16:9'];
+      const th = themes[theme] || themes.light;
       slides.forEach((s, i) => {
         const thumb = document.createElement('div');
         thumb.className = 'slide-thumb' + (i === currentIndex ? ' active' : '');
-        const previewText = (s.content?.title || s.content?.body || s.layout).slice(0, 40);
+        const slideHtml = renderSlideHTML(s, i, slides.length);
         thumb.innerHTML = `<span class="slide-thumb-num">${i + 1}</span>
-          <div class="slide-thumb-preview">${esc(previewText)}</div>
+          <div class="slide-thumb-preview"><div class="slide-thumb-inner layout-${s.layout}" style="width:${designW}px;height:${designH}px;background:${th.bg};">${slideHtml}</div></div>
           <button class="slide-thumb-delete">&times;</button>`;
+        requestAnimationFrame(() => {
+          const preview = thumb.querySelector('.slide-thumb-preview');
+          const inner = thumb.querySelector('.slide-thumb-inner');
+          if (preview && inner) {
+            const scale = preview.offsetWidth / designW;
+            inner.style.transform = `scale(${scale})`;
+          }
+        });
         thumb.addEventListener('click', () => { currentIndex = i; render(); });
         thumb.querySelector('.slide-thumb-delete').addEventListener('click', (e) => {
           e.stopPropagation();
@@ -111,19 +325,12 @@
         });
         listEl.appendChild(thumb);
       });
+    }
 
-      // Canvas
+    function renderCanvas() {
       const canvasArea = document.getElementById('canvasArea');
-      const editPanel = document.getElementById('editPanel');
-
-      if (slides.length === 0) {
-        canvasArea.innerHTML = `<div class="empty-state"><span>No slides yet</span><span style="font-size:11px">Click <b>+ Slide</b> or let the agent create a presentation</span></div>`;
-        editPanel.style.display = 'none';
-        return;
-      }
-      editPanel.style.display = 'flex';
-
       const slide = slides[currentIndex];
+      const [designW, designH] = DESIGN_SIZES[aspectRatio] || DESIGN_SIZES['16:9'];
       let wrapper = canvasArea.querySelector('.slide-scale-wrapper');
       let frame = canvasArea.querySelector('.slide-frame');
       if (!wrapper) {
@@ -135,14 +342,12 @@
         wrapper.appendChild(frame);
         canvasArea.appendChild(wrapper);
       }
-      const [designW, designH] = DESIGN_SIZES[aspectRatio] || DESIGN_SIZES['16:9'];
       frame.className = `slide-frame layout-${slide.layout}`;
       frame.style.width = designW + 'px';
       frame.style.height = designH + 'px';
       frame.style.background = themes[theme]?.bg || '#fff';
       frame.innerHTML = renderSlideHTML(slide, currentIndex, slides.length);
 
-      // Scale to fit canvas area
       const areaRect = canvasArea.getBoundingClientRect();
       const pad = 32;
       const availW = areaRect.width - pad;
@@ -153,9 +358,25 @@
       wrapper.style.height = (designH * scale) + 'px';
       wrapper.style.marginLeft = '';
       wrapper.style.marginTop = '';
+    }
 
-      // Edit panel
-      renderEditPanel(slide);
+    function render() {
+      applySlideTheme(theme);
+      applyAspectRatio(aspectRatio);
+      document.getElementById('themeSelect').value = theme;
+      document.getElementById('ratioSelect').value = aspectRatio;
+      document.getElementById('slideInfo').textContent = `${slides.length} slide${slides.length !== 1 ? 's' : ''}`;
+      renderThumbnails();
+      const canvasArea = document.getElementById('canvasArea');
+      const editPanel = document.getElementById('editPanel');
+      if (slides.length === 0) {
+        canvasArea.innerHTML = `<div class="empty-state"><span>No slides yet</span><span style="font-size:11px">Click <b>+ Slide</b> or let the agent create a presentation</span></div>`;
+        editPanel.style.display = 'none';
+        return;
+      }
+      editPanel.style.display = 'flex';
+      renderCanvas();
+      renderEditPanel(slides[currentIndex]);
     }
 
     function renderEditPanel(slide) {
@@ -305,11 +526,10 @@
       const th = themes[theme] || themes.light;
       const ratioCSS = RATIOS[aspectRatio] || '16/9';
       const isPortrait = PORTRAIT_RATIOS.has(aspectRatio);
-      const slidesHtml = slides.map((s, i) =>
-        `<div class="slide layout-${s.layout}" style="background:${th.bg};">
-          ${renderSlideHTML(s, i, slides.length)}
-        </div>`
-      ).join('');
+      const slidesHtml = slides.map((s, i) => {
+        const html = resolveThemeVars(renderSlideHTML(s, i, slides.length), th);
+        return `<div class="slide layout-${s.layout}" style="background:${th.bg};">${html}</div>`;
+      }).join('');
       win.document.write(buildPresentationHTML(slidesHtml, th, ratioCSS, isPortrait));
       win.document.close();
     }
@@ -322,6 +542,7 @@
       return `<!DOCTYPE html><html><head><meta charset="UTF-8">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
+          :root{--slide-bg:${th.bg};--slide-text:${th.text};--slide-heading:${th.heading};--slide-accent:${th.accent};--slide-muted:${th.muted};--slide-code-bg:${th.codeBg}}
           *{margin:0;padding:0;box-sizing:border-box}
           body{background:#000;overflow:hidden;font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
           .slide{${slideSize}display:none;flex-direction:column;position:relative;overflow:hidden;color:${th.text}}
@@ -371,15 +592,23 @@
       const orient = pageOrientation();
       const printWin = window.open('', '_blank');
       if (!printWin) return;
-      const slidesHtml = slides.map((s, i) =>
-        `<div class="print-slide" style="background:${th.bg};color:${th.text};">
-          <div class="slide-inner" style="flex:1;padding:6vh 6vw;display:flex;flex-direction:column;justify-content:center;">${renderSlideHTML(s, i, slides.length).replace(/<div class="slide-footer">.*?<\/div>/s, '').replace(/<div class="slide-progress".*?<\/div>/s, '')}</div>
+      const slidesHtml = slides.map((s, i) => {
+        const slideContent = resolveThemeVars(
+          renderSlideHTML(s, i, slides.length)
+            .replace(/<div class="slide-footer">.*?<\/div>/s, '')
+            .replace(/<div class="slide-progress".*?<\/div>/s, ''),
+          th
+        );
+        return `<div class="print-slide" style="background:${th.bg};color:${th.text};">
+          <div class="slide-inner" style="flex:1;padding:6vh 6vw;display:flex;flex-direction:column;justify-content:center;">${slideContent}</div>
           <div style="padding:1vh 6vw;font-size:10px;color:${th.muted};display:flex;justify-content:space-between;"><span>${esc(presentationTitle)}</span><span>${i+1} / ${slides.length}</span></div>
-        </div>`
+        </div>`;
+      }
       ).join('');
       printWin.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
+          :root{--slide-bg:${th.bg};--slide-text:${th.text};--slide-heading:${th.heading};--slide-accent:${th.accent};--slide-muted:${th.muted};--slide-code-bg:${th.codeBg}}
           @page{size:${orient};margin:0}*{margin:0;padding:0;box-sizing:border-box}
           body{font-family:'Inter',sans-serif}
           .print-slide{width:100vw;height:100vh;page-break-after:always;display:flex;flex-direction:column;overflow:hidden;position:relative}
@@ -409,11 +638,10 @@
       const th = themes[theme] || themes.light;
       const ratioCSS = RATIOS[aspectRatio] || '16/9';
       const isPortrait = PORTRAIT_RATIOS.has(aspectRatio);
-      const slidesHtml = slides.map((s, i) =>
-        `<div class="slide layout-${s.layout}" style="background:${th.bg};">
-          ${renderSlideHTML(s, i, slides.length)}
-        </div>`
-      ).join('');
+      const slidesHtml = slides.map((s, i) => {
+        const html = resolveThemeVars(renderSlideHTML(s, i, slides.length), th);
+        return `<div class="slide layout-${s.layout}" style="background:${th.bg};">${html}</div>`;
+      }).join('');
       const html = buildPresentationHTML(slidesHtml, th, ratioCSS, isPortrait);
       const blob = new Blob([html], { type: 'text/html' });
       const a = document.createElement('a');
@@ -587,6 +815,16 @@
       return { content: [{ type: 'text', text: `Removed slide ${index}. ${slides.length} remaining.` }], isError: false };
     });
 
+    mup.registerFunction('moveSlide', ({ from, to }) => {
+      if (from < 0 || from >= slides.length) return { content: [{ type: 'text', text: `Source index ${from} out of range (0-${slides.length - 1}).` }], isError: true };
+      if (to < 0 || to >= slides.length) return { content: [{ type: 'text', text: `Target index ${to} out of range (0-${slides.length - 1}).` }], isError: true };
+      const [slide] = slides.splice(from, 1);
+      slides.splice(to, 0, slide);
+      currentIndex = to;
+      render(); save();
+      return { content: [{ type: 'text', text: `Moved slide ${from} → ${to}. Current order: ${slides.length} slides.` }], isError: false };
+    });
+
     mup.registerFunction('getSlides', () => {
       if (slides.length === 0) return { content: [{ type: 'text', text: 'No slides.' }], isError: false };
       const lines = slides.map((s, i) => `[${i}] ${s.layout}: ${s.content?.title || s.content?.body?.slice(0,50) || '(empty)'}`);
@@ -595,6 +833,7 @@
 
     mup.registerFunction('setTheme', ({ theme: t }) => {
       theme = t;
+      rerenderCharts();
       render(); save();
       return { content: [{ type: 'text', text: `Theme set to "${t}".` }], isError: false };
     });
@@ -611,6 +850,35 @@
       currentIndex = slides.length - 1;
       render(); save();
       return { content: [{ type: 'text', text: `Added embed slide (index ${currentIndex}). Total: ${slides.length}.` }], isError: false };
+    });
+
+    mup.registerFunction('addChart', ({ type, title, caption, data, options }) => {
+      if (!data || !data.labels || !data.datasets) return { content: [{ type: 'text', text: 'Missing data.labels or data.datasets.' }], isError: true };
+      const th = themes[theme] || themes.light;
+      const chartData = { type, data, options: options || {} };
+      const html = generateChart(type, data, options, th);
+      slides.push({ layout: 'embed', content: { title: title || '', html, caption: caption || '' }, _chart: chartData });
+      currentIndex = slides.length - 1;
+      render(); save();
+      return { content: [{ type: 'text', text: `Added ${type} chart (index ${currentIndex}). Total: ${slides.length}.` }], isError: false };
+    });
+
+    mup.registerFunction('updateChart', ({ index, data, options, title, caption }) => {
+      if (index < 0 || index >= slides.length) return { content: [{ type: 'text', text: `Index ${index} out of range.` }], isError: true };
+      const slide = slides[index];
+      if (!slide._chart) return { content: [{ type: 'text', text: `Slide ${index} is not a chart. Use updateSlide() instead.` }], isError: true };
+      if (data) {
+        if (data.labels) slide._chart.data.labels = data.labels;
+        if (data.datasets) slide._chart.data.datasets = data.datasets;
+      }
+      if (options) Object.assign(slide._chart.options, options);
+      if (title !== undefined) slide.content.title = title;
+      if (caption !== undefined) slide.content.caption = caption;
+      const th = themes[theme] || themes.light;
+      slide.content.html = generateChart(slide._chart.type, slide._chart.data, slide._chart.options, th);
+      currentIndex = index;
+      render(); save();
+      return { content: [{ type: 'text', text: `Updated ${slide._chart.type} chart at index ${index}.` }], isError: false };
     });
 
     mup.registerFunction('exportHTML', () => {
