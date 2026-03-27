@@ -226,6 +226,46 @@
       bind('editHtml', 'html');
     }
 
+    // ---- Confirm dialog ----
+    let confirmCallback = null;
+    function showConfirm(title, msg, onOk) {
+      document.getElementById('confirmTitle').textContent = title;
+      document.getElementById('confirmMsg').textContent = msg;
+      confirmCallback = onOk;
+      document.getElementById('confirmOverlay').classList.add('open');
+    }
+    function hideConfirm() {
+      document.getElementById('confirmOverlay').classList.remove('open');
+      confirmCallback = null;
+    }
+    document.getElementById('confirmOk').addEventListener('click', () => {
+      const cb = confirmCallback;
+      hideConfirm();
+      if (cb) cb();
+    });
+    document.getElementById('confirmCancel').addEventListener('click', hideConfirm);
+    document.getElementById('confirmOverlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) hideConfirm();
+    });
+
+    // ---- New presentation ----
+    function newPresentation() {
+      slides = [];
+      currentIndex = 0;
+      presentationTitle = '';
+      theme = 'light';
+      aspectRatio = '16:9';
+      render(); save();
+    }
+    document.getElementById('newBtn').addEventListener('click', () => {
+      if (slides.length === 0) return;
+      showConfirm(
+        'New Presentation',
+        'Current slides will be discarded. Make sure to save first if needed.',
+        newPresentation
+      );
+    });
+
     // ---- Toolbar events ----
     document.getElementById('addSlideBtn').addEventListener('click', () => {
       const layout = document.getElementById('layoutSelect').value;
