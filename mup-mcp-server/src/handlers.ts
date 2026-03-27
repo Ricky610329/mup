@@ -210,8 +210,9 @@ export async function handleToolCall(
     return { content: [text(`Notification level for "${mup?.manifest.name}" set to "${level}".`)] };
   }
   if (args.action === "setLayout") {
-    const layout = args.layout as GridLayoutItem[] | undefined;
-    if (!layout || !Array.isArray(layout)) return { content: [text('Provide "layout": array of { id, x, y, w, h }.')], isError: true };
+    const raw = args.layout ?? (args.functionArgs as Record<string, unknown>)?.layout ?? args.functionArgs;
+    const layout = (Array.isArray(raw) ? raw : undefined) as GridLayoutItem[] | undefined;
+    if (!layout) return { content: [text('Provide "layout": array of { id, x, y, w, h }. Pass via functionArgs.')], isError: true };
     for (const item of layout) {
       if (!item.id || item.x === undefined || item.y === undefined || item.w === undefined || item.h === undefined) {
         return { content: [text(`Each layout item needs: id, x, y, w, h. Invalid: ${JSON.stringify(item)}`)], isError: true };

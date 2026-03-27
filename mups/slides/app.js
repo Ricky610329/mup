@@ -66,8 +66,28 @@
     }
 
     // ---- Chart Engine ----
+    function niceNum(value, round) {
+      const exp = Math.floor(Math.log10(Math.abs(value) || 1));
+      const frac = value / Math.pow(10, exp);
+      let nice;
+      if (round) {
+        nice = frac < 1.5 ? 1 : frac < 3 ? 2 : frac < 7 ? 5 : 10;
+      } else {
+        nice = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10;
+      }
+      return nice * Math.pow(10, exp);
+    }
+
+    function niceScale(dMin, dMax, ticks) {
+      const range = niceNum(dMax - dMin || 1, false);
+      const step = niceNum(range / (ticks - 1), true);
+      const nMin = Math.floor(dMin / step) * step;
+      const nMax = Math.ceil(dMax / step) * step;
+      return { min: nMin, max: nMax, step };
+    }
+
     function chartPalette(th) {
-      return [th.accent, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+      return [th.accent, '#10b981', '#ec4899', '#f59e0b', '#8b5cf6', '#06b6d4', '#ef4444', '#14b8a6'];
     }
 
     function generateChart(type, data, options, th) {
@@ -79,6 +99,69 @@
       return `<svg viewBox="0 0 800 400"><text x="400" y="200" text-anchor="middle" fill="${th.muted}">Unknown chart type: ${type}</text></svg>`;
     }
 
+    function renderLegend(datasets, palette, opts, th, W, padL, padR, padT, padB, H, isLine) {
+      if (opts.showLegend === false || datasets.length <= 1) return '';
+      let svg = '';
+      const pos = opts.legendPosition || 'top';
+      if (pos === 'bottom') {
+        const totalW = datasets.reduce((s, ds) => s + ds.label.length * 7 + 30, 0);
+        let lx = (W - totalW) / 2;
+        datasets.forEach((ds, di) => {
+          const color = palette[di % palette.length];
+          const y = H - 12;
+          if (isLine) {
+            const dashed = ds.style === 'dashed';
+            svg += `<line x1="${lx}" y1="${y}" x2="${lx + 20}" y2="${y}" stroke="${color}" stroke-width="2.5"${dashed ? ' stroke-dasharray="6,3"' : ''}/>`;
+          } else {
+            svg += `<rect x="${lx}" y="${y - 6}" width="12" height="12" rx="2" fill="${color}" opacity="0.85"/>`;
+          }
+          svg += `<text x="${lx + (isLine ? 26 : 18)}" y="${y + 4}" fill="${th.text}" font-size="11">${ds.label}</text>`;
+          lx += ds.label.length * 7 + 36;
+        });
+      } else if (pos === 'right') {
+        const lx = W - padR - 100;
+        datasets.forEach((ds, di) => {
+          const y = padT + 10 + di * 20;
+          const color = palette[di % palette.length];
+          if (isLine) {
+            const dashed = ds.style === 'dashed';
+            svg += `<line x1="${lx}" y1="${y}" x2="${lx + 16}" y2="${y}" stroke="${color}" stroke-width="2.5"${dashed ? ' stroke-dasharray="6,3"' : ''}/>`;
+          } else {
+            svg += `<rect x="${lx}" y="${y - 6}" width="12" height="12" rx="2" fill="${color}" opacity="0.85"/>`;
+          }
+          svg += `<text x="${lx + (isLine ? 22 : 18)}" y="${y + 4}" fill="${th.text}" font-size="10">${ds.label}</text>`;
+        });
+      } else { // top (default)
+        let lx = padL + 10;
+        datasets.forEach((ds, di) => {
+          const y = padT - 10;
+          const color = palette[di % palette.length];
+          if (isLine) {
+            const dashed = ds.style === 'dashed';
+            svg += `<line x1="${lx}" y1="${y}" x2="${lx + 20}" y2="${y}" stroke="${color}" stroke-width="2.5"${dashed ? ' stroke-dasharray="6,3"' : ''}/>`;
+          } else {
+            svg += `<rect x="${lx}" y="${y - 6}" width="12" height="12" rx="2" fill="${color}" opacity="0.85"/>`;
+          }
+          svg += `<text x="${lx + (isLine ? 26 : 18)}" y="${y + 4}" fill="${th.text}" font-size="11">${ds.label}</text>`;
+          lx += ds.label.length * 7 + 36;
+        });
+      }
+      return svg;
+    }
+
+    function renderAnnotations(annotations, th) {
+      if (!annotations || !annotations.length) return '';
+      let svg = '';
+      annotations.forEach(a => {
+        const color = a.color || th.accent;
+        svg += `<text x="${a.x}" y="${a.y}" text-anchor="${a.anchor || 'start'}" fill="${color}" font-size="${a.fontSize || 11}" font-weight="${a.bold ? '600' : '400'}">${a.text}</text>`;
+        if (a.lineToX !== undefined && a.lineToY !== undefined) {
+          svg += `<line x1="${a.x}" y1="${a.y + 2}" x2="${a.lineToX}" y2="${a.lineToY}" stroke="${color}" stroke-width="1" opacity="0.6"/>`;
+        }
+      });
+      return svg;
+    }
+
     function generateLineChart(data, opts, th, palette) {
       const W = 800, H = 400, padL = 70, padR = 30, padT = 40, padB = 60;
       const labels = data.labels || [];
@@ -86,9 +169,14 @@
       const allVals = datasets.flatMap(d => d.values);
       const dataMin = Math.min(...allVals);
       const dataMax = Math.max(...allVals);
-      const range = dataMax - dataMin || 1;
-      const yMin = opts.yMin ?? Math.floor(dataMin - range * 0.1);
-      const yMax = opts.yMax ?? Math.ceil(dataMax + range * 0.1);
+      const nice = niceScale(
+        opts.yMin ?? dataMin,
+        opts.yMax ?? dataMax,
+        6
+      );
+      const yMin = opts.yMin ?? nice.min;
+      const yMax = opts.yMax ?? nice.max;
+      const yStep = nice.step;
       const yRange = yMax - yMin || 1;
       const chartW = W - padL - padR;
       const chartH = H - padT - padB;
@@ -97,13 +185,11 @@
       const toY = (v) => padT + chartH - ((v - yMin) / yRange) * chartH;
 
       let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;font-family:system-ui,sans-serif">`;
-      // Grid lines
-      const gridSteps = 5;
-      for (let i = 0; i <= gridSteps; i++) {
-        const v = yMin + (yRange / gridSteps) * i;
+      // Grid lines with nice ticks
+      for (let v = yMin; v <= yMax + yStep * 0.01; v += yStep) {
         const y = toY(v);
         svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${th.muted}" stroke-width="0.5" opacity="0.3"/>`;
-        svg += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="${th.muted}" font-size="11">${Math.round(v * 10) / 10}${suffix}</text>`;
+        svg += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="${th.muted}" font-size="11">${Math.round(v)}${suffix}</text>`;
       }
       // X axis labels
       labels.forEach((label, i) => {
@@ -122,17 +208,8 @@
           }
         });
       });
-      // Legend
-      if (opts.showLegend !== false && datasets.length > 1) {
-        const legendX = padL + 10;
-        datasets.forEach((ds, di) => {
-          const y = padT + 5 + di * 18;
-          const color = palette[di % palette.length];
-          const dashed = ds.style === 'dashed';
-          svg += `<line x1="${legendX}" y1="${y}" x2="${legendX + 20}" y2="${y}" stroke="${color}" stroke-width="2.5"${dashed ? ' stroke-dasharray="6,3"' : ''}/>`;
-          svg += `<text x="${legendX + 26}" y="${y + 4}" fill="${th.text}" font-size="11">${ds.label}</text>`;
-        });
-      }
+      svg += renderLegend(datasets, palette, opts, th, W, padL, padR, padT, padB, H, true);
+      svg += renderAnnotations(opts.annotations, th);
       svg += '</svg>';
       return svg;
     }
@@ -146,8 +223,10 @@
         ? labels.map((_, i) => datasets.reduce((sum, ds) => sum + (ds.values[i] || 0), 0))
         : datasets.flatMap(d => d.values);
       const dataMax = Math.max(...allVals, 0);
-      const yMin = opts.yMin ?? 0;
-      const yMax = opts.yMax ?? Math.ceil(dataMax * 1.15);
+      const nice = niceScale(opts.yMin ?? 0, opts.yMax ?? dataMax, 6);
+      const yMin = opts.yMin ?? nice.min;
+      const yMax = opts.yMax ?? nice.max;
+      const yStep = nice.step;
       const yRange = yMax - yMin || 1;
       const chartW = W - padL - padR;
       const chartH = H - padT - padB;
@@ -158,10 +237,8 @@
       const barGroupW = groupW - gap;
 
       let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;font-family:system-ui,sans-serif">`;
-      // Grid
-      const gridSteps = 5;
-      for (let i = 0; i <= gridSteps; i++) {
-        const v = yMin + (yRange / gridSteps) * i;
+      // Grid with nice ticks
+      for (let v = yMin; v <= yMax + yStep * 0.01; v += yStep) {
         const y = toY(v);
         svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${th.muted}" stroke-width="0.5" opacity="0.3"/>`;
         svg += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="${th.muted}" font-size="11">${Math.round(v)}${suffix}</text>`;
@@ -195,15 +272,8 @@
         }
         svg += `<text x="${groupX + barGroupW / 2}" y="${H - padB + 20}" text-anchor="middle" fill="${th.muted}" font-size="11">${label}</text>`;
       });
-      // Legend
-      if (opts.showLegend !== false && datasets.length > 1) {
-        datasets.forEach((ds, di) => {
-          const lx = padL + 10 + di * 120;
-          const color = palette[di % palette.length];
-          svg += `<rect x="${lx}" y="${padT}" width="12" height="12" rx="2" fill="${color}" opacity="0.85"/>`;
-          svg += `<text x="${lx + 18}" y="${padT + 10}" fill="${th.text}" font-size="11">${ds.label}</text>`;
-        });
-      }
+      svg += renderLegend(datasets, palette, opts, th, W, padL, padR, padT, padB, H, false);
+      svg += renderAnnotations(opts.annotations, th);
       svg += '</svg>';
       return svg;
     }
@@ -256,11 +326,55 @@
       return svg;
     }
 
+    function generateTable(headers, rows, th) {
+      const borderColor = th.codeBg;
+      const accentColor = th.accent;
+      let html = `<div style="font-family:system-ui,sans-serif;padding:4px 20px"><table style="width:100%;border-collapse:separate;border-spacing:0;font-size:14px">`;
+      // Header
+      html += '<thead><tr>';
+      headers.forEach((h, i) => {
+        const isFirst = i === 0;
+        const border = i === 1 ? `border-bottom:2px solid ${accentColor}` : `border-bottom:2px solid ${th.muted}`;
+        const color = i === 1 ? accentColor : th.muted;
+        const weight = i === 1 ? '700' : '600';
+        const align = isFirst ? 'text-align:left' : 'text-align:center';
+        html += `<th style="${align};padding:10px 14px;${border};color:${color};font-weight:${weight};font-size:${i === 1 ? '15px' : '13px'}">${h}</th>`;
+      });
+      html += '</tr></thead><tbody>';
+      // Rows
+      rows.forEach((row, ri) => {
+        html += '<tr>';
+        row.forEach((cell, ci) => {
+          const isLast = ri === rows.length - 1;
+          const border = isLast ? '' : `border-bottom:1px solid ${borderColor}`;
+          const isFirst = ci === 0;
+          let cellStyle = `padding:9px 14px;${border};`;
+          if (isFirst) {
+            cellStyle += `font-weight:600;color:${th.text};text-align:left;`;
+          } else {
+            cellStyle += 'text-align:center;font-size:17px;';
+          }
+          // Auto-color ✔/✘
+          let content = cell;
+          if (cell === '✔' || cell === '✓') content = `<span style="color:#16a34a">${cell}</span>`;
+          else if (cell === '✘' || cell === '✗' || cell === '×') content = `<span style="color:#dc2626">${cell}</span>`;
+          else if (!isFirst) cellStyle += `color:${th.text};font-size:14px;`;
+          html += `<td style="${cellStyle}">${content}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      return html;
+    }
+
     function rerenderCharts() {
       const th = themes[theme] || themes.light;
       slides.forEach(s => {
         if (s._chart) {
           s.content.html = generateChart(s._chart.type, s._chart.data, s._chart.options, th);
+        }
+        if (s._table) {
+          s.content.html = generateTable(s._table.headers, s._table.rows, th);
         }
       });
     }
@@ -850,6 +964,16 @@
       currentIndex = slides.length - 1;
       render(); save();
       return { content: [{ type: 'text', text: `Added embed slide (index ${currentIndex}). Total: ${slides.length}.` }], isError: false };
+    });
+
+    mup.registerFunction('addTable', ({ title, caption, headers, rows }) => {
+      if (!headers || !rows) return { content: [{ type: 'text', text: 'Missing headers or rows.' }], isError: true };
+      const th = themes[theme] || themes.light;
+      const html = generateTable(headers, rows, th);
+      slides.push({ layout: 'embed', content: { title: title || '', html, caption: caption || '' }, _table: { headers, rows } });
+      currentIndex = slides.length - 1;
+      render(); save();
+      return { content: [{ type: 'text', text: `Added table slide (index ${currentIndex}). Total: ${slides.length}.` }], isError: false };
     });
 
     mup.registerFunction('addChart', ({ type, title, caption, data, options }) => {

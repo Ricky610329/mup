@@ -6,7 +6,7 @@
   <script type="application/mup-manifest">
   {
     "name": "Slides",
-    "description": "Professional presentation editor. BEST PRACTICES: (1) Prefer 'content' and 'two-column' layouts for text. Use addChart() for data charts (line/bar/pie) — it auto-handles theme colors and supports updateChart(). Only use 'embed' for custom diagrams/SVGs. (2) Use setTheme() to change themes — charts auto-update colors. (3) Use saveToLibrary() to save, exportHTML() to export. (4) After adding/updating a slide, call getSlidePreview() to verify. (5) For custom SVG embeds: use viewBox='0 0 800 400', use var(--slide-accent) etc. via style attribute (not presentation attributes), keep text 11-14px. Layouts: title, content, two-column, image, embed, blank. Aspect ratios: 16:9, 4:3, 1:1, 9:16. Themes: light, dark, blue, green, midnight, warm.",
+    "description": "Professional presentation editor. BEST PRACTICES: (1) Prefer 'content' and 'two-column' layouts for text. Use addChart() for data charts (line/bar/pie) — NOT for yes/no comparisons. Use addTable() for comparison matrices with checkmarks. Only use 'embed' for custom diagrams/SVGs. (2) Use setTheme() to change themes — charts and tables auto-update colors. (3) addChart options: legendPosition ('top'|'bottom'|'right'), annotations ([{x,y,text,color?,anchor?,bold?}]). (4) After adding/updating a slide, call getSlidePreview() to verify. (5) For custom SVG embeds: use viewBox='0 0 800 400', use var(--slide-accent) etc. via style attribute (not presentation attributes), keep text 11-14px. Layouts: title, content, two-column, image, embed, blank. Themes: light, dark, blue, green, midnight, warm.",
     "grid": { "minWidth": 2, "minHeight": 2 },
     "darkMode": true,
     "functions": [
@@ -123,6 +123,20 @@
             "caption": { "type": "string", "description": "Optional caption below the content" }
           },
           "required": ["html"]
+        }
+      },
+      {
+        "name": "addTable",
+        "description": "Add a styled table slide. Auto-colors ✔/✘ cells. Use for feature comparisons, matrices, specs. Theme-aware.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string", "description": "Slide title" },
+            "caption": { "type": "string", "description": "Caption below table" },
+            "headers": { "type": "array", "items": { "type": "string" }, "description": "Column headers. First column is row labels." },
+            "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } }, "description": "Row data. Use ✔/✘ for yes/no comparisons." }
+          },
+          "required": ["headers", "rows"]
         }
       },
       {
