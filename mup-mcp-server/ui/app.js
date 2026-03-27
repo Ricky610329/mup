@@ -253,6 +253,31 @@ function handleServerMessage(msg) {
         window._pendingGridLayout = msg.layout;
       }
       break;
+    case "get-layout":
+      if (grid) {
+        const layoutItems = [];
+        for (const item of grid.getGridItems()) {
+          const id = item.getAttribute('gs-id');
+          if (id) {
+            layoutItems.push({
+              id,
+              x: parseInt(item.getAttribute('gs-x') || '0'),
+              y: parseInt(item.getAttribute('gs-y') || '0'),
+              w: parseInt(item.getAttribute('gs-w') || '1'),
+              h: parseInt(item.getAttribute('gs-h') || '1'),
+            });
+          }
+        }
+        ws.send(JSON.stringify({
+          type: "grid-layout-info",
+          cols: currentCols,
+          cellSize: CELL_SIZE,
+          cellGap: CELL_GAP,
+          viewportWidth: window.innerWidth,
+          layout: layoutItems,
+        }));
+      }
+      break;
     case "mup-deactivated":
       removeMup(msg.mupId);
       break;

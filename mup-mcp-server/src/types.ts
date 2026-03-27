@@ -133,6 +133,7 @@ export type BrowserMessage =
   | { type: "load-folder"; mups: Array<{ mupId: string; html: string; fileName: string }> }
   | { type: "new-instance"; mupId: string; customName?: string }
   | { type: "save-grid-layout"; layout: GridLayoutItem[] }
+  | { type: "grid-layout-info"; cols: number; cellSize: number; cellGap: number; viewportWidth: number; layout: GridLayoutItem[] }
   | { type: "rename-mup"; mupId: string; customName: string }
   | { type: "flush-save" }
   | { type: "rename-workspace"; name: string }
@@ -155,7 +156,8 @@ export type ServerMessage =
   | { type: "mups-path-warnings"; warnings: string[] }
   | { type: "permission-request"; requestId: string; toolName: string; description: string; inputPreview: string }
   | { type: "thinking"; active: boolean }
-  | { type: "set-layout"; layout: GridLayoutItem[] };
+  | { type: "set-layout"; layout: GridLayoutItem[] }
+  | { type: "get-layout" };
 
 // ---- Typed Event Emitter for UiBridge ----
 
@@ -172,6 +174,7 @@ export interface BridgeEvents {
   "state-update": (mupId: string, summary: string, data?: unknown) => void;
   "interaction": (mupId: string, action: string, summary: string, data?: unknown) => void;
   "save-grid-layout": (layout: GridLayoutItem[]) => void;
+  "grid-layout-info": (info: { cols: number; cellSize: number; cellGap: number; viewportWidth: number; layout: GridLayoutItem[] }) => void;
   "rename-mup": (mupId: string, newName: string) => void;
   "flush-save": () => void;
   "rename-workspace": (name: string) => void;

@@ -283,6 +283,7 @@ export class UiBridge extends EventEmitter {
       case "load-folder":          this.typedEmit("load-folder", msg.mups); break;
       case "new-instance":         this.typedEmit("new-instance", msg.mupId, msg.customName); break;
       case "save-grid-layout":     this.typedEmit("save-grid-layout", msg.layout); break;
+      case "grid-layout-info":     this.typedEmit("grid-layout-info", { cols: msg.cols, cellSize: msg.cellSize, cellGap: msg.cellGap, viewportWidth: msg.viewportWidth, layout: msg.layout }); break;
       case "rename-mup":           this.typedEmit("rename-mup", msg.mupId, msg.customName); break;
       case "flush-save":           this.typedEmit("flush-save"); break;
       case "rename-workspace":     this.typedEmit("rename-workspace", msg.name); break;

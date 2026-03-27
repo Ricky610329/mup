@@ -45,7 +45,7 @@ export function buildToolDescription(manager: MupManager, port: number): string 
   const lines = [
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
-    `Actions: checkInteractions, list, history, pipe, setNotificationLevel, setLayout`,
+    `Actions: checkInteractions, list, history, pipe, setNotificationLevel, setLayout, getLayout`,
     `Multi-instance: use { "action": "new-instance", "mupId": "..." } to open another panel. Returns the new instance ID (_2, _3...).`,
   ];
   if (active.length > 0) {
@@ -209,6 +209,20 @@ export async function handleToolCall(
     const mup = manager.get(mupId);
     return { content: [text(`Notification level for "${mup?.manifest.name}" set to "${level}".`)] };
   }
+  if (args.action === "getLayout") {
+    // Ask browser for current live layout, wait for response
+    const info = await new Promise<{ cols: number; cellSize: number; cellGap: number; viewportWidth: number; layout: GridLayoutItem[] } | null>((resolve) => {
+      const timeout = setTimeout(() => resolve(null), 2000);
+      bridge.typedOnce("grid-layout-info", (data) => {
+        clearTimeout(timeout);
+        resolve(data);
+      });
+      bridge.sendRaw({ type: "get-layout" });
+    });
+    if (!info) return { content: [text("Browser not connected or did not respond.")], isError: true };
+    const lines = info.layout.map(l => `  ${l.id}: ${l.w}×${l.h} at (${l.x},${l.y})`);
+    return { content: [text(`Grid: ${info.cols} columns, viewport ${info.viewportWidth}px, cell ${info.cellSize}px + ${info.cellGap}px gap\n\nPanels:\n${lines.join("\n")}`)] };
+  }
   if (args.action === "setLayout") {
     const raw = args.layout ?? (args.functionArgs as Record<string, unknown>)?.layout ?? args.functionArgs;
     const layout = (Array.isArray(raw) ? raw : undefined) as GridLayoutItem[] | undefined;
@@ -217,6 +231,8 @@ export async function handleToolCall(
       if (!item.id || item.x === undefined || item.y === undefined || item.w === undefined || item.h === undefined) {
         return { content: [text(`Each layout item needs: id, x, y, w, h. Invalid: ${JSON.stringify(item)}`)], isError: true };
       }
+      // Auto-activate MUPs that aren't active yet
+      ensureActive(item.id);
     }
     bridge.sendRaw({ type: "set-layout", layout });
     ws.gridLayout = layout;
