@@ -462,6 +462,7 @@
         speaking = true;
         updateUI();
         syncState();
+        mup.emitEvent('speech-start', { text: text.slice(0, 80) });
 
         synth.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
@@ -487,6 +488,7 @@
           volumeFill.style.width = '0%';
           updateUI();
           syncState();
+          mup.emitEvent('speech-end', { text: text.slice(0, 80) });
           // Delay restart to avoid picking up TTS echo/tail
           if (wasListening) setTimeout(() => { if (active && !speaking) startRecognition(); }, 800);
           resolve();

@@ -1,0 +1,74 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #f5f5f5; --surface: #ffffff; --border: #e0e0e0;
+  --text: #333; --text2: #999; --accent: #0066cc;
+  --hit: rgba(0,102,204,0.12); --hit-border: #0066cc;
+  --step-bg: #e8e8e8; --step-active: #0066cc;
+}
+body.dark {
+  --bg: #1a1a1e; --surface: #26262b; --border: #3a3a40;
+  --text: #d8d8dc; --text2: #666; --accent: #60a5fa;
+  --hit: rgba(96,165,250,0.15); --hit-border: #60a5fa;
+  --step-bg: #2a2a30; --step-active: #60a5fa;
+}
+body {
+  height: 100vh; display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+}
+.top-bar {
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.bpm { font-size: 13px; font-weight: 600; color: var(--text); min-width: 65px; }
+.step-display { flex: 1; display: flex; gap: 2px; align-items: center; }
+.step-dot {
+  flex: 1; height: 5px; border-radius: 3px; background: var(--step-bg);
+  transition: background 0.06s;
+}
+.step-dot.active { background: var(--step-active); }
+.step-dot.beat { background: var(--border); }
+.status { font-size: 10px; color: var(--text2); }
+.pad-grid {
+  flex: 1; display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 4px; padding: 6px;
+  min-height: 0;
+}
+.pad {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; position: relative;
+  transition: all 0.08s; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 0; min-width: 0;
+}
+.pad:hover { border-color: var(--accent); }
+.pad:active, .pad.hit {
+  background: var(--hit); border-color: var(--hit-border);
+  transform: scale(0.96);
+}
+.pad .name {
+  position: absolute; bottom: 4px; left: 6px;
+  font-size: 9px; font-weight: 500; color: var(--text2);
+  letter-spacing: 0.5px;
+}
+.pad.hit .name { color: var(--accent); }
+
+/* Custom pad colors — uses color-mix so light/dark adapts automatically */
+.pad[data-color] {
+  border-color: color-mix(in srgb, var(--pad-color) 60%, var(--border));
+  background: color-mix(in srgb, var(--pad-color) 30%, var(--surface));
+}
+.pad[data-color]:hover {
+  border-color: var(--pad-color);
+  background: color-mix(in srgb, var(--pad-color) 40%, var(--surface));
+}
+.pad[data-color]:active, .pad[data-color].hit {
+  border-color: var(--pad-color);
+  background: color-mix(in srgb, var(--pad-color) 55%, var(--surface));
+  transform: scale(0.96);
+}
+.pad[data-color] .name { color: color-mix(in srgb, var(--pad-color) 85%, var(--text)); }
+.pad[data-color].hit .name { color: var(--pad-color); }

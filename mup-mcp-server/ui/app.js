@@ -437,6 +437,9 @@ function handleMupMessage(mupId, mupName, data) {
       addEventBadge(mupName, data.params?.summary || data.params?.action);
       if (ws && ws.readyState === WebSocket.OPEN)
         ws.send(JSON.stringify({ type: "interaction", mupId, action: data.params?.action || "", summary: data.params?.summary || "", data: data.params?.data }));
+    } else if (data.method === "notifications/event") {
+      if (ws && ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: "mup-event", mupId, event: data.params?.event || "", data: data.params?.data }));
     }
   }
 }

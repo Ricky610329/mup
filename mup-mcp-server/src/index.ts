@@ -11,6 +11,7 @@ import { MupManager } from "./manager.js";
 import { UiBridge } from "./bridge.js";
 import { WorkspaceManager } from "./workspace.js";
 import { PipelineManager } from "./pipeline.js";
+import { Scheduler } from "./scheduler.js";
 import { CONFIG } from "./config.js";
 import { scanHtmlFiles, buildFolderTree } from "./scanner.js";
 import { buildToolDescription, buildMupDetail, handleToolCall } from "./handlers.js";
@@ -287,7 +288,8 @@ function setupMcpServer(
   manager: MupManager, bridge: UiBridge, ws: WorkspaceManager,
   port: number, sendLoadMup: SendLoadMupFn,
   ensureActive: (mupId: string) => { error?: string; activated?: string },
-  pipeline: PipelineManager
+  pipeline: PipelineManager,
+  scheduler: Scheduler,
 ): Server {
   const server = new Server(
     { name: "mup", version: "0.2.0" },
@@ -328,7 +330,7 @@ function setupMcpServer(
       inputSchema: {
         type: "object" as const,
         properties: {
-          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "new-instance" to open another instance of a [multi] MUP, "pipe" to manage data pipes, "setNotificationLevel" to change a MUP\'s notification level. Omit when calling a function.' },
+          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "new-instance" to open another instance of a [multi] MUP, "pipe" to manage data pipes, "setNotificationLevel" to change a MUP\'s notification level, "delayCall" to schedule a delayed function call, "cancelDelay" to cancel a pending delay, "onEvent" to register an event listener, "removeEvent" to remove a listener. Omit when calling a function.' },
           level: { type: "string", description: 'For setNotificationLevel: "immediate" (channel push), "notify" (queued for checkInteractions), or "silent" (no events).' },
           mupId: { type: "string", description: "MUP ID (e.g. mup-chess, mup-chart). Auto-activated on first use." },
           functionName: { type: "string", description: "Function to call (e.g. makeMove, renderChart, setPixels)" },
@@ -342,6 +344,13 @@ function setupMcpServer(
           targetFunction: { type: "string", description: "Function to call on target MUP." },
           transform: { type: "object", description: 'Key mapping: { targetArgName: "source.path" }. Use "." for entire data, "\'literal\'" for strings.' },
           debounceMs: { type: "number", description: "Debounce interval in ms (default 500)." },
+          delayMs: { type: "number", description: "For delayCall: delay in milliseconds (max 300000)." },
+          scheduleId: { type: "string", description: "For cancelDelay: the scheduleId returned by delayCall." },
+          event: { type: "string", description: 'For onEvent: event name to listen for (e.g. "playback-end").' },
+          calls: { type: "array", description: "For onEvent/delayCall: array of {mupId, functionName, functionArgs, delayMs?} to execute. delayMs on each call = delay relative to trigger time." },
+          once: { type: "boolean", description: "For onEvent: if true (default), listener fires once then auto-removes." },
+          filter: { type: "object", description: 'For onEvent: match event data fields (e.g. {"index": 2}). Only fires when all fields match.' },
+          listenerId: { type: "string", description: "For removeEvent: the listenerId returned by onEvent." },
         },
       },
     }],
@@ -353,7 +362,7 @@ function setupMcpServer(
     // Track which MUP is being called to suppress self-notifications
     activeCallMupId = mupId;
     try {
-      return await handleToolCall(request, { manager, bridge, ws, sendLoadMup, ensureActive, pipeline });
+      return await handleToolCall(request, { manager, bridge, ws, sendLoadMup, ensureActive, pipeline, scheduler });
     } finally {
       // Clear thinking indicator when Claude responds to chat
       if (mupId === "mup-chat") {
@@ -495,6 +504,13 @@ async function main() {
   bridge.typedOn("state-update", (mupId, _summary, data) => pipeline.onStateUpdate(mupId, data));
   bridge.typedOn("deactivate-mup", (mupId) => pipeline.onMupDeactivated(mupId));
 
+  // --- Scheduler ---
+  const scheduler = new Scheduler(
+    (mupId, fn, args) => bridge.callFunction(mupId, fn, args),
+  );
+  bridge.typedOn("mup-event", (mupId, event, data) => scheduler.onMupEvent(mupId, event, data));
+  bridge.typedOn("browser-disconnected", () => scheduler.clearAll());
+
   // --- Wire up events ---
   setupBrowserEvents(bridge, manager, ws, sendLoadMup);
   bridge.typedOn("set-mups-path", (newPath) => {
@@ -506,7 +522,7 @@ async function main() {
   setupLifecycle(ws);
 
   // --- MCP Server ---
-  const server = setupMcpServer(manager, bridge, ws, port, sendLoadMup, ensureActive, pipeline);
+  const server = setupMcpServer(manager, bridge, ws, port, sendLoadMup, ensureActive, pipeline, scheduler);
 
   // --- Log client capabilities on init ---
   server.oninitialized = () => {

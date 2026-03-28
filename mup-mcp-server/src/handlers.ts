@@ -2,6 +2,7 @@ import type { MupManager } from "./manager.js";
 import type { UiBridge } from "./bridge.js";
 import type { WorkspaceManager } from "./workspace.js";
 import type { PipelineManager } from "./pipeline.js";
+import type { Scheduler } from "./scheduler.js";
 import { CONFIG } from "./config.js";
 import type { CallHistoryEntry, FunctionResult, GridLayoutItem, SendLoadMupFn } from "./types.js";
 
@@ -14,6 +15,7 @@ export interface ToolCallContext {
   sendLoadMup: SendLoadMupFn;
   ensureActive: (mupId: string) => { error?: string; activated?: string };
   pipeline: PipelineManager;
+  scheduler: Scheduler;
 }
 
 // ---- Helpers ----
@@ -45,7 +47,7 @@ export function buildToolDescription(manager: MupManager, port: number): string 
   const lines = [
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
-    `Actions: checkInteractions, list, history, pipe, setNotificationLevel, setLayout, getLayout`,
+    `Actions: checkInteractions, list, history, pipe, setNotificationLevel, setLayout, getLayout, delayCall, cancelDelay, onEvent, removeEvent`,
     `Multi-instance: use { "action": "new-instance", "mupId": "..." } to open another panel. Returns the new instance ID (_2, _3...).`,
   ];
   if (active.length > 0) {
@@ -191,7 +193,7 @@ export async function handleToolCall(
   request: { params: { arguments?: Record<string, unknown> } },
   ctx: ToolCallContext
 ) {
-  const { manager, bridge, ws, sendLoadMup, ensureActive, pipeline } = ctx;
+  const { manager, bridge, ws, sendLoadMup, ensureActive, pipeline, scheduler } = ctx;
   const args = (request.params.arguments || {}) as Record<string, unknown>;
 
   // Dispatch by action
@@ -250,6 +252,60 @@ export async function handleToolCall(
     console.error(`[mup-mcp] New instance: ${mup.manifest.name} (${mup.manifest.id})`);
     return { content: [text(`Created ${mup.manifest.id}\n${buildMupDetail(mup.manifest)}`)] };
   }
+  // ---- Scheduler actions ----
+  if (args.action === "delayCall") {
+    const delayMs = args.delayMs as number;
+    if (!delayMs) return { content: [text('delayCall requires: delayMs.')], isError: true };
+
+    // Support both single call (mupId+functionName) and batch (calls array)
+    let calls: Array<{ mupId: string; functionName: string; functionArgs: Record<string, unknown>; delayMs?: number }>;
+    if (args.calls && Array.isArray(args.calls)) {
+      calls = (args.calls as any[]).map(c => ({ mupId: c.mupId, functionName: c.functionName, functionArgs: c.functionArgs || {}, delayMs: c.delayMs }));
+    } else {
+      const mId = args.mupId as string;
+      const fn2 = args.functionName as string;
+      if (!mId || !fn2) return { content: [text('delayCall requires: calls array, or mupId + functionName.')], isError: true };
+      calls = [{ mupId: mId, functionName: fn2, functionArgs: parseArgs(args.functionArgs) }];
+    }
+    for (const c of calls) ensureActive(c.mupId);
+    const result = scheduler.scheduleDelay(delayMs, calls);
+    if (typeof result === "object") return { content: [text(result.error)], isError: true };
+    return { content: [text(`Scheduled ${calls.length} call(s) in ${delayMs}ms. scheduleId: ${result}`)] };
+  }
+  if (args.action === "cancelDelay") {
+    const scheduleId = args.scheduleId as string;
+    if (!scheduleId) return { content: [text('Provide "scheduleId".')], isError: true };
+    const ok = scheduler.cancelDelay(scheduleId);
+    return { content: [text(ok ? `Cancelled ${scheduleId}.` : `Not found: ${scheduleId}.`)] };
+  }
+  if (args.action === "onEvent") {
+    const sourceMupId = (args.sourceMupId || args.mupId) as string;
+    const event = args.event as string;
+    const calls = args.calls as Array<{ mupId: string; functionName: string; functionArgs?: Record<string, unknown>; delayMs?: number }>;
+    const once = args.once !== false;
+    const filter = args.filter as Record<string, unknown> | undefined;
+    if (!sourceMupId || !event || !calls || !Array.isArray(calls) || calls.length === 0) {
+      return { content: [text('onEvent requires: sourceMupId (or mupId), event, calls (array of {mupId, functionName, functionArgs, delayMs?}).')], isError: true };
+    }
+    for (const c of calls) ensureActive(c.mupId);
+    const mapped = calls.map(c => ({ mupId: c.mupId, functionName: c.functionName, functionArgs: c.functionArgs || {}, delayMs: c.delayMs }));
+    const result = scheduler.registerEvent(sourceMupId, event, mapped, once, filter);
+    if (typeof result === "object") return { content: [text(result.error)], isError: true };
+    const filterStr = filter ? ` filter=${JSON.stringify(filter)}` : "";
+    return { content: [text(`Listener ${result}: on "${event}" from ${sourceMupId} → ${calls.length} call(s). once=${once}${filterStr}`)] };
+  }
+  if (args.action === "removeEvent") {
+    const listenerId = args.listenerId as string | undefined;
+    if (!listenerId) {
+      // No listenerId → clear all listeners + delays (clean slate)
+      const result = scheduler.removeEvent();
+      const count = typeof result === "object" ? result.removed : 0;
+      return { content: [text(`Cleared all: ${count} listener(s) and delay(s) removed.`)] };
+    }
+    const ok = scheduler.removeEvent(listenerId);
+    return { content: [text(ok ? `Removed ${listenerId}.` : `Not found: ${listenerId}.`)] };
+  }
+
   // --- Call MUP function ---
   const mupId = args.mupId as string;
   const fn = args.functionName as string;

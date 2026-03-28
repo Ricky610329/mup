@@ -17,6 +17,7 @@ class MupSDK {
   onThemeChange(callback) { this._themeCallback = callback; if (this.theme) callback(this.theme); }
   updateState(summary, data) { this._notify("notifications/state/update", { summary, data }); }
   notifyInteraction(action, summary, data) { this._notify("notifications/interaction", { action, summary, data }); }
+  emitEvent(event, data) { this._notify("notifications/event", { event, data }); }
   system(action, params) { return this._request("system/request", { action, params }); }
   _handleMessage(data) {
     if (!data || data.jsonrpc !== "2.0") return;

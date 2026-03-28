@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script type="application/mup-manifest">
+  {
+    "name": "Sound Pad",
+    "description": "16-pad synthesizer with Web Audio. 4 rows: drums (kick/snare/clap/rim), cymbals (hihat/openhat/ride/crash), bass (bass/bass2/sub/pluck), melodic (brass/synth/stab/perc). Patterns use 8th-note grid: 'x'=hit, '.'=rest. Write 1 bar (8 chars), it auto-repeats. Per-track volume via {pattern, volume}. Emits 'pattern-start' and 'playback-end' events for scheduling. Use setBPM first, then playBars to sequence.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "setBPM",
+        "description": "Set tempo and swing. Call before playBars.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "bpm": { "type": "number", "description": "Beats per minute (default: 126)" },
+            "swing": { "type": "number", "description": "Swing ratio 0-1. 0=straight, 0.5-0.6=electro swing feel (default: 0.6)" }
+          }
+        }
+      },
+      {
+        "name": "playBars",
+        "description": "Queue a pattern (non-blocking, returns immediately with durationMs). Each track value is a pattern string OR {pattern, volume} for per-track volume. Pattern = 8 chars per bar (8th notes): 'x'=hit, '.'=rest. Auto-repeats: write 1 bar 'x...x...' and it loops to fill all bars. Multiple playBars calls queue seamlessly. Emits 'pattern-start' at start and 'playback-end' when all queued patterns finish.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "tracks": {
+              "type": "object",
+              "description": "Map of pad name → pattern string OR {pattern: string, volume: number}. Examples: {\"kick\": \"x...x...\", \"hihat\": {\"pattern\": \"x.x.x.x.\", \"volume\": 0.3}}"
+            },
+            "bars": { "type": "integer", "description": "Number of bars to play (default: 4)" },
+            "volume": { "type": "number", "description": "Master volume 0-1, used when track has no per-track volume (default: 0.7)" }
+          },
+          "required": ["tracks"]
+        }
+      },
+      {
+        "name": "play",
+        "description": "Trigger a single pad sound immediately.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "pad": { "type": "string", "description": "Pad name: kick, snare, clap, rim, hihat, openhat, ride, crash, bass, bass2, sub, pluck, brass, synth, stab, perc" },
+            "volume": { "type": "number", "description": "Volume 0-1 (default: 0.8)" }
+          },
+          "required": ["pad"]
+        }
+      },
+      {
+        "name": "stop",
+        "description": "Stop all playback and clear the queue.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setPadColors",
+        "description": "Set custom colors for pads. Pads get a tinted background and border in the given color, adapting to light/dark theme. Pass null to reset a pad to default.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "colors": { "type": "object", "description": "Map of pad name → hex color string or null. Example: {\"kick\": \"#e53e3e\", \"hihat\": \"#ca8a04\", \"bass\": null}" }
+          },
+          "required": ["colors"]
+        }
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="top-bar">
+    <div class="bpm" id="bpmDisplay">126 BPM</div>
+    <div class="step-display" id="stepDisplay"></div>
+    <div class="status" id="status">Ready</div>
+  </div>
+  <div class="pad-grid" id="padGrid"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

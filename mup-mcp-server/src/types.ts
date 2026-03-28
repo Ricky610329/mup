@@ -138,7 +138,8 @@ export type BrowserMessage =
   | { type: "flush-save" }
   | { type: "rename-workspace"; name: string }
   | { type: "set-mups-path"; path: string }
-  | { type: "permission-verdict"; requestId: string; behavior: "allow" | "deny" };
+  | { type: "permission-verdict"; requestId: string; behavior: "allow" | "deny" }
+  | { type: "mup-event"; mupId: string; event: string; data?: unknown };
 
 // ---- Server → Browser Messages ----
 
@@ -180,6 +181,7 @@ export interface BridgeEvents {
   "rename-workspace": (name: string) => void;
   "set-mups-path": (path: string) => void;
   "permission-verdict": (requestId: string, behavior: "allow" | "deny") => void;
+  "mup-event": (mupId: string, event: string, data?: unknown) => void;
 }
 
 // ---- Call History (session-only, not persisted) ----

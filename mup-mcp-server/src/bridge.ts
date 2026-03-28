@@ -276,6 +276,10 @@ export class UiBridge extends EventEmitter {
         this.typedEmit("interaction", msg.mupId, msg.action, msg.summary, msg.data);
         break;
 
+      case "mup-event":
+        this.typedEmit("mup-event", msg.mupId, msg.event, msg.data);
+        break;
+
       // ---- Pure event forwarding ----
       case "activate-mup":         this.typedEmit("activate-mup", msg.mupId); break;
       case "deactivate-mup":       this.typedEmit("deactivate-mup", msg.mupId); break;
