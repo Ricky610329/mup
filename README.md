@@ -7,11 +7,21 @@
 
 > Bring interactive UI into LLM chat — so anyone can experience agentic AI, not just developers.
 
-Current version: 0.2.5 | Protocol: `mup/2026-03-17`
+Current version: 0.2.7 | Protocol: `mup/2026-03-17`
 
-## Demo
+## Demos
 
-Coming soon — new demo video for v0.2.5.
+### Slides — AI builds a presentation live
+
+[![Slides Demo](https://img.youtube.com/vi/GKeDc1DMLH0/maxresdefault.jpg)](https://youtu.be/GKeDc1DMLH0)
+
+Claude creates a full slide deck with charts, tables, and themes — all through function calls.
+
+### Sound Pad — AI composes a track from scratch
+
+[![Sound Pad Demo](https://img.youtube.com/vi/e5JqRT9t5vU/maxresdefault.jpg)](https://youtu.be/e5JqRT9t5vU)
+
+16 browser-synthesized instruments, zero samples. Claude composes an electro swing track layer by layer, with event-driven narration synced to each section transition.
 
 ---
 
@@ -44,10 +54,11 @@ MUP changes this. It puts clickable, visual UI right inside the chat — so anyo
 ## Available MUPs
 
 - **Chat** — Built-in, always available
-- **Slides** — Presentation slides (`mups/slides.html`)
-- **Voice** — Speech synthesis (`mups/voice.html`)
-- **Progress** — Task progress tracking (`mups/progress.html`)
-- More examples in [`archive/examples/`](archive/examples/) (music, pixel art, games, productivity, etc.)
+- **Slides** — Presentation editor with charts, tables, themes, and export ([demo](https://youtu.be/GKeDc1DMLH0))
+- **Sound Pad** — 16-pad synthesizer with sequencer, per-track volume, and event system ([demo](https://youtu.be/e5JqRT9t5vU))
+- **Voice** — Speech synthesis and recognition (Jarvis mode)
+- **Progress** — Task progress tracking
+- More examples in [`archive/examples/`](archive/examples/) (pixel art, games, productivity, etc.)
 
 ## Docs
 

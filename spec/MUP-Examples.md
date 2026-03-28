@@ -1,6 +1,6 @@
 # MUP Examples
 
-> **Note:** The original example MUPs have been moved to `archive/examples/`. The active MUPs are now in `mups/` — **slides.html** (presentation), **voice.html** (voice assistant), and **progress.html** (progress indicator). See the [main README](../README.md) for details.
+> **Note:** The original example MUPs have been moved to `archive/examples/`. The active MUPs are now in `mups/` — **slides/** (presentation), **sound-pad/** (synthesizer), **voice.html** (voice assistant), and **progress.html** (progress indicator). See the [main README](../README.md) for details.
 
 This document describes the archived example MUPs. Each demonstrates a different protocol capability.
 
