@@ -49,19 +49,19 @@ body {
   width: 220px; flex-shrink: 0; background: var(--bg-card);
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
-  transition: width 0.2s ease;
-  overflow: hidden;
+  overflow: hidden; min-width: 0;
 }
-#sidebar.collapsed { width: 0; border-right: none; }
+#sidebar.collapsed { width: 0 !important; border-right: none; }
+#sidebar.collapsed + #sidebarResizer { display: none; }
 
-.sidebar-header {
-  padding: 6px 8px; display: flex; align-items: center; gap: 6px;
-  border-bottom: 1px solid var(--border); flex-shrink: 0;
+/* Sidebar resize handle */
+#sidebarResizer {
+  width: 4px; cursor: col-resize; background: transparent;
+  flex-shrink: 0; position: relative; z-index: 10;
+  transition: background 0.15s;
 }
-.sidebar-title {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
-  color: var(--text-secondary); flex: 1;
-}
+#sidebarResizer:hover, #sidebarResizer.active { background: var(--accent); }
+
 .icon-btn {
   width: 24px; height: 24px; border: none; border-radius: 4px;
   background: transparent; color: var(--text-muted); cursor: pointer;
@@ -130,7 +130,7 @@ body {
 .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .dot-orange { background: var(--orange); }
 .dot-red { background: var(--red); }
-.dot-blue { background: var(--accent); }
+
 
 /* Dragging styles */
 .file-item.dragging { opacity: 0.4; }
@@ -171,21 +171,46 @@ body {
 /* ---- Editor / Preview ---- */
 #editorContainer { flex: 1; display: flex; overflow: hidden; min-height: 0; }
 
+#editorWrap {
+  flex: 1; display: flex; overflow-y: auto; overflow-x: hidden; min-width: 0; position: relative;
+  background: var(--bg);
+}
+#lineNumbers {
+  padding: 8px 0; width: 40px; flex-shrink: 0;
+  background: var(--bg-card); border-right: 1px solid var(--border);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace;
+  font-size: 13px; line-height: 1.7; color: var(--text-muted);
+  text-align: right; user-select: none;
+  position: sticky; left: 0;
+}
+#lineNumbers div { padding: 0 8px 0 4px; box-sizing: border-box; }
 #editor {
   flex: 1; border: none; outline: none; resize: none;
-  padding: 16px 20px;
+  padding: 8px 16px;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace;
   font-size: 13px; line-height: 1.7; background: var(--bg); color: var(--text);
-  tab-size: 2; overflow-y: auto;
+  tab-size: 2; overflow: visible;
+  min-height: 100%;
+  white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
+}
+/* Hidden mirror for measuring wrapped line heights */
+#editorMirror {
+  position: absolute; visibility: hidden; pointer-events: none;
+  white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace;
+  font-size: 13px; line-height: 1.7; tab-size: 2;
+  padding: 0 16px; box-sizing: border-box;
 }
 #divider { width: 1px; background: var(--border); flex-shrink: 0; }
 #viewer { flex: 1; overflow-y: auto; padding: 16px 20px; line-height: 1.6; font-size: 14px; }
 
 body.mode-edit #viewer, body.mode-edit #divider { display: none; }
-body.mode-edit #editor { display: block; }
-body.mode-preview #editor, body.mode-preview #divider { display: none; }
+body.mode-edit #editorWrap { display: flex; }
+body.mode-preview #editorWrap, body.mode-preview #divider { display: none; }
 body.mode-preview #viewer { display: block; }
-body.mode-split #editor, body.mode-split #divider, body.mode-split #viewer { display: block; }
+body.mode-split #editorWrap { display: flex; }
+body.mode-split #divider { display: block; }
+body.mode-split #viewer { display: block; }
 
 #emptyState { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); }
 .empty-icon { font-size: 36px; font-weight: 700; margin-bottom: 8px; opacity: 0.3; }
