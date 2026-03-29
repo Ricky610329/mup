@@ -431,7 +431,7 @@ async function openFile(path) {
     if (!store.docMeta[path]) store.docMeta[path] = {};
     store.docMeta[path].lastViewedAt = Date.now();
     store.docMeta[path].viewCount = (store.docMeta[path].viewCount || 0) + 1;
-    save(); renderContent(); renderFileTree(); broadcastState();
+    save(); renderContent(); autoResizeEditor(); renderFileTree(); broadcastState();
     mup.notifyInteraction('file-opened', `Opened ${path.split('/').pop()} (${currentFile.lines.length} lines)`, { path, lines: currentFile.lines.length });
   } catch (err) {
     const denied = err.message?.includes('Access denied');
@@ -473,8 +473,13 @@ function updateLineNumbersNow() {
 
 new ResizeObserver(() => { if (currentFile) updateLineNumbersNow(); }).observe(document.getElementById('editorWrap'));
 
+function autoResizeEditor() {
+  editorEl.style.height = '0';
+  editorEl.style.height = editorEl.scrollHeight + 'px';
+}
+
 editorEl.addEventListener('input', () => {
-  dirty = true; updateUnsaved(); updateLineNumbers();
+  dirty = true; updateUnsaved(); updateLineNumbers(); autoResizeEditor();
   if (viewMode === 'split') updatePreview();
 });
 
@@ -838,13 +843,9 @@ mup.registerFunction('getContext', async () => {
   });
 });
 
-mup.registerFunction('importFolder', async (p) => {
-  if (!p.path) return err('path required');
-  const fp = p.path.endsWith('/') ? p.path : p.path + '/';
-  if (!store.folderMeta[fp]) store.folderMeta[fp] = { description: '', role: '', tags: [] };
-  for (const f of (p.files || [])) if (!store.docMeta[f]) store.docMeta[f] = {};
-  save(); renderFileTree(); broadcastState();
-  return ok(`Imported ${fp}: ${(p.files || []).length} file(s)`);
+mup.registerFunction('importFolder', async () => {
+  await scanWorkspace();
+  return ok(`Rescanned workspace: ${Object.keys(store.docMeta).length} file(s)`);
 });
 
 mup.registerFunction('createDoc', async (p) => {
@@ -880,8 +881,48 @@ mup.registerFunction('appendToDoc', async (p) => {
 });
 
 // ==== INIT ====
-mup.onReady(({ theme }) => {
+let cwdPath = null;
+
+async function scanWorkspace() {
+  try {
+    // Get cwd from host
+    const cwdResult = await mup.system('getCwd', {});
+    cwdPath = cwdResult?.content;
+    if (!cwdPath) return;
+    if (!cwdPath.endsWith('/')) cwdPath += '/';
+
+    // Grant access to cwd
+    await mup.system('grantFileAccess', { paths: [cwdPath] });
+
+    // Scan all files in cwd
+    const scanResult = await mup.system('scanDirectory', { path: cwdPath });
+    const allFiles = JSON.parse(scanResult?.content || '[]');
+
+    // Register folder + files
+    if (!store.folderMeta[cwdPath]) store.folderMeta[cwdPath] = { description: '', role: '', tags: [] };
+
+    // Register subfolders
+    const dirs = new Set();
+    for (const f of allFiles) {
+      const dir = f.substring(0, f.lastIndexOf('/') + 1);
+      if (dir !== cwdPath) dirs.add(dir);
+    }
+    for (const d of dirs) {
+      if (!store.folderMeta[d]) store.folderMeta[d] = { description: '', role: '', tags: [] };
+    }
+
+    // Register files
+    for (const f of allFiles) {
+      if (!store.docMeta[f]) store.docMeta[f] = {};
+    }
+
+    save(); renderFileTree(); broadcastState();
+  } catch (e) { console.error('Workspace scan failed:', e); }
+}
+
+mup.onReady(async ({ theme }) => {
   if (theme === 'dark') document.body.classList.add('dark');
   load(); setViewMode('split'); renderFileTree(); renderContent(); broadcastState();
+  await scanWorkspace();
 });
 mup.onThemeChange((theme) => document.body.classList.toggle('dark', theme === 'dark'));

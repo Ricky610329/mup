@@ -9,6 +9,9 @@ CLAUDE.md
 # MUP workspace state
 .mup/
 
+# Personal notes (testing)
+notes/
+
 # MUP archive — keep examples, ignore build artifacts
 archive/mup-agent/node_modules/
 archive/mup-agent/dist/

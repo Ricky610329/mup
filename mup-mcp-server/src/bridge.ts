@@ -43,6 +43,8 @@ export class UiBridge extends EventEmitter {
   // File access permissions: mupId → allowed path prefixes
   private fileAccess = new Map<string, string[]>();
   private static MAX_READ_SIZE = 1_048_576; // 1MB
+  // Rate limiting: mupId → { count, resetAt }
+  private rateLimits = new Map<string, { count: number; resetAt: number }>();
 
   constructor(manager: MupManager, port: number) {
     super();
@@ -310,7 +312,31 @@ export class UiBridge extends EventEmitter {
     return this.fileAccess.get(mupId) || [];
   }
 
+  /** Check if a resolved path is within the MUP's allowed paths */
+  private checkPathAccess(mupId: string, resolved: string): boolean {
+    const allowed = this.fileAccess.get(mupId) || [];
+    return allowed.some(prefix => {
+      const normalizedPrefix = prefix.endsWith(path.sep) ? prefix : prefix + path.sep;
+      return resolved === prefix || resolved.startsWith(normalizedPrefix);
+    });
+  }
+
+  /** Rate limit system requests per MUP */
+  private checkRateLimit(mupId: string): boolean {
+    const now = Date.now();
+    const entry = this.rateLimits.get(mupId) || { count: 0, resetAt: now + 1000 };
+    if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + 1000; }
+    entry.count++;
+    this.rateLimits.set(mupId, entry);
+    return entry.count <= CONFIG.maxSystemRequestsPerSec;
+  }
+
   private handleSystemRequest(requestId: string, mupId: string, action: string, args: Record<string, unknown>): void {
+    // Rate limit check
+    if (!this.checkRateLimit(mupId)) {
+      this.sendRaw({ type: "system-response", requestId, result: { error: "Rate limit exceeded. Max 20 requests/sec." } });
+      return;
+    }
     if (action === "readFile") {
       const filePath = args.path as string;
       if (!filePath) {
@@ -324,8 +350,7 @@ export class UiBridge extends EventEmitter {
         return;
       }
       // Check permissions
-      const allowed = this.fileAccess.get(mupId) || [];
-      const hasAccess = allowed.some(prefix => resolved.startsWith(prefix));
+      const hasAccess = this.checkPathAccess(mupId, resolved);
       if (!hasAccess) {
         this.sendRaw({ type: "system-response", requestId, result: { error: `Access denied: ${filePath}. Use setFileAccess to grant access.` } });
         return;
@@ -341,16 +366,51 @@ export class UiBridge extends EventEmitter {
       } catch (err) {
         this.sendRaw({ type: "system-response", requestId, result: { error: `Read failed: ${(err as Error).message}` } });
       }
+    } else if (action === "scanDirectory") {
+      const dirPath = args.path as string;
+      if (!dirPath) { this.sendRaw({ type: "system-response", requestId, result: { error: "Missing path" } }); return; }
+      const resolved = path.resolve(dirPath);
+      const hasAccess = this.checkPathAccess(mupId, resolved);
+      if (!hasAccess) { this.sendRaw({ type: "system-response", requestId, result: { error: `Access denied: ${dirPath}` } }); return; }
+      try {
+        const files: string[] = [];
+        const scan = (dir: string) => {
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) scan(full);
+            else files.push(full);
+          }
+        };
+        scan(resolved);
+        this.sendRaw({ type: "system-response", requestId, result: { content: JSON.stringify(files) } });
+      } catch (err) {
+        this.sendRaw({ type: "system-response", requestId, result: { error: `Scan failed: ${(err as Error).message}` } });
+      }
+    } else if (action === "getCwd") {
+      this.sendRaw({ type: "system-response", requestId, result: { content: process.cwd() } });
     } else if (action === "grantFileAccess") {
       const paths = args.paths as string[];
       if (!paths || !Array.isArray(paths)) {
         this.sendRaw({ type: "system-response", requestId, result: { error: "Missing paths array" } });
         return;
       }
-      const existing = this.fileAccess.get(mupId) || [];
+      // Security: MUP can only self-grant access within cwd
+      const cwd = process.cwd();
+      const cwdPrefix = cwd.endsWith(path.sep) ? cwd : cwd + path.sep;
       const resolved = paths.map(p => path.resolve(p));
-      this.fileAccess.set(mupId, [...new Set([...existing, ...resolved])]);
-      console.error(`[mup-mcp] File access granted for ${mupId}: ${resolved.join(', ')}`);
+      const withinCwd = resolved.filter(p => p === cwd || p.startsWith(cwdPrefix));
+      const denied = resolved.filter(p => p !== cwd && !p.startsWith(cwdPrefix));
+      if (withinCwd.length) {
+        const existing = this.fileAccess.get(mupId) || [];
+        this.fileAccess.set(mupId, [...new Set([...existing, ...withinCwd])]);
+        console.error(`[mup-mcp] File access granted for ${mupId}: ${withinCwd.join(', ')}`);
+      }
+      if (denied.length) {
+        console.error(`[mup-mcp] File access DENIED for ${mupId} (outside cwd): ${denied.join(', ')}`);
+        this.sendRaw({ type: "system-response", requestId, result: { error: `Denied paths outside workspace: ${denied.map(d => d.split(path.sep).pop()).join(', ')}` } });
+        return;
+      }
       this.sendRaw({ type: "system-response", requestId, result: { content: "ok" } });
     } else if (action === "writeFile") {
       const filePath = args.path as string;
@@ -364,8 +424,7 @@ export class UiBridge extends EventEmitter {
         this.sendRaw({ type: "system-response", requestId, result: { error: "Invalid path" } });
         return;
       }
-      const allowed = this.fileAccess.get(mupId) || [];
-      const hasAccess = allowed.some(prefix => resolved.startsWith(prefix));
+      const hasAccess = this.checkPathAccess(mupId, resolved);
       if (!hasAccess) {
         this.sendRaw({ type: "system-response", requestId, result: { error: `Access denied: ${filePath}. Use setFileAccess to grant access.` } });
         return;

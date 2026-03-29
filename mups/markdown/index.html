@@ -7,7 +7,7 @@
   <script type="application/mup-manifest">
   {
     "name": "Markdown",
-    "description": "Knowledge workspace for collaborative note-taking. Both user and LLM can create, edit, and organize markdown documents. Supports folder descriptions, tags, annotations (highlight/note/TODO/question/important), and pins. Use setFileAccess first. Then: getKBMap() for structure, createDoc/updateDoc/appendToDoc to write, loadFile to display, getContext for user focus. Check annotations when working on KB files.",
+    "description": "Markdown workspace for collaborative note-taking. User edits in the UI, LLM creates files with native Write tool then calls importFolder + loadFile to display. Supports folder descriptions, tags, annotations (highlight/note/TODO/question/important). Use getKBMap() for structure, loadFile to display, getContext for user focus.",
     "grid": { "minWidth": 2, "minHeight": 2, "preferredWidth": 3, "preferredHeight": 3 },
     "darkMode": true,
     "notifications": { "level": "notify", "overridable": true },
@@ -24,10 +24,7 @@
       { "name": "search", "description": "Search KB metadata.", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "type": { "type": "string", "enum": ["all", "annotations", "tags", "folders", "collections"] } }, "required": ["query"] } },
       { "name": "loadFile", "description": "Load a file into KB viewer.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
       { "name": "getContext", "description": "Get user's current context.", "inputSchema": { "type": "object", "properties": {} } },
-      { "name": "importFolder", "description": "Register files in KB sidebar.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "files": { "type": "array", "items": { "type": "string" } } }, "required": ["path"] } },
-      { "name": "createDoc", "description": "Create a new markdown file on disk.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } } }, "required": ["path"] } },
-      { "name": "updateDoc", "description": "Replace entire file content.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] } },
-      { "name": "appendToDoc", "description": "Append content to end of file.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] } }
+      { "name": "importFolder", "description": "Rescan workspace files. Call after creating new files with native Write tool.", "inputSchema": { "type": "object", "properties": {} } }
     ]
   }
   </script>

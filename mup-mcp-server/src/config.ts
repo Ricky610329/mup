@@ -35,4 +35,8 @@ export const CONFIG = {
   heartbeatTimeoutMs: 10_000,
   /** Max age for queued messages before they're discarded (ms) */
   messageQueueTtlMs: 60_000,
+  /** Max system requests per MUP per second */
+  maxSystemRequestsPerSec: 20,
+  /** Allowed iframe permissions (MUP manifest permissions are filtered through this) */
+  allowedIframePermissions: ["microphone", "camera", "clipboard-read", "clipboard-write"],
 } as const;

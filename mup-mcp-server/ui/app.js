@@ -347,7 +347,10 @@ function loadMup(mupId, html, manifest) {
   if (!grid) { pendingMups.push({ mupId, html, manifest }); return; }
 
   const displayName = (window._pendingCustomNames && window._pendingCustomNames[mupId]) || manifest.name;
-  const allowAttr = (manifest.permissions || []).length ? ` allow="${manifest.permissions.map(p => p + " 'src'").join('; ')}"` : '';
+  // Security: filter manifest permissions through allowlist
+  const ALLOWED_PERMS = ['microphone', 'camera', 'clipboard-read', 'clipboard-write'];
+  const safePerms = (manifest.permissions || []).filter(p => ALLOWED_PERMS.includes(p));
+  const allowAttr = safePerms.length ? ` allow="${safePerms.map(p => p + " 'src'").join('; ')}"` : '';
   const el = document.createElement('div');
   el.classList.add('grid-stack-item');
   el.setAttribute('gs-w', '1');
