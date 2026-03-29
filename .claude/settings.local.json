@@ -1,0 +1,71 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Bash(git commit*)",
+            "prompt": "Review the staged changes by running `git diff --cached`. Check for:\n1. Dead code: unused imports, functions, variables, CSS classes\n2. Code quality: functions over 50 lines, repeated patterns that should be extracted, inconsistent naming\n3. Obvious bugs: missing null checks, unhandled errors, race conditions\n4. Leftover debug code: console.log, TODO comments that should be resolved\n5. Doc sync: if changes touch handlers.ts actions, mup-sdk.js methods, bridge.ts system actions, or add/remove MUPs — flag that spec/README docs may need updating\n\nIf you find code issues, REJECT and list what needs fixing.\nIf only doc sync is needed, APPROVE but add a note: 'Consider running /doc-sync to update documentation.'\nIf everything is clean, APPROVE.\nDon't be overly pedantic — focus on real problems, not style preferences.",
+            "timeout": 30,
+            "statusMessage": "Reviewing staged changes..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/audit-mup-hint.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(claude mcp:*)",
+      "Bash(find /Users/maggiehu/Documents/GitHub/mup/mup-mcp-server/node_modules/@modelcontextprotocol -type f \\\\\\(-name *.d.ts -o -name *.ts \\\\\\))",
+      "mcp__mup__mup",
+      "Bash(find ~/Library -path *claude* -name *.log)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(grep -r \"getMcpTools\\\\|parseToolName\" --include=*.ts --include=*.tsx --include=*.js .)",
+      "Bash(grep -n \"getStateSnapshot\" src/*.ts)",
+      "Bash(grep -n \"isError\\\\|isError:\" src/*.ts)",
+      "Bash(wc -l src/*.ts)",
+      "Bash(grep -n \"addEvent\\\\|drainEvents\" src/*.ts)",
+      "Bash(npm test:*)",
+      "Bash(ls:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(wc:*)",
+      "Bash(npx tsc:*)",
+      "Bash(sed -n '429,494p' mups/slides.html)",
+      "Read(//tmp/**)",
+      "Bash(node:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''''mcpServers'''',{}\\), indent=2\\)\\)\")",
+      "Bash(ffprobe -v quiet -print_format json -show_format -show_streams \"/Users/maggiehu/Desktop/螢幕錄影 2026-03-28 晚上8.20.34.mov\")",
+      "Bash(ffmpeg -i \"/Users/maggiehu/Desktop/螢幕錄影 2026-03-28 晚上8.20.34.mov\" -af \"silencedetect=noise=-35dB:d=1.5\" -f null -)",
+      "Bash(ffmpeg -y -i \"/Users/maggiehu/Desktop/螢幕錄影 2026-03-28 晚上8.20.34.mov\" -ss 36.5 -to 112.5 -c:v copy -c:a copy \"/Users/maggiehu/Desktop/MUP-SoundPad-Demo.mov\")",
+      "Bash(ffprobe:*)",
+      "Bash(npm publish:*)",
+      "Bash(npm whoami:*)",
+      "Bash(sort -k2)",
+      "Bash(awk '{print length}')",
+      "Bash(find /Users/maggiehu/Documents/GitHub/mup/mup-mcp-server/mups -type f -name *.html)",
+      "Bash(find /Users/maggiehu/Documents/GitHub/mup/mups -type f -name *.html)",
+      "Bash(grep -n \"clearTimeout\\\\|setTimeout\" *.ts)",
+      "Bash(python3 -m json.tool)",
+      "Bash(find /Users/maggiehu/.claude/skills -name \"SKILL.md\" -exec head -10 {} +)",
+      "Bash(chmod:*)"
+    ]
+  }
+}
