@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Markdown",
+    "description": "Knowledge workspace for collaborative note-taking. Both user and LLM can create, edit, and organize markdown documents. Supports folder descriptions, tags, annotations (highlight/note/TODO/question/important), and pins. Use setFileAccess first. Then: getKBMap() for structure, createDoc/updateDoc/appendToDoc to write, loadFile to display, getContext for user focus. Check annotations when working on KB files.",
+    "grid": { "minWidth": 2, "minHeight": 2, "preferredWidth": 3, "preferredHeight": 3 },
+    "darkMode": true,
+    "notifications": { "level": "notify", "overridable": true },
+    "functions": [
+      { "name": "describeFolders", "description": "Set or get folder descriptions so the LLM knows what each folder contains.", "inputSchema": { "type": "object", "properties": { "folders": { "type": "array", "items": { "type": "object", "properties": { "path": { "type": "string" }, "description": { "type": "string" }, "role": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } } }, "required": ["path", "description"] } } } } },
+      { "name": "manageTags", "description": "Add/remove tags on files, list all tags, or search docs by tag.", "inputSchema": { "type": "object", "properties": { "subAction": { "type": "string", "enum": ["add", "remove", "list", "search"] }, "path": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } } }, "required": ["subAction"] } },
+      { "name": "manageCollections", "description": "Create/update/delete/list named document collections.", "inputSchema": { "type": "object", "properties": { "subAction": { "type": "string", "enum": ["create", "update", "delete", "list", "addDoc", "removeDoc"] }, "id": { "type": "string" }, "name": { "type": "string" }, "description": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } }, "path": { "type": "string" } }, "required": ["subAction"] } },
+      { "name": "annotate", "description": "Create/update/resolve/delete/list annotations on file lines.", "inputSchema": { "type": "object", "properties": { "subAction": { "type": "string", "enum": ["create", "update", "resolve", "delete", "list"] }, "id": { "type": "string" }, "filePath": { "type": "string" }, "type": { "type": "string", "enum": ["highlight", "note", "todo", "question", "important"] }, "lineStart": { "type": "integer" }, "lineEnd": { "type": "integer" }, "selectedText": { "type": "string" }, "note": { "type": "string" } }, "required": ["subAction"] } },
+      { "name": "setDocStatus", "description": "Set a document's priority/status/notes.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "priority": { "type": "string", "enum": ["high", "normal", "low"] }, "status": { "type": "string", "enum": ["current", "needs-update", "draft", "deprecated"] }, "notes": { "type": "string" } }, "required": ["path"] } },
+      { "name": "managePins", "description": "Pin/unpin/list/reorder pinned documents.", "inputSchema": { "type": "object", "properties": { "subAction": { "type": "string", "enum": ["pin", "unpin", "list", "reorder"] }, "path": { "type": "string" }, "order": { "type": "array", "items": { "type": "string" } } }, "required": ["subAction"] } },
+      { "name": "getKBMap", "description": "Get the full KB structure.", "inputSchema": { "type": "object", "properties": { "scope": { "type": "string", "enum": ["full", "folders", "collections", "annotations", "pins"] } } } },
+      { "name": "getOutline", "description": "Get a document's heading structure + annotations.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+      { "name": "getSection", "description": "Read a section by heading or line range.", "inputSchema": { "type": "object", "properties": { "heading": { "type": "string" }, "lineStart": { "type": "integer" }, "lineEnd": { "type": "integer" } } } },
+      { "name": "search", "description": "Search KB metadata.", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "type": { "type": "string", "enum": ["all", "annotations", "tags", "folders", "collections"] } }, "required": ["query"] } },
+      { "name": "loadFile", "description": "Load a file into KB viewer.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+      { "name": "getContext", "description": "Get user's current context.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "importFolder", "description": "Register files in KB sidebar.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "files": { "type": "array", "items": { "type": "string" } } }, "required": ["path"] } },
+      { "name": "createDoc", "description": "Create a new markdown file on disk.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } } }, "required": ["path"] } },
+      { "name": "updateDoc", "description": "Replace entire file content.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] } },
+      { "name": "appendToDoc", "description": "Append content to end of file.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] } }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <!-- Top bar -->
+  <div id="topBar">
+    <button id="sidebarToggleTop" class="icon-btn" title="Toggle sidebar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span id="topTitle">Markdown</span>
+    <div class="top-spacer"></div>
+    <div class="view-toggle">
+      <button class="vt-btn" data-mode="edit" title="Edit only">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button class="vt-btn active" data-mode="split" title="Split view">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+      </button>
+      <button class="vt-btn" data-mode="preview" title="Preview only">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+    <button id="saveBtn" class="icon-btn save-btn" style="display:none" title="Save (Ctrl+S)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
+    </button>
+  </div>
+
+  <div id="mainLayout">
+  <!-- Sidebar: file tree -->
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">EXPLORER</span>
+      <button id="rootNewFile" class="icon-btn" title="New file">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button id="rootNewFolder" class="icon-btn" title="New folder">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+      </button>
+    </div>
+    <div id="fileTree" class="file-tree"></div>
+  </div>
+
+  <!-- Main content -->
+  <div id="content">
+    <div id="contentToolbar" style="display:none">
+      <span id="breadcrumb"></span>
+      <span id="editStatus"></span>
+    </div>
+    <div id="editorContainer">
+      <textarea id="editor" spellcheck="false" placeholder="Start writing markdown..."></textarea>
+      <div id="divider"></div>
+      <div id="viewer">
+        <div id="emptyState">
+          <div class="empty-icon">Md</div>
+          <div class="empty-text">Select a file or create a new one</div>
+        </div>
+      </div>
+    </div>
+    <div id="statusBar"><span id="statusInfo">No file loaded</span></div>
+  </div>
+  </div><!-- end #mainLayout -->
+
+  <!-- Floating annotation toolbar -->
+  <div id="annotationToolbar" style="display:none">
+    <button data-type="highlight" title="Highlight">H</button>
+    <button data-type="note" title="Note">N</button>
+    <button data-type="todo" title="TODO">T</button>
+    <button data-type="question" title="Question">?</button>
+    <button data-type="important" title="Important">!</button>
+  </div>
+  <div id="noteModal" style="display:none">
+    <input type="text" id="noteInput" placeholder="Add a note...">
+    <button id="noteSave">Save</button>
+    <button id="noteCancel">Cancel</button>
+  </div>
+  <!-- Delete confirm -->
+  <div id="deleteModal" style="display:none">
+    <div class="modal-title">Remove from KB?</div>
+    <p class="modal-desc">Remove <strong id="deleteFileName"></strong> from the knowledge base. The file on disk will not be deleted.</p>
+    <div class="modal-actions">
+      <button id="deleteConfirm" class="btn-danger">Remove</button>
+      <button id="deleteCancel">Cancel</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

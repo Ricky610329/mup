@@ -25,6 +25,7 @@ document.getElementById('themeToggleBtn').addEventListener('click', () => {
 const mups = new Map();
 const initResolvers = new Map();
 const callMap = new Map();
+const systemRequestMap = new Map(); // requestId → { mupId, jsonrpcId }
 let nextMsgId = 1;
 let ws = null;
 
@@ -287,6 +288,21 @@ function handleServerMessage(msg) {
     case "thinking":
       setThinkingIndicator(msg.active);
       break;
+    case "system-response": {
+      const req = systemRequestMap.get(msg.requestId);
+      if (req) {
+        systemRequestMap.delete(msg.requestId);
+        const mup = mups.get(req.mupId);
+        if (mup && mup.port) {
+          if (msg.result?.error) {
+            mup.port.postMessage({ jsonrpc: "2.0", id: req.jsonrpcId, error: { code: -32603, message: msg.result.error } });
+          } else {
+            mup.port.postMessage({ jsonrpc: "2.0", id: req.jsonrpcId, result: msg.result });
+          }
+        }
+      }
+      break;
+    }
   }
 }
 
@@ -425,6 +441,19 @@ function handleMupMessage(mupId, mupName, data) {
       loadingBar.classList.remove('active');
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "result", callId, result }));
       return;
+    }
+    return;
+  }
+
+  // MUP-to-host requests (have both id and method, e.g. system/request)
+  if ("id" in data && "method" in data) {
+    if (data.method === "system/request" && ws && ws.readyState === WebSocket.OPEN) {
+      const requestId = `sys_${mupId}_${data.id}`;
+      systemRequestMap.set(requestId, { mupId, jsonrpcId: data.id });
+      ws.send(JSON.stringify({
+        type: "system-request", requestId, mupId,
+        action: data.params?.action || "", args: data.params?.params || {}
+      }));
     }
     return;
   }

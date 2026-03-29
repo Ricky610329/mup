@@ -47,7 +47,7 @@ export function buildToolDescription(manager: MupManager, port: number): string 
   const lines = [
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
-    `Actions: checkInteractions, list, history, pipe, setNotificationLevel, setLayout, getLayout, delayCall, cancelDelay, onEvent, removeEvent`,
+    `Actions: checkInteractions, list, history, pipe, setNotificationLevel, setLayout, getLayout, setFileAccess, delayCall, cancelDelay, onEvent, removeEvent`,
     `Multi-instance: use { "action": "new-instance", "mupId": "..." } to open another panel. Returns the new instance ID (_2, _3...).`,
   ];
   if (active.length > 0) {
@@ -240,6 +240,16 @@ export async function handleToolCall(
     ws.gridLayout = layout;
     ws.markMetadataDirty();
     return { content: [text(`Layout updated for ${layout.length} panel(s): ${layout.map(l => `${l.id}(${l.w}×${l.h}@${l.x},${l.y})`).join(", ")}`)] };
+  }
+  if (args.action === "setFileAccess") {
+    const mupId = args.mupId as string;
+    const fnArgs = parseArgs(args.functionArgs);
+    const allowedPaths = (args.allowedPaths || fnArgs.allowedPaths) as string[];
+    if (!mupId || !allowedPaths || !Array.isArray(allowedPaths)) {
+      return { content: [text('Provide "mupId" and "allowedPaths" (array of path prefixes) via functionArgs.')], isError: true };
+    }
+    bridge.setFileAccess(mupId, allowedPaths);
+    return { content: [text(`File access for "${mupId}" set to ${allowedPaths.length} path(s): ${allowedPaths.join(", ")}`)] };
   }
   if (args.action === "new-instance") {
     const baseMupId = args.mupId as string;

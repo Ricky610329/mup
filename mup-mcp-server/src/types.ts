@@ -139,7 +139,8 @@ export type BrowserMessage =
   | { type: "rename-workspace"; name: string }
   | { type: "set-mups-path"; path: string }
   | { type: "permission-verdict"; requestId: string; behavior: "allow" | "deny" }
-  | { type: "mup-event"; mupId: string; event: string; data?: unknown };
+  | { type: "mup-event"; mupId: string; event: string; data?: unknown }
+  | { type: "system-request"; requestId: string; mupId: string; action: string; args: Record<string, unknown> };
 
 // ---- Server → Browser Messages ----
 
@@ -158,7 +159,8 @@ export type ServerMessage =
   | { type: "permission-request"; requestId: string; toolName: string; description: string; inputPreview: string }
   | { type: "thinking"; active: boolean }
   | { type: "set-layout"; layout: GridLayoutItem[] }
-  | { type: "get-layout" };
+  | { type: "get-layout" }
+  | { type: "system-response"; requestId: string; result: { content?: string; error?: string } };
 
 // ---- Typed Event Emitter for UiBridge ----
 

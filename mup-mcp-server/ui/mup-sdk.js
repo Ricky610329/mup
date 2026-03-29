@@ -19,6 +19,8 @@ class MupSDK {
   notifyInteraction(action, summary, data) { this._notify("notifications/interaction", { action, summary, data }); }
   emitEvent(event, data) { this._notify("notifications/event", { event, data }); }
   system(action, params) { return this._request("system/request", { action, params }); }
+  async readFile(path) { const r = await this.system("readFile", { path }); if (r?.error) throw new Error(r.error); return r?.content || ""; }
+  async writeFile(path, content) { const r = await this.system("writeFile", { path, content }); if (r?.error) throw new Error(r.error); }
   _handleMessage(data) {
     if (!data || data.jsonrpc !== "2.0") return;
     if ("id" in data && !("method" in data)) {
