@@ -2,7 +2,7 @@
 
 // ---- State ----
 const STORE_KEY = 'mup-kb-data';
-let store = { _v: 1, folderMeta: {}, docMeta: {}, collections: {}, annotations: [], pins: [] };
+let store = { _v: 2, folderMeta: {}, docMeta: {}, collections: {}, annotations: [], pins: [] };
 let currentFile = null; // { path, content, lines }
 let visibleRange = null;
 let selection = null;
@@ -23,7 +23,7 @@ function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); 
 function load() {
   try {
     const d = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (d?._v === 1) {
+    if (d?._v === 2) {
       store = d;
       nextAnnId = store.annotations.reduce((m, a) => Math.max(m, parseInt(a.id?.replace('ann_', '')) || 0), 0) + 1;
       nextCollId = Object.keys(store.collections).reduce((m, k) => Math.max(m, parseInt(k.replace('coll_', '')) || 0), 0) + 1;
@@ -163,12 +163,15 @@ fileTreeEl.addEventListener('click', (e) => {
 });
 
 // Confirm before switching if unsaved
-function confirmThenOpen(path) {
+function confirmThenOpen(filePath) {
   if (dirty && currentFile) {
-    if (!confirm(`"${currentFile.path.split('/').pop()}" has unsaved changes. Discard?`)) return;
+    // confirm() may be blocked in sandboxed iframe — try, fallback to open anyway
+    try {
+      if (!confirm(`"${currentFile.path.split('/').pop()}" has unsaved changes. Discard?`)) return;
+    } catch {}
     dirty = false; updateUnsaved();
   }
-  openFile(path);
+  openFile(filePath);
 }
 
 // ---- Rename (double-click) ----
@@ -885,35 +888,33 @@ let cwdPath = null;
 
 async function scanWorkspace() {
   try {
-    // Get cwd from host
-    const cwdResult = await mup.system('getCwd', {});
-    cwdPath = cwdResult?.content;
-    if (!cwdPath) return;
-    if (!cwdPath.endsWith('/')) cwdPath += '/';
+    // Scan each folder already registered in store (authorized by LLM or user)
+    const folders = Object.keys(store.folderMeta);
+    if (!folders.length) return;
 
-    // Grant access to cwd
-    await mup.system('grantFileAccess', { paths: [cwdPath] });
+    // Request access for known folders
+    await mup.system('grantFileAccess', { paths: folders });
 
-    // Scan all files in cwd
-    const scanResult = await mup.system('scanDirectory', { path: cwdPath });
-    const allFiles = JSON.parse(scanResult?.content || '[]');
+    // Rebuild file list
+    store.docMeta = {};
 
-    // Register folder + files
-    if (!store.folderMeta[cwdPath]) store.folderMeta[cwdPath] = { description: '', role: '', tags: [] };
+    for (const folder of folders) {
+      try {
+        const scanResult = await mup.system('scanDirectory', { path: folder });
+        const allFiles = JSON.parse(scanResult?.content || '[]');
 
-    // Register subfolders
-    const dirs = new Set();
-    for (const f of allFiles) {
-      const dir = f.substring(0, f.lastIndexOf('/') + 1);
-      if (dir !== cwdPath) dirs.add(dir);
-    }
-    for (const d of dirs) {
-      if (!store.folderMeta[d]) store.folderMeta[d] = { description: '', role: '', tags: [] };
-    }
-
-    // Register files
-    for (const f of allFiles) {
-      if (!store.docMeta[f]) store.docMeta[f] = {};
+        // MUP decides what file types it cares about
+        for (const f of allFiles) {
+          if (/\.(md|mdx|txt|markdown)$/i.test(f)) {
+            store.docMeta[f] = store.docMeta[f] || {};
+            // Register subfolders
+            const dir = f.substring(0, f.lastIndexOf('/') + 1);
+            if (dir !== folder && !store.folderMeta[dir]) {
+              store.folderMeta[dir] = { description: '', role: '', tags: [] };
+            }
+          }
+        }
+      } catch {} // skip folders we can't access
     }
 
     save(); renderFileTree(); broadcastState();
@@ -923,6 +924,14 @@ async function scanWorkspace() {
 mup.onReady(async ({ theme }) => {
   if (theme === 'dark') document.body.classList.add('dark');
   load(); setViewMode('split'); renderFileTree(); renderContent(); broadcastState();
+  // Auto-grant cwd access so files anywhere in the workspace can be opened
+  try {
+    const cwdResult = await mup.system('getCwd', {});
+    if (cwdResult?.content) {
+      const cwd = cwdResult.content.endsWith('/') ? cwdResult.content : cwdResult.content + '/';
+      await mup.system('grantFileAccess', { paths: [cwd] });
+    }
+  } catch {}
   await scanWorkspace();
 });
 mup.onThemeChange((theme) => document.body.classList.toggle('dark', theme === 'dark'));
