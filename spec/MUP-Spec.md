@@ -276,11 +276,80 @@ Both hosts and MUPs SHOULD use standard JSON-RPC 2.0 error codes:
 | `-32601` | Method not found |
 | `-32603` | Internal error |
 
+## 8. Security Model
+
+MUP uses a layered trust model. The **host is the sole gatekeeper** — MUPs have zero direct access to anything outside their sandbox.
+
+### Trust Hierarchy
+
+```
+LLM / User         ← Highest trust. Decides policy.
+     ↓ sets permissions
+Host (runtime)      ← Gatekeeper. Enforces policy, mediates all access.
+     ↓ approves / denies
+MUP (sandboxed)     ← Zero trust. Must request everything.
+```
+
+### Principles
+
+1. **MUPs are untrusted.** A MUP runs in an isolated container (e.g., sandboxed iframe). It cannot access the file system, network, or other MUPs directly.
+
+2. **All capabilities go through the host.** MUPs use `mup.system(action, params)` to request host-provided services. The host decides whether to fulfill each request based on per-MUP permissions.
+
+3. **Permissions are granted, not declared.** The manifest `permissions` field is a *request*, not a grant. The host MAY refuse or filter permissions it considers unsafe.
+
+4. **Per-MUP isolation.** Each MUP has its own permission scope. MUP A's permissions do not affect MUP B.
+
+5. **Session-scoped by default.** Permission grants SHOULD NOT persist across sessions unless the host explicitly opts in.
+
+### Host Responsibilities
+
+| Responsibility | Description |
+|----------------|-------------|
+| **Sandbox enforcement** | Run each MUP in an isolated container with no default capabilities |
+| **Request mediation** | Intercept all `system/request` calls, check permissions, then execute or deny |
+| **Permission scoping** | Maintain per-MUP permission tables (e.g., allowed file paths, allowed domains) |
+| **Rate limiting** | Prevent abuse by limiting system requests per MUP (e.g., max 20/sec) |
+| **Input validation** | Validate all paths, URLs, and parameters from MUPs before acting on them |
+
+### MUP Responsibilities
+
+| Responsibility | Description |
+|----------------|-------------|
+| **Declare needs** | List required permissions in `manifest.permissions` |
+| **Handle denial** | If `mup.system()` returns an error, degrade gracefully — don't crash |
+| **Minimal requests** | Only request capabilities you actually need |
+
+### The `system/request` Security Flow
+
+```
+MUP calls: mup.system('readFile', { path: '/some/file.md' })
+  ↓
+Host checks:
+  1. Is 'readFile' a known action? (unknown → error -32601)
+  2. Is this MUP allowed to access this path? (denied → error)
+  3. Is the MUP within rate limits? (exceeded → error)
+  4. Is the path valid? (traversal attack → error)
+  ↓
+Host executes the action and returns the result.
+```
+
+### What the Spec Defines vs. What Hosts Decide
+
+| Spec defines (protocol) | Host decides (implementation) |
+|--------------------------|-------------------------------|
+| `mup.system()` as generic request mechanism | Which actions are available (readFile, fetchUrl, etc.) |
+| Manifest `permissions` as a request field | Which permissions to actually grant |
+| Per-MUP isolation requirement | How isolation is implemented (iframe, VM, container) |
+| Graceful error handling for denied requests | Rate limits, path restrictions, domain allowlists |
+
+> **Note for host implementers:** The specific system actions (e.g., `readFile`, `writeFile`, `scanDirectory`, `fetchUrl`) are implementation choices, not protocol requirements. Different hosts may offer different capabilities depending on their environment. A browser extension host might offer `fetchUrl` but not `readFile`. A local development host might offer both. A production host might offer neither and rely entirely on LLM-mediated access.
+
 ---
 
 # Guidance
 
-## 8. SDK Reference
+## 9. SDK Reference
 
 The host injects a global `mup` object into your MUP. No import needed.
 
@@ -382,7 +451,7 @@ This sends a `system/request` JSON-RPC call to the host. If the host does not su
 
 ---
 
-## 9. Writing Good Descriptions
+## 10. Writing Good Descriptions
 
 The `description` field in your manifest and functions is **the only thing the LLM sees**. It doesn't see your UI, your CSS, or your HTML. Write descriptions as if you're explaining to a colleague what this MUP does and when to use each function.
 
@@ -400,7 +469,7 @@ The `description` field in your manifest and functions is **the only thing the L
 
 ---
 
-## 10. Best Practices
+## 11. Best Practices
 
 ### updateState vs. notifyInteraction
 
@@ -476,7 +545,7 @@ If you need browser APIs (camera, microphone, geolocation), declare them in `per
 
 ---
 
-## 11. File Formats
+## 12. File Formats
 
 A MUP can be authored in two formats: **single-file** or **directory**.
 
