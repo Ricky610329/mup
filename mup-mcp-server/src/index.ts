@@ -290,7 +290,7 @@ function setupMcpServer(
   ensureActive: (mupId: string) => { error?: string; activated?: string },
   pipeline: PipelineManager,
   scheduler: Scheduler,
-): Server {
+): { server: Server; invalidateToolDesc: () => void } {
   const server = new Server(
     { name: "mup", version: "0.2.0" },
     {
@@ -323,14 +323,18 @@ function setupMcpServer(
     },
   );
 
+  // Cache tool description — rebuild only when catalog changes
+  let cachedToolDesc: string | null = null;
+  const invalidateToolDesc = () => { cachedToolDesc = null; };
+
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [{
       name: "mup",
-      description: buildToolDescription(manager, port),
+      description: cachedToolDesc ?? (cachedToolDesc = buildToolDescription(manager, port)),
       inputSchema: {
         type: "object" as const,
         properties: {
-          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "new-instance" to open another instance of a [multi] MUP, "pipe" to manage data pipes, "setNotificationLevel" to change a MUP\'s notification level, "delayCall" to schedule a delayed function call, "cancelDelay" to cancel a pending delay, "onEvent" to register an event listener, "removeEvent" to remove a listener. Omit when calling a function.' },
+          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "detail" to see a MUP\'s functions before calling, "new-instance" to open another instance of a [multi] MUP, "pipe" to manage data pipes, "setNotificationLevel" to change a MUP\'s notification level, "delayCall" to schedule a delayed function call, "cancelDelay" to cancel a pending delay, "onEvent" to register an event listener, "removeEvent" to remove a listener. Omit when calling a function.' },
           level: { type: "string", description: 'For setNotificationLevel: "immediate" (channel push), "notify" (queued for checkInteractions), or "silent" (no events).' },
           mupId: { type: "string", description: "MUP ID (e.g. mup-chess, mup-chart). Auto-activated on first use." },
           functionName: { type: "string", description: "Function to call (e.g. makeMove, renderChart, setPixels)" },
@@ -397,7 +401,7 @@ function setupMcpServer(
     console.error(`[mup-mcp] Permission verdict: ${requestId} → ${behavior}`);
   });
 
-  return server;
+  return { server, invalidateToolDesc };
 }
 
 // ---- Lifecycle ----
@@ -522,7 +526,12 @@ async function main() {
   setupLifecycle(ws);
 
   // --- MCP Server ---
-  const server = setupMcpServer(manager, bridge, ws, port, sendLoadMup, ensureActive, pipeline, scheduler);
+  const { server, invalidateToolDesc } = setupMcpServer(manager, bridge, ws, port, sendLoadMup, ensureActive, pipeline, scheduler);
+
+  // Invalidate tool description cache on catalog changes
+  bridge.typedOn("activate-mup", () => invalidateToolDesc());
+  bridge.typedOn("deactivate-mup", () => invalidateToolDesc());
+  bridge.typedOn("register-and-activate", () => invalidateToolDesc());
 
   // --- Log client capabilities on init ---
   server.oninitialized = () => {

@@ -47,8 +47,8 @@ export function buildToolDescription(manager: MupManager, port: number): string 
   const lines = [
     `MUP — Interactive UI panels in browser at http://localhost:${port}. Auto-activated on first use.`,
     ``, `Call: { "mupId": "...", "functionName": "...", "functionArgs": { ... } }`,
-    `Actions: checkInteractions, list, history, pipe, setNotificationLevel, setLayout, getLayout, setFileAccess, delayCall, cancelDelay, onEvent, removeEvent`,
-    `Multi-instance: use { "action": "new-instance", "mupId": "..." } to open another panel. Returns the new instance ID (_2, _3...).`,
+    `Actions: checkInteractions, list, detail, history, pipe, setNotificationLevel, setLayout, getLayout, setFileAccess, delayCall, cancelDelay, onEvent, removeEvent`,
+    `Multi-instance: use { "action": "new-instance", "mupId": "..." } to open another panel.`,
   ];
   if (active.length > 0) {
     lines.push(``, `Active MUPs:`);
@@ -56,8 +56,10 @@ export function buildToolDescription(manager: MupManager, port: number): string 
       const multi = e.manifest.multiInstance ? " [multi]" : "";
       const level = manager.getNotificationLevel(e.manifest.id);
       const levelTag = level !== "notify" ? ` [${level}]` : "";
-      lines.push(`  ${e.manifest.id}${multi}${levelTag}: ${e.manifest.functions.map((f) => f.name).join(", ")}`);
+      const desc = e.manifest.description.length > 60 ? e.manifest.description.slice(0, 57) + "..." : e.manifest.description;
+      lines.push(`  ${e.manifest.id}${multi}${levelTag} — ${desc} (${e.manifest.functions.length} fn)`);
     }
+    lines.push(``, `Use { "action": "detail", "mupId": "..." } to see functions before calling.`);
   }
   if (inactive.length > 0) {
     lines.push(``, `Available: ${inactive.map((e) => {
@@ -198,6 +200,13 @@ export async function handleToolCall(
 
   // Dispatch by action
   if (args.action === "list") return handleList(manager);
+  if (args.action === "detail") {
+    const mupId = args.mupId as string;
+    if (!mupId) return { content: [text('Provide "mupId".')], isError: true };
+    const entry = manager.getCatalog().find(e => e.manifest.id === mupId);
+    if (!entry) return { content: [text(`MUP not found: ${mupId}`)], isError: true };
+    return { content: [text(buildMupDetail(entry.manifest))] };
+  }
   if (args.action === "checkInteractions") return handleCheckInteractions(manager, args);
   if (args.action === "history") return handleHistory(ws, manager, args);
   if (args.action === "pipe") return handlePipe(pipeline, args);

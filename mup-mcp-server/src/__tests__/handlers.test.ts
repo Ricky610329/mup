@@ -296,6 +296,23 @@ describe("handleToolCall routing", () => {
     assert.ok(result.content[0].text.includes("[ACTIVE]"));
   });
 
+  it("action=detail returns MUP function details", async () => {
+    const result = await handleToolCall({ params: { arguments: { action: "detail", mupId: "mup-test" } } }, ctx) as any;
+    assert.ok(result.content[0].text.includes("doThing"));
+    assert.ok(result.content[0].text.includes("Does a thing"));
+  });
+
+  it("action=detail returns error for missing mupId", async () => {
+    const result = await handleToolCall({ params: { arguments: { action: "detail" } } }, ctx) as any;
+    assert.equal(result.isError, true);
+  });
+
+  it("action=detail returns error for unknown mupId", async () => {
+    const result = await handleToolCall({ params: { arguments: { action: "detail", mupId: "mup-unknown" } } }, ctx) as any;
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0].text.includes("not found"));
+  });
+
   it("action=checkInteractions dispatches correctly", async () => {
     const result = await handleToolCall({ params: { arguments: { action: "checkInteractions" } } }, ctx) as any;
     assert.ok(result.content[0].text.includes("No interactions"));
