@@ -362,8 +362,28 @@ function loadMup(mupId, html, manifest) {
 
   const widget = grid.makeWidget(el);
   debouncedSaveGrid();
+
+  // Store blueprint for lazy iframe creation
+  // iframe is NOT created until first function call or user interaction
   const iframe = widget.querySelector('iframe');
-  setupMupIframe(mupId, manifest, iframe, html);
+  mups.set(mupId, { iframe, port: null, manifest, customName: null, html, loaded: false });
+
+  // Lazy: use IntersectionObserver to load iframe when visible
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      observer.disconnect();
+      ensureMupLoaded(mupId);
+    }
+  }, { threshold: 0.1 });
+  observer.observe(el);
+}
+
+// Load iframe on-demand (lazy)
+function ensureMupLoaded(mupId) {
+  const mup = mups.get(mupId);
+  if (!mup || mup.loaded) return;
+  mup.loaded = true;
+  setupMupIframe(mupId, mup.manifest, mup.iframe, mup.html);
 }
 
 function setupMupIframe(mupId, manifest, iframe, html) {
@@ -405,7 +425,13 @@ function setupMupIframe(mupId, manifest, iframe, html) {
   };
 
   iframe.src = blobUrl;
-  mups.set(mupId, { iframe, port, manifest, customName: null });
+  // Update existing mup entry with port (lazy loading stores mup before iframe is ready)
+  const existing = mups.get(mupId);
+  if (existing) {
+    existing.port = port;
+  } else {
+    mups.set(mupId, { iframe, port, manifest, customName: null, html, loaded: true });
+  }
 }
 
 function handleMupMessage(mupId, mupName, data) {
@@ -485,6 +511,22 @@ function callMupFunction(callId, mupId, fn, args) {
     loadingBar.classList.remove('active');
     if (ws && ws.readyState === WebSocket.OPEN)
       ws.send(JSON.stringify({ type: "result", callId, result: { content: [{ type: "text", text: `MUP not loaded: ${mupId}` }], isError: true } }));
+    return;
+  }
+  // Lazy load: ensure iframe is created before calling
+  if (!mup.loaded) {
+    ensureMupLoaded(mupId);
+    // Wait for iframe to initialize, then retry
+    const onLoaded = () => {
+      const msgId = nextMsgId++;
+      callMap.set(msgId, callId);
+      mup.port.postMessage({ jsonrpc: "2.0", id: msgId, method: "functions/call", params: { name: fn, arguments: args || {}, source: "llm" } });
+    };
+    // The mup-loaded event from server confirms initialization
+    const checkReady = setInterval(() => {
+      if (mup.port) { clearInterval(checkReady); onLoaded(); }
+    }, 50);
+    setTimeout(() => clearInterval(checkReady), 30000); // 30s timeout
     return;
   }
   const msgId = nextMsgId++;
