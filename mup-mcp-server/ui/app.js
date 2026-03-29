@@ -32,6 +32,34 @@ let ws = null;
 const statusDot = document.getElementById("statusDot");
 const eventBadges = document.getElementById("eventBadges");
 
+// ---- Message Batching ----
+// Batch state/interaction/event messages to reduce WebSocket traffic
+const MSG_BATCH_MS = 100;
+let msgBatch = [];
+let batchTimer = null;
+
+function queueMsg(msg) {
+  msgBatch.push(msg);
+  if (!batchTimer) {
+    batchTimer = setTimeout(flushBatch, MSG_BATCH_MS);
+  }
+}
+
+function flushBatch() {
+  batchTimer = null;
+  if (!msgBatch.length || !ws || ws.readyState !== WebSocket.OPEN) { msgBatch = []; return; }
+  // Deduplicate state updates: keep only latest per mupId
+  const stateByMup = new Map();
+  const others = [];
+  for (const m of msgBatch) {
+    if (m.type === 'state') stateByMup.set(m.mupId, m);
+    else others.push(m);
+  }
+  const toSend = [...stateByMup.values(), ...others];
+  for (const m of toSend) ws.send(JSON.stringify(m));
+  msgBatch = [];
+}
+
 function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 
 // ---- Event Badges ----
@@ -486,15 +514,12 @@ function handleMupMessage(mupId, mupName, data) {
 
   if ("method" in data && !("id" in data)) {
     if (data.method === "notifications/state/update") {
-      if (ws && ws.readyState === WebSocket.OPEN)
-        ws.send(JSON.stringify({ type: "state", mupId, summary: data.params?.summary || "", data: data.params?.data }));
+      queueMsg({ type: "state", mupId, summary: data.params?.summary || "", data: data.params?.data });
     } else if (data.method === "notifications/interaction") {
       addEventBadge(mupName, data.params?.summary || data.params?.action);
-      if (ws && ws.readyState === WebSocket.OPEN)
-        ws.send(JSON.stringify({ type: "interaction", mupId, action: data.params?.action || "", summary: data.params?.summary || "", data: data.params?.data }));
+      queueMsg({ type: "interaction", mupId, action: data.params?.action || "", summary: data.params?.summary || "", data: data.params?.data });
     } else if (data.method === "notifications/event") {
-      if (ws && ws.readyState === WebSocket.OPEN)
-        ws.send(JSON.stringify({ type: "mup-event", mupId, event: data.params?.event || "", data: data.params?.data }));
+      queueMsg({ type: "mup-event", mupId, event: data.params?.event || "", data: data.params?.data });
     }
   }
 }
