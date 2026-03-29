@@ -542,7 +542,7 @@
         const el = panel.querySelector('#' + id);
         if (el) el.addEventListener('input', () => {
           slide.content[field] = el.value;
-          render(); debouncedSave();
+          renderCanvas(); renderThumbnails(); debouncedSave();
         });
       };
       const layoutEl = panel.querySelector('#editLayout');
@@ -1114,5 +1114,9 @@
     });
 
     // Re-scale slides when panel is resized
-    new ResizeObserver(() => { if (slides.length > 0) render(); })
-      .observe(document.getElementById('canvasArea'));
+    let resizing = false;
+    new ResizeObserver(() => {
+      if (resizing || slides.length === 0) return;
+      resizing = true;
+      requestAnimationFrame(() => { render(); resizing = false; });
+    }).observe(document.getElementById('canvasArea'));

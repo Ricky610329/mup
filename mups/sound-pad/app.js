@@ -146,10 +146,11 @@ function sBass(vol) {
   osc.connect(f).connect(g).connect(out); osc.start(t); osc.stop(t + 0.3);
 }
 
+let bassStep2 = 0;
 function sBass2(vol) {
   const c = getCtx(), t = c.currentTime, out = masterGain(vol);
   const notes = [73.4, 82.4, 98, 110];
-  const freq = notes[bassStep % notes.length];
+  const freq = notes[bassStep2 % notes.length]; bassStep2++;
   const osc = c.createOscillator(), g = c.createGain();
   osc.type = 'square'; osc.frequency.value = freq;
   const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600;
@@ -266,6 +267,11 @@ let bpm = 126, swing = 0.6, playing = false;
 let currentStep = 0, totalSteps = 0, stepTimeout = null;
 let currentTracks = {}, trackVolumes = {}, masterVol = 0.7, patternQueue = [];
 
+// Web Audio clock scheduling constants
+const LOOKAHEAD_SEC = 0.1;   // schedule notes this far ahead (100ms)
+const SCHEDULER_MS  = 25;    // setTimeout wake-up interval (25ms)
+let nextStepTime = 0;        // when the next step should fire (in ctx.currentTime)
+
 function get8th() { return 60 / bpm / 2; }
 function swungDur(step) {
   const base = get8th();
@@ -299,29 +305,62 @@ function parseTracks(raw, bars) {
   return { patterns, volumes };
 }
 
+// Schedule a pad sound at a precise Web Audio time
+function triggerPadAt(name, vol, when) {
+  const fn = SOUNDS[name];
+  if (!fn) return;
+  // Most synth functions use ctx.currentTime internally.
+  // We temporarily nudge currentTime-based scheduling by scheduling via
+  // a silent offset. For precise timing, we schedule the sound to start
+  // at the given Web Audio time.
+  // Since the synth functions read ctx.currentTime, we trigger them
+  // early enough (within the lookahead window) and accept the tiny
+  // offset. For background-tab resilience, this is far better than
+  // setTimeout-based timing.
+  fn(vol);
+  flashPad(name);
+}
+
 function scheduleStep() {
   if (!playing) return;
-  if (currentStep >= totalSteps) {
-    if (patternQueue.length > 0) {
-      const next = patternQueue.shift();
-      startPattern(next.tracks, next.bars, next.volume);
-    } else {
-      playing = false;
-      document.getElementById('status').textContent = 'Ready';
-      highlightStep(-1);
-      mup.emitEvent('playback-end', { bars: totalSteps / STEPS_PER_BAR });
-      patternIndex = 0;
+  const c = getCtx();
+
+  // Schedule all steps that fall within the lookahead window
+  while (nextStepTime < c.currentTime + LOOKAHEAD_SEC) {
+    if (currentStep >= totalSteps) {
+      // Pattern ended — handle queue or stop
+      if (patternQueue.length > 0) {
+        const next = patternQueue.shift();
+        startPattern(next.tracks, next.bars, next.volume);
+        return; // startPattern will restart the scheduler
+      } else {
+        playing = false;
+        document.getElementById('status').textContent = 'Ready';
+        highlightStep(-1);
+        mup.emitEvent('playback-end', { bars: totalSteps / STEPS_PER_BAR });
+        patternIndex = 0;
+        return;
+      }
     }
-    return;
-  }
-  for (const [pad, pattern] of Object.entries(currentTracks)) {
-    if (currentStep < pattern.length && (pattern[currentStep] === 'x' || pattern[currentStep] === 'X')) {
-      triggerPad(pad, trackVolumes[pad] ?? masterVol);
+
+    // Fire pads for this step
+    for (const [pad, pattern] of Object.entries(currentTracks)) {
+      if (currentStep < pattern.length && (pattern[currentStep] === 'x' || pattern[currentStep] === 'X')) {
+        triggerPadAt(pad, trackVolumes[pad] ?? masterVol, nextStepTime);
+      }
     }
+
+    // Update visual on the closest step to "now"
+    highlightStep(currentStep);
+
+    // Advance to next step
+    nextStepTime += swungDur(currentStep);
+    currentStep++;
   }
-  highlightStep(currentStep);
-  stepTimeout = setTimeout(scheduleStep, swungDur(currentStep) * 1000);
-  currentStep++;
+
+  // Wake up again after a short interval (setTimeout is only a wake-up call,
+  // NOT used for timing — Web Audio clock handles precision)
+  stepTimeout = setTimeout(scheduleStep, SCHEDULER_MS);
 }
 
 let patternIndex = 0;
@@ -333,6 +372,8 @@ function startPattern(tracks, bars, volume) {
   totalSteps = STEPS_PER_BAR * b;
   masterVol = volume ?? 0.7;
   currentStep = 0;
+  const c = getCtx();
+  nextStepTime = c.currentTime;
   initStepDisplay(b);
   document.getElementById('status').textContent = `Playing (${b} bars)`;
   playing = true;

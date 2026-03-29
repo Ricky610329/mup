@@ -372,7 +372,7 @@
       const existing = new Set();
       tasks.forEach((t, id) => {
         existing.add(id);
-        let el = list.querySelector(`[data-id="${id}"]`);
+        let el = list.querySelector(`[data-id="${CSS.escape(id)}"]`);
         if (!el) {
           el = document.createElement('div');
           el.className = 'task-item';
@@ -409,7 +409,7 @@
       });
 
       list.querySelectorAll('.task-item').forEach(el => {
-        if (!existing.has(el.dataset.id)) {
+        if (!existing.has(el.dataset.id) && !el.classList.contains('removing')) {
           el.classList.add('removing');
           setTimeout(() => el.remove(), 300);
         }
@@ -436,6 +436,14 @@
     mup.registerFunction('addTask', async (params) => {
       const { taskId, name, progress = 0, status = 'waiting' } = params;
       if (!taskId || !name) return { content: [{ type: 'text', text: 'taskId and name are required' }], isError: true };
+      const existing = tasks.get(taskId);
+      if (existing) {
+        if (name !== undefined) existing.name = name;
+        if (progress !== undefined) existing.progress = Math.min(100, Math.max(0, progress));
+        if (status !== undefined) existing.status = status;
+        save(); render();
+        return { content: [{ type: 'text', text: `Task "${taskId}" already exists — updated instead (${existing.status}, ${existing.progress}%)` }], isError: false };
+      }
       tasks.set(taskId, { name, progress: Math.min(100, Math.max(0, progress)), status });
       save(); render();
       return { content: [{ type: 'text', text: `Task "${name}" added (${status}, ${progress}%)` }], isError: false };

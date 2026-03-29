@@ -140,7 +140,7 @@
       border-radius: 2px;
       transition: width 0.1s ease;
     }
-    .speaking .volume-fill { background: #3b82f6; }
+    .mic-btn.speaking ~ .volume-bar .volume-fill { background: #3b82f6; }
 
     /* Transcript */
     .transcript {
@@ -326,7 +326,7 @@
         lang = newLang;
         localStorage.setItem('mup-voice-lang', lang);
         updateUI();
-        if (active) { stopRecognition(true); startRecognition(); }
+        if (active) { stopRecognition(); startRecognition(); }
       }
       langPicker.classList.remove('open');
     });
@@ -349,7 +349,7 @@
     // ---- Speech Recognition ----
     function startRecognition() {
       if (!SpeechRecognition || speaking) return;
-      stopRecognition(true); // clean up previous
+      stopRecognition(); // clean up previous
 
       recognition = new SpeechRecognition();
       recognition.continuous = true;
@@ -404,7 +404,7 @@
       }
     }
 
-    function stopRecognition(silent) {
+    function stopRecognition() {
       clearTimeout(restartTimer);
       if (recognition) {
         try { recognition.abort(); } catch (e) {}
@@ -495,7 +495,7 @@
         };
 
         // Timeout fallback
-        const timeout = setTimeout(finish, Math.max(3000, text.length * 100));
+        const timeout = setTimeout(finish, Math.max(5000, text.length * 300));
         utterance.onend = () => { clearTimeout(timeout); finish(); };
         utterance.onerror = () => { clearTimeout(timeout); finish(); };
 
@@ -515,6 +515,9 @@
 
     // ---- MUP Functions ----
     mup.registerFunction('speak', async (params) => {
+      if (!params.text || typeof params.text !== 'string' || !params.text.trim()) {
+        return { content: [{ type: 'text', text: 'Error: "text" parameter is required and must be a non-empty string.' }], isError: true };
+      }
       await speakText(params.text, params.lang);
       return { content: [{ type: 'text', text: `Spoke: "${params.text.slice(0, 80)}"` }], isError: false };
     });

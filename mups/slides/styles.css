@@ -48,11 +48,6 @@
       background: var(--editor-toolbar); display: flex; flex-direction: column;
       overflow: hidden;
     }
-    .sidebar-header {
-      padding: 6px 8px; display: flex; align-items: center;
-      border-bottom: 1px solid var(--editor-border); flex-shrink: 0;
-    }
-    .sidebar-header span { font-size: 10px; font-weight: 600; color: var(--editor-ter); flex: 1; }
     .slide-list { flex: 1; overflow-y: auto; padding: 4px; }
     .slide-thumb {
       position: relative; border: 2px solid transparent; border-radius: 4px;
@@ -199,20 +194,7 @@
       resize: none; min-height: 80px; line-height: 1.5;
     }
     .edit-textarea:focus { border-color: var(--editor-accent); }
-    /* ---- Print / PDF ---- */
-    @media print {
-      body, .toolbar, .sidebar, .edit-panel, .canvas-area { all: unset !important; }
-      .slide-frame { box-shadow: none !important; border-radius: 0 !important; }
-      .print-container { display: block !important; }
-      .print-slide {
-        width: 100vw; height: 100vh; page-break-after: always;
-        display: flex; flex-direction: column; overflow: hidden;
-        position: relative;
-      }
-      .print-slide:last-child { page-break-after: auto; }
-    }
-    @page { size: landscape; margin: 0; }
-    .print-container { display: none; }
+    /* (Print styles are inline in the PDF export window) */
     /* ---- Empty state ---- */
     .empty-state {
       display: flex; flex-direction: column; align-items: center;
