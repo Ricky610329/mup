@@ -218,6 +218,186 @@ describe("PipelineManager", () => {
     });
   });
 
+  // ---- resolveValue edge cases ----
+
+  describe("resolveValue edge cases", () => {
+    it("resolves nested dot-path a.b.c", async () => {
+      pm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt",
+        targetFunction: "setVal",
+        transform: { deep: "a.b.c" },
+        debounceMs: 0,
+      });
+      pm.onStateUpdate("mup-src", { a: { b: { c: "found" } } });
+      await new Promise(r => setTimeout(r, 20));
+      assert.equal(calls.length, 1);
+      assert.deepEqual(calls[0].args, { deep: "found" });
+    });
+
+    it("returns undefined for broken nested path", async () => {
+      pm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt",
+        targetFunction: "setVal",
+        transform: { val: "a.b.missing" },
+        debounceMs: 0,
+      });
+      pm.onStateUpdate("mup-src", { a: { b: { c: 1 } } });
+      await new Promise(r => setTimeout(r, 20));
+      assert.equal(calls.length, 1);
+      assert.deepEqual(calls[0].args, { val: undefined });
+    });
+
+    it("resolves a number literal", async () => {
+      pm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt",
+        targetFunction: "setVal",
+        transform: { count: "42", neg: "-7", decimal: "3.14" },
+        debounceMs: 0,
+      });
+      pm.onStateUpdate("mup-src", {});
+      await new Promise(r => setTimeout(r, 20));
+      assert.equal(calls.length, 1);
+      assert.deepEqual(calls[0].args, { count: 42, neg: -7, decimal: 3.14 });
+    });
+
+    it("resolves boolean literals", async () => {
+      pm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt",
+        targetFunction: "setVal",
+        transform: { on: "true", off: "false" },
+        debounceMs: 0,
+      });
+      pm.onStateUpdate("mup-src", {});
+      await new Promise(r => setTimeout(r, 20));
+      assert.equal(calls.length, 1);
+      assert.deepEqual(calls[0].args, { on: true, off: false });
+    });
+  });
+
+  // ---- addPipe self-loop ----
+
+  describe("addPipe self-loop", () => {
+    it("rejects same source and target with same function (self-loop)", () => {
+      const result = pm.addPipe({
+        sourceMupId: "mup-x",
+        targetMupId: "mup-x",
+        targetFunction: "refresh",
+        transform: { v: "." },
+      });
+      assert.ok("error" in result);
+      assert.ok((result as { error: string }).error.includes("same"));
+    });
+  });
+
+  // ---- getLog ----
+
+  describe("getLog", () => {
+    it("returns execution history after pipe fires", async () => {
+      pm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt",
+        targetFunction: "fn",
+        transform: { v: "." },
+        debounceMs: 0,
+      });
+      pm.onStateUpdate("mup-src", { x: 1 });
+      await new Promise(r => setTimeout(r, 20));
+
+      const log = pm.getLog();
+      assert.equal(log.length, 1);
+      assert.equal(log[0].success, true);
+      assert.match(log[0].pipeId, /^pipe_/);
+      assert.equal(typeof log[0].timestamp, "number");
+    });
+
+    it("records failed execution in log", async () => {
+      const failCallFn: CallFn = async () => { throw new Error("boom"); };
+      const failPm = new PipelineManager(failCallFn);
+      failPm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt",
+        targetFunction: "fn",
+        transform: { v: "." },
+        debounceMs: 0,
+      });
+      failPm.onStateUpdate("mup-src", {});
+      await new Promise(r => setTimeout(r, 20));
+
+      const log = failPm.getLog();
+      assert.equal(log.length, 1);
+      assert.equal(log[0].success, false);
+      assert.equal(log[0].error, "boom");
+    });
+  });
+
+  // ---- Multiple pipes from same source ----
+
+  describe("multiple pipes from same source", () => {
+    it("both pipes trigger on a single state update", async () => {
+      pm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt1",
+        targetFunction: "fn1",
+        transform: { a: "x" },
+        debounceMs: 0,
+      });
+      pm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt2",
+        targetFunction: "fn2",
+        transform: { b: "y" },
+        debounceMs: 0,
+      });
+      pm.onStateUpdate("mup-src", { x: 10, y: 20 });
+      await new Promise(r => setTimeout(r, 30));
+
+      assert.equal(calls.length, 2);
+      const mupIds = calls.map(c => c.mupId).sort();
+      assert.deepEqual(mupIds, ["mup-tgt1", "mup-tgt2"]);
+      assert.deepEqual(calls.find(c => c.mupId === "mup-tgt1")!.args, { a: 10 });
+      assert.deepEqual(calls.find(c => c.mupId === "mup-tgt2")!.args, { b: 20 });
+    });
+  });
+
+  // ---- Pipe with sourceFunction ----
+
+  describe("pipe with sourceFunction", () => {
+    it("calls source function first then transforms result to target", async () => {
+      const sourceCalls: string[] = [];
+      const customCallFn: CallFn = async (mupId, fnName, args) => {
+        sourceCalls.push(`${mupId}.${fnName}`);
+        if (mupId === "mup-src" && fnName === "getData") {
+          return { content: [{ text: JSON.stringify({ level: 5, label: "high" }) }] };
+        }
+        calls.push({ mupId, fnName, args });
+        return { content: [{ text: JSON.stringify({ ok: true }) }] };
+      };
+      const pmCustom = new PipelineManager(customCallFn);
+      pmCustom.addPipe({
+        sourceMupId: "mup-src",
+        sourceFunction: "getData",
+        targetMupId: "mup-tgt",
+        targetFunction: "display",
+        transform: { value: "level", name: "label" },
+        debounceMs: 0,
+      });
+
+      calls = []; // reset shared array
+      pmCustom.onStateUpdate("mup-src", { ignored: true });
+      await new Promise(r => setTimeout(r, 30));
+
+      assert.ok(sourceCalls.includes("mup-src.getData"));
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].mupId, "mup-tgt");
+      assert.equal(calls[0].fnName, "display");
+      assert.deepEqual(calls[0].args, { value: 5, name: "high" });
+    });
+  });
+
   // ---- onMupDeactivated ----
 
   describe("onMupDeactivated", () => {

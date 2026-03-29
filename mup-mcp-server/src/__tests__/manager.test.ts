@@ -1,6 +1,8 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { MupManager } from "../manager.js";
+import { CONFIG } from "../config.js";
+import type { MupManifest } from "../types.js";
 
 const SAMPLE_HTML = `<!DOCTYPE html>
 <html><head>
@@ -24,6 +26,54 @@ const SINGLE_HTML = `<!DOCTYPE html>
   "name": "Single MUP",
   "description": "Not multi-instance",
   "functions": []
+}
+</script>
+</head><body></body></html>`;
+
+const NOTIFY_HTML = `<!DOCTYPE html>
+<html><head>
+<script type="application/mup-manifest">
+{
+  "name": "Notify MUP",
+  "description": "Has notification settings",
+  "functions": [],
+  "notifications": { "level": "immediate", "overridable": true }
+}
+</script>
+</head><body></body></html>`;
+
+const FIXED_NOTIFY_HTML = `<!DOCTYPE html>
+<html><head>
+<script type="application/mup-manifest">
+{
+  "name": "Fixed Notify MUP",
+  "description": "Non-overridable notifications",
+  "functions": [],
+  "notifications": { "level": "silent", "overridable": false }
+}
+</script>
+</head><body></body></html>`;
+
+const PERMISSIONS_HTML = `<!DOCTYPE html>
+<html><head>
+<script type="application/mup-manifest">
+{
+  "name": "Perms MUP",
+  "description": "Has permissions",
+  "functions": [],
+  "permissions": ["clipboard", "camera"]
+}
+</script>
+</head><body></body></html>`;
+
+const DARKMODE_HTML = `<!DOCTYPE html>
+<html><head>
+<script type="application/mup-manifest">
+{
+  "name": "Dark MUP",
+  "description": "Dark mode enabled",
+  "functions": [],
+  "darkMode": true
 }
 </script>
 </head><body></body></html>`;
@@ -270,6 +320,323 @@ describe("MupManager", () => {
 
     it("returns false for unknown ID", () => {
       assert.equal(mgr.removeCatalogEntry("nonexistent"), false);
+    });
+  });
+
+  // ---- getNotificationLevel ----
+
+  describe("getNotificationLevel", () => {
+    it("returns default 'notify' when manifest has no notifications", () => {
+      mgr.loadFromHtml(SINGLE_HTML, "single.html");
+      assert.equal(mgr.getNotificationLevel("mup-single"), "notify");
+    });
+
+    it("returns level from manifest notifications", () => {
+      mgr.loadFromHtml(NOTIFY_HTML, "notify.html");
+      assert.equal(mgr.getNotificationLevel("mup-notify"), "immediate");
+    });
+
+    it("returns override level when set", () => {
+      mgr.loadFromHtml(NOTIFY_HTML, "notify.html");
+      mgr.setNotificationLevel("mup-notify", "silent");
+      assert.equal(mgr.getNotificationLevel("mup-notify"), "silent");
+    });
+
+    it("returns 'notify' for unknown MUP", () => {
+      assert.equal(mgr.getNotificationLevel("nonexistent"), "notify");
+    });
+
+    it("falls back to catalog entry for instance MUPs", () => {
+      mgr.scanFromHtml(NOTIFY_HTML, "notify.html");
+      // Catalog entry has level "immediate" — instance ID like mup-notify_2
+      // should resolve via the base ID from catalog
+      assert.equal(mgr.getNotificationLevel("mup-notify_2"), "immediate");
+    });
+  });
+
+  // ---- setNotificationLevel ----
+
+  describe("setNotificationLevel", () => {
+    it("sets valid level and returns null", () => {
+      mgr.loadFromHtml(NOTIFY_HTML, "notify.html");
+      const err = mgr.setNotificationLevel("mup-notify", "silent");
+      assert.equal(err, null);
+      assert.equal(mgr.getNotificationLevel("mup-notify"), "silent");
+    });
+
+    it("rejects non-overridable MUP", () => {
+      mgr.loadFromHtml(FIXED_NOTIFY_HTML, "fixed-notify.html");
+      const err = mgr.setNotificationLevel("mup-fixed-notify", "immediate");
+      assert.notEqual(err, null);
+      assert.match(err!, /cannot be changed/);
+      // Level should remain unchanged
+      assert.equal(mgr.getNotificationLevel("mup-fixed-notify"), "silent");
+    });
+
+    it("returns error for unknown MUP", () => {
+      const err = mgr.setNotificationLevel("nonexistent", "silent");
+      assert.notEqual(err, null);
+      assert.match(err!, /not found/);
+    });
+
+    it("allows override when manifest has no notifications field", () => {
+      mgr.loadFromHtml(SINGLE_HTML, "single.html");
+      const err = mgr.setNotificationLevel("mup-single", "immediate");
+      assert.equal(err, null);
+      assert.equal(mgr.getNotificationLevel("mup-single"), "immediate");
+    });
+  });
+
+  // ---- clearCatalog ----
+
+  describe("clearCatalog", () => {
+    it("clears all entries", () => {
+      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
+      mgr.scanFromHtml(SINGLE_HTML, "single.html");
+      assert.equal(mgr.getCatalog().length, 2);
+
+      mgr.clearCatalog();
+      assert.equal(mgr.getCatalog().length, 0);
+    });
+
+    it("is idempotent on empty catalog", () => {
+      mgr.clearCatalog();
+      assert.equal(mgr.getCatalog().length, 0);
+    });
+  });
+
+  // ---- isMultiInstance ----
+
+  describe("isMultiInstance", () => {
+    it("returns true for multi-instance MUP", () => {
+      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
+      assert.equal(mgr.isMultiInstance("mup-test"), true);
+    });
+
+    it("returns false for single-instance MUP", () => {
+      mgr.scanFromHtml(SINGLE_HTML, "single.html");
+      assert.equal(mgr.isMultiInstance("mup-single"), false);
+    });
+
+    it("returns false for unknown MUP", () => {
+      assert.equal(mgr.isMultiInstance("nonexistent"), false);
+    });
+
+    it("resolves base ID from instance ID", () => {
+      mgr.scanFromHtml(SAMPLE_HTML, "test.html");
+      // mup-test_3 should strip to mup-test and find the catalog entry
+      assert.equal(mgr.isMultiInstance("mup-test_3"), true);
+    });
+  });
+
+  // ---- registerSystemMup / isSystemMup ----
+
+  describe("registerSystemMup / isSystemMup", () => {
+    const sysManifest: MupManifest = {
+      protocol: "mup/2026-03-17",
+      id: "mup-system",
+      name: "System MUP",
+      version: "1.0.0",
+      description: "A system MUP",
+      functions: [{ name: "ping", description: "Ping", inputSchema: { type: "object", properties: {} } }],
+      multiInstance: false,
+      darkMode: false,
+    };
+
+    it("registers a system MUP and marks it as system", () => {
+      mgr.registerSystemMup(sysManifest);
+      assert.equal(mgr.isSystemMup("mup-system"), true);
+    });
+
+    it("returns false for non-system MUP", () => {
+      assert.equal(mgr.isSystemMup("mup-test"), false);
+    });
+
+    it("system MUP is immediately active", () => {
+      mgr.registerSystemMup(sysManifest);
+      assert.equal(mgr.isActive("mup-system"), true);
+    });
+
+    it("system MUP appears in getAll()", () => {
+      mgr.registerSystemMup(sysManifest);
+      const all = mgr.getAll();
+      assert.equal(all.some(m => m.manifest.id === "mup-system"), true);
+    });
+
+    it("system MUP is retrievable via get()", () => {
+      mgr.registerSystemMup(sysManifest);
+      const mup = mgr.get("mup-system");
+      assert.notEqual(mup, undefined);
+      assert.equal(mup!.manifest.name, "System MUP");
+      assert.equal(mup!.filePath, "__system__");
+    });
+
+    it("system MUP cannot be deactivated", () => {
+      mgr.registerSystemMup(sysManifest);
+      mgr.deactivate("mup-system");
+      assert.equal(mgr.isActive("mup-system"), true);
+    });
+
+    it("activate returns existing system MUP without catalog entry", () => {
+      mgr.registerSystemMup(sysManifest);
+      const result = mgr.activate("mup-system");
+      assert.notEqual(result, null);
+      assert.equal(result!.manifest.id, "mup-system");
+    });
+  });
+
+  // ---- parseManifest edge cases ----
+
+  describe("parseManifest edge cases", () => {
+    it("parses notifications field", () => {
+      const m = mgr.parseManifest(NOTIFY_HTML, "notify.html");
+      assert.deepEqual(m.notifications, { level: "immediate", overridable: true });
+    });
+
+    it("parses non-overridable notifications", () => {
+      const m = mgr.parseManifest(FIXED_NOTIFY_HTML, "fixed-notify.html");
+      assert.deepEqual(m.notifications, { level: "silent", overridable: false });
+    });
+
+    it("parses permissions field", () => {
+      const m = mgr.parseManifest(PERMISSIONS_HTML, "perms.html");
+      assert.deepEqual(m.permissions, ["clipboard", "camera"]);
+    });
+
+    it("parses multiInstance field from manifest", () => {
+      const m = mgr.parseManifest(SAMPLE_HTML, "test.html");
+      assert.equal(m.multiInstance, true);
+
+      const m2 = mgr.parseManifest(SINGLE_HTML, "single.html");
+      assert.equal(m2.multiInstance, false);
+    });
+
+    it("parses darkMode field", () => {
+      const m = mgr.parseManifest(DARKMODE_HTML, "dark.html");
+      assert.equal(m.darkMode, true);
+    });
+
+    it("defaults darkMode to false", () => {
+      const m = mgr.parseManifest(SINGLE_HTML, "single.html");
+      assert.equal(m.darkMode, false);
+    });
+
+    it("notifications is undefined when not in manifest", () => {
+      const m = mgr.parseManifest(SINGLE_HTML, "single.html");
+      assert.equal(m.notifications, undefined);
+    });
+
+    it("defaults notifications.overridable to true when only level is given", () => {
+      const html = `<!DOCTYPE html>
+<html><head>
+<script type="application/mup-manifest">
+{ "name": "Partial Notify", "functions": [], "notifications": { "level": "silent" } }
+</script>
+</head><body></body></html>`;
+      const m = mgr.parseManifest(html, "partial.html");
+      assert.deepEqual(m.notifications, { level: "silent", overridable: true });
+    });
+
+    it("defaults notifications.level to 'notify' when only overridable is given", () => {
+      const html = `<!DOCTYPE html>
+<html><head>
+<script type="application/mup-manifest">
+{ "name": "Overridable Only", "functions": [], "notifications": { "overridable": false } }
+</script>
+</head><body></body></html>`;
+      const m = mgr.parseManifest(html, "overridable.html");
+      assert.deepEqual(m.notifications, { level: "notify", overridable: false });
+    });
+
+    it("derives ID from directory name for index.html", () => {
+      const html = `<!DOCTYPE html>
+<html><head>
+<script type="application/mup-manifest">
+{ "name": "Index MUP", "functions": [] }
+</script>
+</head><body></body></html>`;
+      const m = mgr.parseManifest(html, "/mups/my-widget/index.html");
+      assert.equal(m.id, "mup-my-widget");
+    });
+  });
+
+  // ---- addEvent overflow ----
+
+  describe("addEvent overflow", () => {
+    it("drops oldest events when exceeding maxPendingEvents", () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      const max = CONFIG.maxPendingEvents;
+
+      // Fill to capacity
+      for (let i = 0; i < max; i++) {
+        mgr.addEvent("mup-test", `event-${i}`, `Event ${i}`);
+      }
+
+      const mup = mgr.get("mup-test")!;
+      assert.equal(mup.pendingEvents.length, max);
+      assert.equal(mup.pendingEvents[0].action, "event-0");
+
+      // Add one more — oldest should be dropped
+      mgr.addEvent("mup-test", "overflow-1", "Overflow 1");
+      assert.equal(mup.pendingEvents.length, max);
+      assert.equal(mup.pendingEvents[0].action, "event-1");
+      assert.equal(mup.pendingEvents[max - 1].action, "overflow-1");
+    });
+
+    it("drops multiple oldest events on repeated overflow", () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      const max = CONFIG.maxPendingEvents;
+
+      // Fill to capacity
+      for (let i = 0; i < max; i++) {
+        mgr.addEvent("mup-test", `event-${i}`, `Event ${i}`);
+      }
+
+      // Add 3 more — the first 3 originals should be gone
+      mgr.addEvent("mup-test", "over-a", "A");
+      mgr.addEvent("mup-test", "over-b", "B");
+      mgr.addEvent("mup-test", "over-c", "C");
+
+      const mup = mgr.get("mup-test")!;
+      assert.equal(mup.pendingEvents.length, max);
+      assert.equal(mup.pendingEvents[0].action, "event-3");
+      assert.equal(mup.pendingEvents[max - 1].action, "over-c");
+    });
+
+    it("sets _overflowWarned flag on first overflow", () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      const max = CONFIG.maxPendingEvents;
+
+      for (let i = 0; i < max; i++) {
+        mgr.addEvent("mup-test", `event-${i}`, `Event ${i}`);
+      }
+
+      const mup = mgr.get("mup-test")!;
+      assert.equal(mup._overflowWarned, undefined);
+
+      mgr.addEvent("mup-test", "overflow", "Overflow");
+      assert.equal(mup._overflowWarned, true);
+    });
+
+    it("resets _overflowWarned after drainEvents", () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      const max = CONFIG.maxPendingEvents;
+
+      for (let i = 0; i <= max; i++) {
+        mgr.addEvent("mup-test", `event-${i}`, `Event ${i}`);
+      }
+
+      const mup = mgr.get("mup-test")!;
+      assert.equal(mup._overflowWarned, true);
+
+      mgr.drainEvents();
+      assert.equal(mup._overflowWarned, false);
+    });
+
+    it("ignores addEvent for unknown MUP", () => {
+      // Should not throw
+      mgr.addEvent("nonexistent", "click", "Clicked");
+      assert.equal(mgr.drainEvents().length, 0);
     });
   });
 });
