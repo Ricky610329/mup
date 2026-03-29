@@ -316,8 +316,9 @@ export class UiBridge extends EventEmitter {
   private checkPathAccess(mupId: string, resolved: string): boolean {
     const allowed = this.fileAccess.get(mupId) || [];
     return allowed.some(prefix => {
-      const normalizedPrefix = prefix.endsWith(path.sep) ? prefix : prefix + path.sep;
-      return resolved === prefix || resolved.startsWith(normalizedPrefix);
+      // Normalize: strip trailing sep for comparison, then check with sep
+      const base = prefix.endsWith(path.sep) ? prefix.slice(0, -1) : prefix;
+      return resolved === base || resolved === base + path.sep || resolved.startsWith(base + path.sep);
     });
   }
 
@@ -344,12 +345,6 @@ export class UiBridge extends EventEmitter {
         return;
       }
       const resolved = path.resolve(filePath);
-      // Block path traversal
-      if (resolved.includes("..") || !path.isAbsolute(resolved)) {
-        this.sendRaw({ type: "system-response", requestId, result: { error: "Invalid path" } });
-        return;
-      }
-      // Check permissions
       const hasAccess = this.checkPathAccess(mupId, resolved);
       if (!hasAccess) {
         this.sendRaw({ type: "system-response", requestId, result: { error: `Access denied: ${filePath}. Use setFileAccess to grant access.` } });
