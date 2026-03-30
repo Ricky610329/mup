@@ -1,6 +1,9 @@
 // ---- PDF Reader MUP ----
-import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.mjs';
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.mjs';
+// pdfjsLib loaded via <script> tag in index.html (global)
+// Set worker after DOM ready to ensure pdfjsLib is loaded
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
 
 // ---- State ----
 const STORE_KEY = 'mup-pdf-data';
@@ -9,7 +12,7 @@ let pdfDoc = null;
 let currentPage = 1;
 let totalPages = 0;
 let currentPath = null;
-let scale = 1.5;
+let scale = 2.0;
 let selection = null; // { x, y, w, h } in canvas pixels
 
 // ---- Helpers ----
@@ -51,13 +54,17 @@ async function renderPage(pageNum) {
   pdfCanvas.width = viewport.width;
   pdfCanvas.height = viewport.height;
   await page.render({ canvasContext: pdfCtx, viewport }).promise;
-  document.getElementById('emptyState').style.display = 'none';
   document.getElementById('pageInput').value = pageNum;
   drawSelection();
   broadcastState();
 }
 
 async function loadPdfFromPath(filePath) {
+  if (typeof pdfjsLib === 'undefined') {
+    document.getElementById('emptyState').innerHTML = '<div class="empty-icon">!</div><div class="empty-text" style="color:var(--red)">PDF.js failed to load from CDN</div>';
+    document.getElementById('emptyState').style.display = '';
+    return;
+  }
   try {
     const base64 = await mup.readFileBase64(filePath);
     const binary = atob(base64);
@@ -72,13 +79,15 @@ async function loadPdfFromPath(filePath) {
     document.getElementById('pageControls').style.display = '';
     document.getElementById('pageTotal').textContent = `/ ${totalPages}`;
     document.getElementById('pageInput').max = totalPages;
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('pdfContainer').style.display = '';
     await renderPage(1);
     renderFileTree();
     mup.notifyInteraction('pdf-opened', `Opened ${filePath.split('/').pop()} (${totalPages} pages)`, { path: filePath, pages: totalPages });
   } catch (e) {
     const denied = e.message?.includes('Access denied');
     const container = document.getElementById('emptyState');
-    container.style.display = '';
+    container.style.display = ''; document.getElementById('pdfContainer').style.display = 'none';
     if (denied) {
       const folder = filePath.substring(0, filePath.lastIndexOf('/') + 1);
       const folderName = folder.split('/').filter(Boolean).pop() || folder;
@@ -226,6 +235,56 @@ function drawSelection() {
 // ==== SIDEBAR ====
 
 document.getElementById('sidebarToggle').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('collapsed'));
+
+// Upload PDF
+document.getElementById('uploadBtn').addEventListener('click', () => document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = ''; // reset for re-upload
+  try {
+    // Read file as base64
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    // Determine save path: cwd or first registered folder
+    const cwdResult = await mup.system('getCwd', {});
+    const cwd = cwdResult?.content || '/tmp/';
+    const savePath = (cwd.endsWith('/') ? cwd : cwd + '/') + 'notes/' + file.name;
+    // Write copy via base64 → binary write
+    // writeFile expects utf-8 string, so we need to use system action directly
+    await mup.system('writeFileBase64', { path: savePath, content: base64 });
+    // Register folder + file
+    const folder = savePath.substring(0, savePath.lastIndexOf('/') + 1);
+    if (!store.folderMeta[folder]) store.folderMeta[folder] = { description: '', role: '', tags: [] };
+    store.docMeta[savePath] = {};
+    save(); renderFileTree();
+    await loadPdfFromPath(savePath);
+  } catch (err) {
+    // Fallback: load directly from memory without saving
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const bytes = new Uint8Array(reader.result);
+        pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+        totalPages = pdfDoc.numPages;
+        currentPath = file.name;
+        currentPage = 1;
+        selection = null;
+        document.getElementById('pdfTitle').textContent = file.name;
+        document.getElementById('pageControls').style.display = '';
+        document.getElementById('pageTotal').textContent = `/ ${totalPages}`;
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('pdfContainer').style.display = '';
+        await renderPage(1);
+      };
+      reader.readAsArrayBuffer(file);
+    } catch {}
+  }
+});
 
 // Sidebar resize
 const resizer = document.getElementById('sidebarResizer');

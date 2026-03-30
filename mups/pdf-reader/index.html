@@ -53,17 +53,24 @@
   </div>
   <div id="mainLayout">
     <div id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">PDFs</span>
+        <button id="uploadBtn" class="icon-btn" title="Upload PDF">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+        <input type="file" id="fileInput" accept=".pdf" style="display:none">
+      </div>
       <div id="fileTree" class="file-tree"></div>
     </div>
     <div id="sidebarResizer"></div>
     <div id="content">
-      <div id="pdfContainer">
+      <div id="emptyState">
+        <div class="empty-icon">PDF</div>
+        <div class="empty-text">Upload a PDF or ask the LLM to load one</div>
+      </div>
+      <div id="pdfContainer" style="display:none">
         <canvas id="pdfCanvas"></canvas>
         <div id="selectionOverlay"></div>
-        <div id="emptyState">
-          <div class="empty-icon">PDF</div>
-          <div class="empty-text">Select a PDF or ask the LLM to load one</div>
-        </div>
       </div>
     </div>
   </div>
@@ -75,6 +82,7 @@
       <button id="deleteCancel">Cancel</button>
     </div>
   </div>
-  <script src="./app.js" type="module"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>

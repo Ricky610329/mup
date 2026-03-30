@@ -447,6 +447,21 @@ export class UiBridge extends EventEmitter {
       } catch (err) {
         this.sendRaw({ type: "system-response", requestId, result: { error: `Write failed: ${(err as Error).message}` } });
       }
+    } else if (action === "writeFileBase64") {
+      const filePath = args.path as string;
+      const content = args.content as string;
+      if (!filePath || !content) { this.sendRaw({ type: "system-response", requestId, result: { error: "Missing path or content" } }); return; }
+      const resolved = path.resolve(filePath);
+      const hasAccess = this.checkPathAccess(mupId, resolved);
+      if (!hasAccess) { this.sendRaw({ type: "system-response", requestId, result: { error: `Access denied: ${filePath}` } }); return; }
+      try {
+        const dir = path.dirname(resolved);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(resolved, Buffer.from(content, 'base64'));
+        this.sendRaw({ type: "system-response", requestId, result: { content: "ok" } });
+      } catch (err) {
+        this.sendRaw({ type: "system-response", requestId, result: { error: `Write failed: ${(err as Error).message}` } });
+      }
     } else {
       this.sendRaw({ type: "system-response", requestId, result: { error: `Unknown system action: ${action}` } });
     }
