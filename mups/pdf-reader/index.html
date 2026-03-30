@@ -14,11 +14,11 @@
     "functions": [
       { "name": "loadPDF", "description": "Load a PDF file into the reader.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
       { "name": "goToPage", "description": "Navigate to a specific page.", "inputSchema": { "type": "object", "properties": { "page": { "type": "integer" } }, "required": ["page"] } },
-      { "name": "setSelection", "description": "Set the selection box position on current page. Coordinates in PDF points (72dpi).", "inputSchema": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number" }, "h": { "type": "number" } }, "required": ["x", "y", "w", "h"] } },
+      { "name": "setSelection", "description": "Set the selection box position. Coordinates in PDF points (72dpi).", "inputSchema": { "type": "object", "properties": { "page": { "type": "integer" }, "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number" }, "h": { "type": "number" } }, "required": ["x", "y", "w", "h"] } },
       { "name": "clearSelection", "description": "Remove the selection box.", "inputSchema": { "type": "object", "properties": {} } },
-      { "name": "captureSelection", "description": "Capture the selected region as a PNG image. Returns image content that the LLM can see.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "captureSelection", "description": "Capture the selected region as a PNG image.", "inputSchema": { "type": "object", "properties": {} } },
       { "name": "getPageText", "description": "Extract text content from a page.", "inputSchema": { "type": "object", "properties": { "page": { "type": "integer" } } } },
-      { "name": "getContext", "description": "Get current state: loaded PDF, page, selection, total pages.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "getContext", "description": "Get current state.", "inputSchema": { "type": "object", "properties": {} } },
       { "name": "importFolder", "description": "Rescan workspace for PDF files.", "inputSchema": { "type": "object", "properties": {} } }
     ]
   }
@@ -33,6 +33,10 @@
     <span id="pdfTitle">PDF Reader</span>
     <div class="top-spacer"></div>
     <div id="pageControls" style="display:none">
+      <button id="selectToggle" class="icon-btn" title="Toggle selection tool">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/></svg>
+      </button>
+      <span class="separator"></span>
       <button id="prevPage" class="icon-btn" title="Previous page">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
@@ -68,9 +72,8 @@
         <div class="empty-icon">PDF</div>
         <div class="empty-text">Upload a PDF or ask the LLM to load one</div>
       </div>
-      <div id="pdfContainer" style="display:none">
-        <canvas id="pdfCanvas"></canvas>
-        <div id="selectionOverlay"></div>
+      <div id="pdfScroller" style="display:none">
+        <div id="pdfContainer"></div>
       </div>
     </div>
   </div>
