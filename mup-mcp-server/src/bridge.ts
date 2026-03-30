@@ -361,6 +361,21 @@ export class UiBridge extends EventEmitter {
       } catch (err) {
         this.sendRaw({ type: "system-response", requestId, result: { error: `Read failed: ${(err as Error).message}` } });
       }
+    } else if (action === "readFileBase64") {
+      const filePath = args.path as string;
+      if (!filePath) { this.sendRaw({ type: "system-response", requestId, result: { error: "Missing path" } }); return; }
+      const resolved = path.resolve(filePath);
+      const hasAccess = this.checkPathAccess(mupId, resolved);
+      if (!hasAccess) { this.sendRaw({ type: "system-response", requestId, result: { error: `Access denied: ${filePath}` } }); return; }
+      try {
+        const stat = fs.statSync(resolved);
+        const MAX_BINARY = 5 * 1024 * 1024;
+        if (stat.size > MAX_BINARY) { this.sendRaw({ type: "system-response", requestId, result: { error: `File too large (${stat.size} bytes, max ${MAX_BINARY})` } }); return; }
+        const content = fs.readFileSync(resolved).toString('base64');
+        this.sendRaw({ type: "system-response", requestId, result: { content } });
+      } catch (err) {
+        this.sendRaw({ type: "system-response", requestId, result: { error: `Read failed: ${(err as Error).message}` } });
+      }
     } else if (action === "scanDirectory") {
       const dirPath = args.path as string;
       if (!dirPath) { this.sendRaw({ type: "system-response", requestId, result: { error: "Missing path" } }); return; }
@@ -446,10 +461,39 @@ export class UiBridge extends EventEmitter {
     ".json": "application/json; charset=utf-8",
     ".svg": "image/svg+xml",
     ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".pdf": "application/pdf",
   };
 
   private handleHttp(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = (req.url || "/").split("?")[0];
+    const rawUrl = req.url || "/";
+
+    // Serve workspace files: /ws-file?path=/absolute/path
+    if (rawUrl.startsWith("/ws-file")) {
+      const urlObj = new URL(`http://localhost${rawUrl}`);
+      const wsPath = urlObj.searchParams.get("path");
+      if (!wsPath) { res.writeHead(400); res.end("Missing path"); return; }
+      const resolved = path.resolve(wsPath);
+      const cwd = process.cwd();
+      const cwdBase = cwd.endsWith(path.sep) ? cwd.slice(0, -1) : cwd;
+      if (resolved !== cwdBase && !resolved.startsWith(cwdBase + path.sep)) { res.writeHead(403); res.end("Forbidden"); return; }
+      try {
+        const content = fs.readFileSync(resolved);
+        const ext = path.extname(resolved).toLowerCase();
+        res.writeHead(200, {
+          "Content-Type": UiBridge.CONTENT_TYPES[ext] || "application/octet-stream",
+          "Cache-Control": "no-cache",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(content);
+      } catch { res.writeHead(404); res.end("Not found"); }
+      return;
+    }
+
+    const url = rawUrl.split("?")[0];
     const filePath = url === "/" ? "index.html" : url.replace(/^\//, "");
 
     if (filePath.includes("..") || path.isAbsolute(filePath)) {

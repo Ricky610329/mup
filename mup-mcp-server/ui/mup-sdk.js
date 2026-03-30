@@ -20,6 +20,7 @@ class MupSDK {
   emitEvent(event, data) { this._notify("notifications/event", { event, data }); }
   system(action, params) { return this._request("system/request", { action, params }); }
   async readFile(path) { const r = await this.system("readFile", { path }); if (r?.error) throw new Error(r.error); return r?.content || ""; }
+  async readFileBase64(path) { const r = await this.system("readFileBase64", { path }); if (r?.error) throw new Error(r.error); return r?.content || ""; }
   async writeFile(path, content) { const r = await this.system("writeFile", { path, content }); if (r?.error) throw new Error(r.error); }
   _handleMessage(data) {
     if (!data || data.jsonrpc !== "2.0") return;
