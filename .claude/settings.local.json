@@ -1,32 +1,4 @@
 {
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "agent",
-            "if": "Bash(git commit*)",
-            "prompt": "Review the staged changes by running `git diff --cached`. Check for:\n1. Dead code: unused imports, functions, variables, CSS classes\n2. Code quality: functions over 50 lines, repeated patterns that should be extracted, inconsistent naming\n3. Obvious bugs: missing null checks, unhandled errors, race conditions\n4. Leftover debug code: console.log, TODO comments that should be resolved\n5. Doc sync: if changes touch handlers.ts actions, mup-sdk.js methods, bridge.ts system actions, or add/remove MUPs — flag that spec/README docs may need updating\n\nIf you find code issues, REJECT and list what needs fixing.\nIf only doc sync is needed, APPROVE but add a note: 'Consider running /doc-sync to update documentation.'\nIf everything is clean, APPROVE.\nDon't be overly pedantic — focus on real problems, not style preferences.",
-            "timeout": 30,
-            "statusMessage": "Reviewing staged changes..."
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/audit-mup-hint.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
@@ -65,7 +37,39 @@
       "Bash(grep -n \"clearTimeout\\\\|setTimeout\" *.ts)",
       "Bash(python3 -m json.tool)",
       "Bash(find /Users/maggiehu/.claude/skills -name \"SKILL.md\" -exec head -10 {} +)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(grep -rn \"session\\\\|Session\" /Users/maggiehu/Documents/GitHub/mup/mup-mcp-server/src/*.ts)",
+      "Bash(grep -r \"class Server\\\\|export.*Server\\\\|interface.*Server\" /Users/maggiehu/Documents/GitHub/mup/mup-mcp-server/node_modules/@modelcontextprotocol/sdk/dist --include=*.d.ts)",
+      "Bash(find /Users/maggiehu/Documents/GitHub/mup/mup-mcp-server/node_modules/@modelcontextprotocol/sdk -name *.d.ts -path */server/*)",
+      "Bash(find /Users/maggiehu/Documents/GitHub/mup -name *.mup.html -o -name manifest -type f)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Review the staged changes by running `git diff --cached`. Check for:\n1. Dead code: unused imports, functions, variables, CSS classes\n2. Code quality: functions over 50 lines, repeated patterns that should be extracted, inconsistent naming\n3. Obvious bugs: missing null checks, unhandled errors, race conditions\n4. Leftover debug code: console.log, TODO comments that should be resolved\n5. Doc sync: if changes touch handlers.ts actions, mup-sdk.js methods, bridge.ts system actions, or add/remove MUPs — flag that spec/README docs may need updating\n\nIf you find code issues, REJECT and list what needs fixing.\nIf only doc sync is needed, APPROVE but add a note: 'Consider running /doc-sync to update documentation.'\nIf everything is clean, APPROVE.\nDon't be overly pedantic — focus on real problems, not style preferences.",
+            "if": "Bash(git commit*)",
+            "timeout": 30,
+            "statusMessage": "Reviewing staged changes..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/audit-mup-hint.sh",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
