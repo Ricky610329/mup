@@ -301,8 +301,9 @@ function confirmDelete(path) {
   document.getElementById('deleteFileName').textContent = path.split('/').pop();
   document.getElementById('deleteModal').style.display = 'block';
 }
-document.getElementById('deleteConfirm').addEventListener('click', () => {
+document.getElementById('deleteConfirm').addEventListener('click', async () => {
   if (pendingDeletePath) {
+    try { await mup.system('deleteFile', { path: pendingDeletePath }); } catch {}
     delete store.docMeta[pendingDeletePath];
     store.pins = store.pins.filter(p => p !== pendingDeletePath);
     store.annotations = store.annotations.filter(a => a.filePath !== pendingDeletePath);

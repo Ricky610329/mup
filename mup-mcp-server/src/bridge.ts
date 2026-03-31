@@ -462,6 +462,18 @@ export class UiBridge extends EventEmitter {
       } catch (err) {
         this.sendRaw({ type: "system-response", requestId, result: { error: `Write failed: ${(err as Error).message}` } });
       }
+    } else if (action === "deleteFile") {
+      const filePath = args.path as string;
+      if (!filePath) { this.sendRaw({ type: "system-response", requestId, result: { error: "Missing path" } }); return; }
+      const resolved = path.resolve(filePath);
+      const hasAccess = this.checkPathAccess(mupId, resolved);
+      if (!hasAccess) { this.sendRaw({ type: "system-response", requestId, result: { error: `Access denied: ${filePath}` } }); return; }
+      try {
+        fs.unlinkSync(resolved);
+        this.sendRaw({ type: "system-response", requestId, result: { content: "ok" } });
+      } catch (err) {
+        this.sendRaw({ type: "system-response", requestId, result: { error: `Delete failed: ${(err as Error).message}` } });
+      }
     } else {
       this.sendRaw({ type: "system-response", requestId, result: { error: `Unknown system action: ${action}` } });
     }

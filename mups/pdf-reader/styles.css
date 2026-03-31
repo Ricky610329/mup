@@ -83,10 +83,10 @@ body {
 .file-item.active { background: var(--accent); color: #fff; }
 .file-name { overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .file-delete {
-  display: none; border: none; background: none; color: var(--text-muted);
-  cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; flex-shrink: 0;
+  opacity: 0; border: none; background: none; color: var(--text-muted);
+  cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1; flex-shrink: 0;
 }
-.file-item:hover .file-delete { display: block; }
+.file-item:hover .file-delete { opacity: 1; }
 .file-item:hover .file-delete:hover { color: var(--red); }
 
 .folder-item {
