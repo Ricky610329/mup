@@ -242,6 +242,11 @@ document.getElementById('selectToggle').addEventListener('click', () => {
   selectMode = !selectMode;
   document.getElementById('selectToggle').classList.toggle('active', selectMode);
   document.querySelectorAll('.page-overlay').forEach(o => o.classList.toggle('select-mode', selectMode));
+  if (!selectMode) {
+    selection = null;
+    drawSelection();
+    broadcastState();
+  }
 });
 
 let dragging = false;
@@ -373,26 +378,35 @@ async function loadFromMemory(file) {
   const reader = new FileReader();
   reader.onload = async () => {
     const bytes = new Uint8Array(reader.result);
-    pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
-    totalPages = pdfDoc.numPages;
-    currentPath = null;
-    currentPage = 1;
-    selection = null;
-    document.getElementById('pdfTitle').textContent = file.name + ' (temp)';
-    document.getElementById('pageControls').style.display = '';
-    document.getElementById('pageTotal').textContent = `/ ${totalPages}`;
-    document.getElementById('emptyState').style.display = 'none';
-    document.getElementById('pdfScroller').style.display = '';
-    await renderAllPages();
-    const contentWidth = document.getElementById('content').clientWidth - 16;
-    if (pageCanvases.length > 0) displayScale = Math.min(1.5, contentWidth / pageCanvases[0].wrapper.offsetWidth);
-    updateZoom();
-    broadcastState();
-    if (!Object.keys(store.folderMeta).length) {
-      document.getElementById('fileTree').innerHTML = `<div style="padding:10px;font-size:11px;color:var(--text-muted);line-height:1.5"><strong>${esc(file.name)}</strong> loaded.<br><br>Tell the LLM which folder to use for PDFs.</div>`;
-    }
+    // Cache base64 in localStorage so it survives refresh
+    try {
+      const b64 = btoa(String.fromCharCode(...bytes));
+      localStorage.setItem('mup-pdf-temp', JSON.stringify({ name: file.name, data: b64 }));
+    } catch {} // may fail if too large for localStorage
+    await loadFromBytes(bytes, file.name, true);
   };
   reader.readAsArrayBuffer(file);
+}
+
+async function loadFromBytes(bytes, name, isTemp) {
+  pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+  totalPages = pdfDoc.numPages;
+  currentPath = null;
+  currentPage = 1;
+  selection = null;
+  document.getElementById('pdfTitle').textContent = name + (isTemp ? ' (temp)' : '');
+  document.getElementById('pageControls').style.display = '';
+  document.getElementById('pageTotal').textContent = `/ ${totalPages}`;
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('pdfScroller').style.display = '';
+  await renderAllPages();
+  const contentWidth = document.getElementById('content').clientWidth - 16;
+  if (pageCanvases.length > 0) displayScale = Math.min(1.5, contentWidth / pageCanvases[0].wrapper.offsetWidth);
+  updateZoom();
+  broadcastState();
+  if (isTemp && !Object.keys(store.folderMeta).length) {
+    document.getElementById('fileTree').innerHTML = `<div style="padding:10px;font-size:11px;color:var(--text-muted);line-height:1.5"><strong>${esc(name)}</strong> loaded.<br><br>Tell the LLM which folder to use for PDFs.</div>`;
+  }
 }
 
 function renderFileTree() {
@@ -549,5 +563,17 @@ mup.onReady(async ({ theme }) => {
     }
   } catch {}
   await scanWorkspace();
+  // Restore temp PDF from localStorage
+  if (!pdfDoc) {
+    try {
+      const cached = JSON.parse(localStorage.getItem('mup-pdf-temp'));
+      if (cached?.data) {
+        const binary = atob(cached.data);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        await loadFromBytes(bytes, cached.name, true);
+      }
+    } catch {}
+  }
 });
 mup.onThemeChange((theme) => document.body.classList.toggle('dark', theme === 'dark'));
