@@ -329,7 +329,7 @@
     function generateTable(headers, rows, th) {
       const borderColor = th.codeBg;
       const accentColor = th.accent;
-      let html = `<div style="font-family:system-ui,sans-serif;padding:4px 20px"><table style="width:100%;border-collapse:separate;border-spacing:0;font-size:14px">`;
+      let html = `<div style="font-family:system-ui,sans-serif;padding:12px 24px"><table style="width:100%;border-collapse:separate;border-spacing:0;font-size:15px">`;
       // Header
       html += '<thead><tr>';
       headers.forEach((h, i) => {
@@ -338,7 +338,7 @@
         const color = i === 1 ? accentColor : th.muted;
         const weight = i === 1 ? '700' : '600';
         const align = isFirst ? 'text-align:left' : 'text-align:center';
-        html += `<th style="${align};padding:10px 14px;${border};color:${color};font-weight:${weight};font-size:${i === 1 ? '15px' : '13px'}">${h}</th>`;
+        html += `<th style="${align};padding:11px 16px;${border};color:${color};font-weight:${weight};font-size:${i === 1 ? '15px' : '14px'}">${h}</th>`;
       });
       html += '</tr></thead><tbody>';
       // Rows
@@ -348,7 +348,7 @@
           const isLast = ri === rows.length - 1;
           const border = isLast ? '' : `border-bottom:1px solid ${borderColor}`;
           const isFirst = ci === 0;
-          let cellStyle = `padding:9px 14px;${border};`;
+          let cellStyle = `padding:11px 16px;${border};`;
           if (isFirst) {
             cellStyle += `font-weight:600;color:${th.text};text-align:left;`;
           } else {
@@ -396,9 +396,21 @@
         case 'image':
           inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${c.imageUrl ? `<img src="${esc(c.imageUrl)}" alt="">` : ''}<div class="caption">${esc(c.caption || '')}</div>`;
           break;
+        case 'section':
+          inner = `<div class="section-divider"><div class="section-line"></div><h1>${esc(c.title || '')}</h1>${c.subtitle ? `<div class="subtitle">${marked.parseInline(c.subtitle)}</div>` : ''}</div>`;
+          break;
         case 'embed':
           inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}<div class="embed-container">${c.html || ''}</div>${c.caption ? `<div class="caption">${esc(c.caption)}</div>` : ''}`;
           break;
+        case 'image-text': {
+          const pos = c.imagePosition || 'left';
+          const isVert = pos === 'top' || pos === 'bottom';
+          const imgFirst = pos === 'left' || pos === 'top';
+          const imgHtml = c.imageUrl ? `<div class="it-image"><img src="${esc(c.imageUrl)}" alt=""></div>` : '';
+          const textHtml = `<div class="it-text">${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${marked.parse(c.body || '')}</div>`;
+          inner = `<div class="image-text-layout ${isVert ? 'vertical' : 'horizontal'}">${imgFirst ? imgHtml + textHtml : textHtml + imgHtml}</div>`;
+          break;
+        }
         case 'blank':
           inner = c.html || '';
           break;
@@ -498,14 +510,14 @@
       const c = slide.content || {};
       let html = `<div class="edit-group"><div class="edit-label">LAYOUT</div>
         <select class="edit-input" id="editLayout">
-          ${['title','content','two-column','image','embed','blank'].map(l => `<option value="${l}"${l===slide.layout?' selected':''}>${l}</option>`).join('')}
+          ${['title','section','content','two-column','image','image-text','embed','blank'].map(l => `<option value="${l}"${l===slide.layout?' selected':''}>${l}</option>`).join('')}
         </select></div>`;
 
       if (slide.layout !== 'blank') {
         html += `<div class="edit-group"><div class="edit-label">TITLE</div>
           <input class="edit-input" id="editTitle" value="${esc(c.title||'')}" placeholder="Slide title..."></div>`;
       }
-      if (slide.layout === 'title') {
+      if (slide.layout === 'title' || slide.layout === 'section') {
         html += `<div class="edit-group"><div class="edit-label">SUBTITLE</div>
           <input class="edit-input" id="editSubtitle" value="${esc(c.subtitle||'')}" placeholder="Subtitle..."></div>`;
       }
@@ -524,6 +536,16 @@
           <input class="edit-input" id="editImageUrl" value="${esc(c.imageUrl||'')}" placeholder="https://..."></div>
           <div class="edit-group"><div class="edit-label">CAPTION</div>
           <input class="edit-input" id="editCaption" value="${esc(c.caption||'')}" placeholder="Image caption..."></div>`;
+      }
+      if (slide.layout === 'image-text') {
+        html += `<div class="edit-group"><div class="edit-label">IMAGE URL</div>
+          <input class="edit-input" id="editImageUrl" value="${esc(c.imageUrl||'')}" placeholder="https://..."></div>
+          <div class="edit-group"><div class="edit-label">BODY (markdown)</div>
+          <textarea class="edit-textarea" id="editBody" rows="8" placeholder="Text content...">${esc(c.body||'')}</textarea></div>
+          <div class="edit-group"><div class="edit-label">IMAGE POSITION</div>
+          <select class="edit-input" id="editImagePosition">
+            ${['left','right','top','bottom'].map(p => `<option value="${p}"${p===(c.imagePosition||'left')?' selected':''}>${p}</option>`).join('')}
+          </select></div>`;
       }
       if (slide.layout === 'embed') {
         html += `<div class="edit-group"><div class="edit-label">HTML / SVG</div>
@@ -559,6 +581,11 @@
       bind('editImageUrl', 'imageUrl');
       bind('editCaption', 'caption');
       bind('editHtml', 'html');
+      const imgPosEl = panel.querySelector('#editImagePosition');
+      if (imgPosEl) imgPosEl.addEventListener('change', () => {
+        slide.content.imagePosition = imgPosEl.value;
+        renderCanvas(); renderThumbnails(); debouncedSave();
+      });
     }
 
     // ---- Confirm dialog ----

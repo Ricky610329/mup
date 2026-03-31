@@ -363,18 +363,12 @@ function updatePreview() {
   const src = dirty ? document.getElementById('editor').value : currentFile.content;
   try { marked.setOptions({ breaks: true, gfm: true }); v.innerHTML = marked.parse(src); } catch { v.innerHTML = `<pre>${esc(src)}</pre>`; }
   v.querySelectorAll('a[href^="http"]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
-  // Rewrite local image paths to use /ws-file HTTP route
+  // Rewrite local image paths to absolute URLs via host
   if (currentFile) {
     const dir = currentFile.path.substring(0, currentFile.path.lastIndexOf('/') + 1);
     v.querySelectorAll('img').forEach(img => {
       const src = img.getAttribute('src');
-      if (src && !src.startsWith('http') && !src.startsWith('data:')) {
-        const absPath = src.startsWith('/') ? src : dir + src;
-        // Normalize ../ segments
-        const parts = absPath.split('/'), normalized = [];
-        for (const p of parts) { if (p === '..') normalized.pop(); else if (p !== '.') normalized.push(p); }
-        img.src = `${wsFileBase}/ws-file?path=${encodeURIComponent(normalized.join('/'))}`;
-      }
+      if (src) img.src = mup.resolveAssetUrl(src, dir);
     });
   }
   applyAnnotations();
@@ -899,40 +893,19 @@ mup.registerFunction('appendToDoc', async (p) => {
 });
 
 // ==== INIT ====
-let cwdPath = null;
-let wsFileBase = ''; // will be set to http://localhost:PORT
 
 async function scanWorkspace() {
   try {
-    // Scan each folder already registered in store (authorized by LLM or user)
-    const folders = Object.keys(store.folderMeta);
-    if (!folders.length) return;
-
-    // Request access for known folders
-    await mup.system('grantFileAccess', { paths: folders });
-
-    // Rebuild file list
+    const ws = await mup.registerWorkspace({ fileTypes: ['.md', '.mdx', '.txt', '.markdown'] });
+    // Rebuild file list from workspace scan
     store.docMeta = {};
-
-    for (const folder of folders) {
-      try {
-        const scanResult = await mup.system('scanDirectory', { path: folder });
-        const allFiles = JSON.parse(scanResult?.content || '[]');
-
-        // MUP decides what file types it cares about
-        for (const f of allFiles) {
-          if (/\.(md|mdx|txt|markdown)$/i.test(f)) {
-            store.docMeta[f] = store.docMeta[f] || {};
-            // Register subfolders
-            const dir = f.substring(0, f.lastIndexOf('/') + 1);
-            if (dir !== folder && !store.folderMeta[dir]) {
-              store.folderMeta[dir] = { description: '', role: '', tags: [] };
-            }
-          }
-        }
-      } catch {} // skip folders we can't access
+    const cwd = ws.cwd;
+    if (!store.folderMeta[cwd]) store.folderMeta[cwd] = { description: '', role: '', tags: [] };
+    for (const f of ws.files) {
+      store.docMeta[f] = store.docMeta[f] || {};
+      const dir = f.substring(0, f.lastIndexOf('/') + 1);
+      if (dir !== cwd && !store.folderMeta[dir]) store.folderMeta[dir] = { description: '', role: '', tags: [] };
     }
-
     save(); renderFileTree(); broadcastState();
   } catch (e) { console.error('Workspace scan failed:', e); }
 }
@@ -940,20 +913,6 @@ async function scanWorkspace() {
 mup.onReady(async ({ theme }) => {
   if (theme === 'dark') document.body.classList.add('dark');
   load(); setViewMode('split'); renderContent(); broadcastState();
-  // Get host port for /ws-file image serving
-  try {
-    const portResult = await mup.system('getPort', {});
-    if (portResult?.content) wsFileBase = `http://localhost:${portResult.content}`;
-  } catch {}
-  // Auto-grant cwd access
-  try {
-    const cwdResult = await mup.system('getCwd', {});
-    if (cwdResult?.content) {
-      const cwd = cwdResult.content.endsWith('/') ? cwdResult.content : cwdResult.content + '/';
-      await mup.system('grantFileAccess', { paths: [cwd] });
-    }
-  } catch {}
-  // Scan first, then render sidebar (avoids showing stale/deleted files)
   await scanWorkspace();
   renderFileTree();
 });

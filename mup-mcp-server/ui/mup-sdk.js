@@ -22,6 +22,21 @@ class MupSDK {
   async readFile(path) { const r = await this.system("readFile", { path }); if (r?.error) throw new Error(r.error); return r?.content || ""; }
   async readFileBase64(path) { const r = await this.system("readFileBase64", { path }); if (r?.error) throw new Error(r.error); return r?.content || ""; }
   async writeFile(path, content) { const r = await this.system("writeFile", { path, content }); if (r?.error) throw new Error(r.error); }
+  async registerWorkspace(opts) {
+    const r = await this.system("registerWorkspace", opts || {});
+    if (r?.error) throw new Error(r.error);
+    const data = JSON.parse(r.content);
+    this._hostPort = data.port;
+    this._cwd = data.cwd;
+    return data;
+  }
+  resolveAssetUrl(src, basePath) {
+    if (!src || src.startsWith('http') || src.startsWith('data:')) return src;
+    const abs = src.startsWith('/') ? src : (basePath || '') + src;
+    const parts = abs.split('/'), n = [];
+    for (const p of parts) { if (p === '..') n.pop(); else if (p !== '.') n.push(p); }
+    return this._hostPort ? 'http://localhost:' + this._hostPort + '/ws-file?path=' + encodeURIComponent(n.join('/')) : src;
+  }
   _handleMessage(data) {
     if (!data || data.jsonrpc !== "2.0") return;
     if ("id" in data && !("method" in data)) {

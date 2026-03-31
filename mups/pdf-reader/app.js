@@ -5,7 +5,7 @@ if (typeof pdfjsLib !== 'undefined') {
 
 // ---- State ----
 const STORE_KEY = 'mup-pdf-data';
-let store = { _v: 1, folderMeta: {}, docMeta: {} };
+let store = { _v: 2, folderMeta: {}, docMeta: {}, lastOpened: null };
 let pdfDoc = null;
 let currentPage = 1;
 let totalPages = 0;
@@ -24,7 +24,7 @@ function err(text) { return { content: [{ type: 'text', text }], isError: true }
 
 // ---- Persistence ----
 function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {} }
-function load() { try { const d = JSON.parse(localStorage.getItem(STORE_KEY)); if (d?._v === 1) store = d; } catch {} }
+function load() { try { const d = JSON.parse(localStorage.getItem(STORE_KEY)); if (d?._v === 2) { store = d; } else if (d?._v === 1) { d._v = 2; d.lastOpened = null; store = d; save(); } } catch {} }
 
 // ---- State Broadcasting ----
 let broadcastTimer = null;
@@ -127,7 +127,11 @@ function observePages() {
     if (maxPage !== currentPage) {
       currentPage = maxPage;
       document.getElementById('pageInput').value = currentPage;
+      if (store.lastOpened && store.lastOpened.path === currentPath) {
+        store.lastOpened.page = currentPage;
+      }
       broadcastState();
+      save();
     }
   }, { root: document.getElementById('pdfScroller'), threshold: [0, 0.25, 0.5, 0.75, 1] });
 
@@ -182,6 +186,8 @@ async function loadPdfFromPath(filePath) {
     updateZoom();
     renderFileTree();
     mup.notifyInteraction('pdf-opened', `Opened ${filePath.split('/').pop()} (${totalPages} pages)`, { path: filePath, pages: totalPages });
+    store.lastOpened = { path: filePath, page: 1, timestamp: Date.now() };
+    save();
   } catch (e) {
     const denied = e.message?.includes('Access denied');
     const container = document.getElementById('emptyState');
@@ -478,16 +484,14 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && pendingD
 
 async function scanWorkspace() {
   try {
-    const folders = Object.keys(store.folderMeta);
-    if (!folders.length) return;
-    await mup.system('grantFileAccess', { paths: folders });
+    const ws = await mup.registerWorkspace({ fileTypes: ['.pdf'] });
     store.docMeta = {};
-    for (const folder of folders) {
-      try {
-        const result = await mup.system('scanDirectory', { path: folder });
-        const allFiles = JSON.parse(result?.content || '[]');
-        for (const f of allFiles) { if (/\.pdf$/i.test(f)) store.docMeta[f] = store.docMeta[f] || {}; }
-      } catch {}
+    const cwd = ws.cwd;
+    if (!store.folderMeta[cwd]) store.folderMeta[cwd] = { description: '', role: '', tags: [] };
+    for (const f of ws.files) {
+      store.docMeta[f] = store.docMeta[f] || {};
+      const dir = f.substring(0, f.lastIndexOf('/') + 1);
+      if (dir !== cwd && !store.folderMeta[dir]) store.folderMeta[dir] = { description: '', role: '', tags: [] };
     }
     save(); renderFileTree(); broadcastState();
   } catch {}
@@ -580,15 +584,17 @@ mup.registerFunction('importFolder', async (p) => {
 mup.onReady(async ({ theme }) => {
   if (theme === 'dark') document.body.classList.add('dark');
   load(); broadcastState();
-  try {
-    const cwdResult = await mup.system('getCwd', {});
-    if (cwdResult?.content) {
-      const cwd = cwdResult.content.endsWith('/') ? cwdResult.content : cwdResult.content + '/';
-      await mup.system('grantFileAccess', { paths: [cwd] });
-    }
-  } catch {}
   await scanWorkspace();
   renderFileTree();
+  // Restore last opened PDF
+  if (!pdfDoc && store.lastOpened?.path) {
+    try {
+      await loadPdfFromPath(store.lastOpened.path);
+      if (store.lastOpened.page > 1) scrollToPage(store.lastOpened.page);
+    } catch {
+      store.lastOpened = null; save();
+    }
+  }
   // Restore temp PDF from localStorage
   if (!pdfDoc) {
     try {
