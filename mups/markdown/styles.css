@@ -1,11 +1,11 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --bg: #FFFFFF; --bg-card: #F8FAFC; --bg-hover: #F1F5F9;
-  --text: #1E293B; --text-secondary: #64748B; --text-muted: #94A3B8;
-  --border: #E2E8F0; --accent: #3B82F6; --accent-hover: #2563EB;
+  --bg: #ffffff; --bg-card: rgba(255,255,255,0.92); --bg-hover: rgba(0,0,0,0.04);
+  --text: #1a1a1a; --text-secondary: rgba(0,0,0,0.5); --text-muted: rgba(0,0,0,0.25);
+  --border: rgba(0,0,0,0.08); --accent: #1a1a1a; --accent-hover: #000;
   --green: #10B981; --orange: #F59E0B; --red: #EF4444;
-  --shadow: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow: 0 1px 3px rgba(0,0,0,0.04);
   --hl-highlight: rgba(250, 204, 21, 0.3);
   --hl-note: rgba(59, 130, 246, 0.2);
   --hl-todo: rgba(245, 158, 11, 0.2);
@@ -13,9 +13,9 @@
   --hl-important: rgba(16, 185, 129, 0.2);
 }
 body.dark {
-  --bg: #0F172A; --bg-card: #1E293B; --bg-hover: #334155;
-  --text: #F1F5F9; --text-secondary: #94A3B8; --text-muted: #64748B;
-  --border: #334155; --accent: #60A5FA; --accent-hover: #3B82F6;
+  --bg: #2a2b30; --bg-card: rgba(42,43,48,0.96); --bg-hover: rgba(255,255,255,0.06);
+  --text: #e1e2e5; --text-secondary: rgba(255,255,255,0.55); --text-muted: rgba(255,255,255,0.3);
+  --border: rgba(255,255,255,0.08); --accent: #e1e2e5; --accent-hover: #fff;
   --shadow: 0 1px 3px rgba(0,0,0,0.3);
   --hl-highlight: rgba(250, 204, 21, 0.2);
   --hl-note: rgba(59, 130, 246, 0.15);
@@ -118,7 +118,7 @@ body {
   border: 1px solid transparent; border-radius: 3px;
 }
 .file-item:hover { background: var(--bg-hover); }
-.file-item.active { background: var(--accent); color: #fff; }
+.file-item.active { background: var(--bg-hover); font-weight: 600; }
 .file-name { overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .file-delete {
   display: none; border: none; background: none; color: var(--text-muted);
@@ -126,8 +126,8 @@ body {
 }
 .file-item:hover .file-delete { display: block; }
 .file-item:hover .file-delete:hover { color: var(--red); }
-.file-item.active .file-delete { display: block; color: rgba(255,255,255,0.7); }
-.file-item.active .file-delete:hover { color: #fff; }
+.file-item.active .file-delete { display: block; }
+.file-item.active .file-delete:hover { color: var(--red); }
 
 /* Status dots */
 .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
