@@ -528,11 +528,10 @@ mup.registerFunction('clearSelection', async () => {
   return ok('Selection cleared');
 });
 
-mup.registerFunction('captureSelection', async () => {
+mup.registerFunction('captureSelection', async (p) => {
   if (!selection || !pdfDoc) return err('No selection or no PDF loaded');
   const pc = pageCanvases[selection.page - 1];
   if (!pc) return err('Page not found');
-  // Ensure page is rendered
   if (!pc.rendered) await renderSinglePage(selection.page, pc);
   const { x, y, w, h } = selection;
   const absX = Math.min(x, x + w), absY = Math.min(y, y + h);
@@ -542,6 +541,11 @@ mup.registerFunction('captureSelection', async () => {
   region.width = absW; region.height = absH;
   region.getContext('2d').drawImage(pc.canvas, absX, absY, absW, absH, 0, 0, absW, absH);
   const base64 = region.toDataURL('image/png').split(',')[1];
+  // Save to disk if saveTo path provided
+  if (p?.saveTo) {
+    try { await mup.system('writeFileBase64', { path: p.saveTo, content: base64 }); } catch (e) { return err(`Save failed: ${e.message}`); }
+    return { content: [{ type: 'image', data: base64, mimeType: 'image/png' }, { type: 'text', text: `Saved to ${p.saveTo.split('/').pop()} (p${selection.page}, ${Math.round(absW)}x${Math.round(absH)})` }], isError: false };
+  }
   return { content: [{ type: 'image', data: base64, mimeType: 'image/png' }, { type: 'text', text: `Page ${selection.page}, ${Math.round(absW)}x${Math.round(absH)}` }], isError: false };
 });
 
@@ -575,7 +579,7 @@ mup.registerFunction('importFolder', async (p) => {
 
 mup.onReady(async ({ theme }) => {
   if (theme === 'dark') document.body.classList.add('dark');
-  load(); renderFileTree(); broadcastState();
+  load(); broadcastState();
   try {
     const cwdResult = await mup.system('getCwd', {});
     if (cwdResult?.content) {
@@ -584,6 +588,7 @@ mup.onReady(async ({ theme }) => {
     }
   } catch {}
   await scanWorkspace();
+  renderFileTree();
   // Restore temp PDF from localStorage
   if (!pdfDoc) {
     try {

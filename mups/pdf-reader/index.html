@@ -16,7 +16,7 @@
       { "name": "goToPage", "description": "Navigate to a specific page.", "inputSchema": { "type": "object", "properties": { "page": { "type": "integer" } }, "required": ["page"] } },
       { "name": "setSelection", "description": "Set the selection box position. Coordinates in PDF points (72dpi).", "inputSchema": { "type": "object", "properties": { "page": { "type": "integer" }, "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number" }, "h": { "type": "number" } }, "required": ["x", "y", "w", "h"] } },
       { "name": "clearSelection", "description": "Remove the selection box.", "inputSchema": { "type": "object", "properties": {} } },
-      { "name": "captureSelection", "description": "Capture the selected region as a PNG image.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "captureSelection", "description": "Capture the selected region as a PNG image. With saveTo: also saves to disk.", "inputSchema": { "type": "object", "properties": { "saveTo": { "type": "string", "description": "Optional file path to save the PNG" } } } },
       { "name": "getPageText", "description": "Extract text content from a page.", "inputSchema": { "type": "object", "properties": { "page": { "type": "integer" } } } },
       { "name": "getContext", "description": "Get current state.", "inputSchema": { "type": "object", "properties": {} } },
       { "name": "importFolder", "description": "Register a folder and scan for PDFs. Call with no args to rescan.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string", "description": "Folder path to register (optional)" }, "description": { "type": "string" } } } }

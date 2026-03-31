@@ -399,6 +399,8 @@ export class UiBridge extends EventEmitter {
       }
     } else if (action === "getCwd") {
       this.sendRaw({ type: "system-response", requestId, result: { content: process.cwd() } });
+    } else if (action === "getPort") {
+      this.sendRaw({ type: "system-response", requestId, result: { content: String(this.port) } });
     } else if (action === "grantFileAccess") {
       const paths = args.paths as string[];
       if (!paths || !Array.isArray(paths)) {

@@ -363,6 +363,20 @@ function updatePreview() {
   const src = dirty ? document.getElementById('editor').value : currentFile.content;
   try { marked.setOptions({ breaks: true, gfm: true }); v.innerHTML = marked.parse(src); } catch { v.innerHTML = `<pre>${esc(src)}</pre>`; }
   v.querySelectorAll('a[href^="http"]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+  // Rewrite local image paths to use /ws-file HTTP route
+  if (currentFile) {
+    const dir = currentFile.path.substring(0, currentFile.path.lastIndexOf('/') + 1);
+    v.querySelectorAll('img').forEach(img => {
+      const src = img.getAttribute('src');
+      if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+        const absPath = src.startsWith('/') ? src : dir + src;
+        // Normalize ../ segments
+        const parts = absPath.split('/'), normalized = [];
+        for (const p of parts) { if (p === '..') normalized.pop(); else if (p !== '.') normalized.push(p); }
+        img.src = `${wsFileBase}/ws-file?path=${encodeURIComponent(normalized.join('/'))}`;
+      }
+    });
+  }
   applyAnnotations();
 }
 
@@ -886,6 +900,7 @@ mup.registerFunction('appendToDoc', async (p) => {
 
 // ==== INIT ====
 let cwdPath = null;
+let wsFileBase = ''; // will be set to http://localhost:PORT
 
 async function scanWorkspace() {
   try {
@@ -924,8 +939,13 @@ async function scanWorkspace() {
 
 mup.onReady(async ({ theme }) => {
   if (theme === 'dark') document.body.classList.add('dark');
-  load(); setViewMode('split'); renderFileTree(); renderContent(); broadcastState();
-  // Auto-grant cwd access so files anywhere in the workspace can be opened
+  load(); setViewMode('split'); renderContent(); broadcastState();
+  // Get host port for /ws-file image serving
+  try {
+    const portResult = await mup.system('getPort', {});
+    if (portResult?.content) wsFileBase = `http://localhost:${portResult.content}`;
+  } catch {}
+  // Auto-grant cwd access
   try {
     const cwdResult = await mup.system('getCwd', {});
     if (cwdResult?.content) {
@@ -933,6 +953,8 @@ mup.onReady(async ({ theme }) => {
       await mup.system('grantFileAccess', { paths: [cwd] });
     }
   } catch {}
+  // Scan first, then render sidebar (avoids showing stale/deleted files)
   await scanWorkspace();
+  renderFileTree();
 });
 mup.onThemeChange((theme) => document.body.classList.toggle('dark', theme === 'dark'));
