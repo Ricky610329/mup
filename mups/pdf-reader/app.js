@@ -5,7 +5,8 @@ if (typeof pdfjsLib !== 'undefined') {
 
 // ---- State ----
 const STORE_KEY = 'mup-pdf-data';
-let store = { _v: 2, folderMeta: {}, docMeta: {}, lastOpened: null };
+let store = { _v: 3, docs: {}, lastOpened: null };
+let workspacePath = null;
 let pdfDoc = null;
 let currentPage = 1;
 let totalPages = 0;
@@ -24,7 +25,7 @@ function err(text) { return { content: [{ type: 'text', text }], isError: true }
 
 // ---- Persistence ----
 function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {} }
-function load() { try { const d = JSON.parse(localStorage.getItem(STORE_KEY)); if (d?._v === 2) { store = d; } else if (d?._v === 1) { d._v = 2; d.lastOpened = null; store = d; save(); } } catch {} }
+function load() { try { const d = JSON.parse(localStorage.getItem(STORE_KEY)); if (d?._v === 3) { store = d; } else { store = { _v: 3, docs: {}, lastOpened: null }; save(); } } catch {} }
 
 // ---- State Broadcasting ----
 let broadcastTimer = null;
@@ -184,25 +185,15 @@ async function loadPdfFromPath(filePath) {
       minScale = Math.min(contentWidth / pageWidth, document.getElementById('content').clientHeight / pageCanvases[0].wrapper.offsetHeight);
     }
     updateZoom();
-    renderFileTree();
+    renderFileList();
     mup.notifyInteraction('pdf-opened', `Opened ${filePath.split('/').pop()} (${totalPages} pages)`, { path: filePath, pages: totalPages });
     store.lastOpened = { path: filePath, page: 1, timestamp: Date.now() };
     save();
   } catch (e) {
-    const denied = e.message?.includes('Access denied');
     const container = document.getElementById('emptyState');
     container.style.display = '';
     document.getElementById('pdfScroller').style.display = 'none';
-    if (denied) {
-      const folder = filePath.substring(0, filePath.lastIndexOf('/') + 1);
-      const folderName = folder.split('/').filter(Boolean).pop() || folder;
-      container.innerHTML = `<div style="font-size:13px;margin-bottom:12px;color:var(--text-muted)">Access required</div><button id="grantBtn" style="padding:6px 16px;border:1px solid var(--accent);border-radius:5px;background:transparent;color:var(--accent);cursor:pointer;font-size:12px">Grant Access to ${esc(folderName)}/</button>`;
-      document.getElementById('grantBtn').addEventListener('click', async () => {
-        try { await mup.system('grantFileAccess', { paths: [folder] }); await loadPdfFromPath(filePath); } catch {}
-      });
-    } else {
-      container.innerHTML = `<div class="empty-icon">!</div><div class="empty-text" style="color:var(--red)">${esc(e.message)}</div>`;
-    }
+    container.innerHTML = `<div class="empty-icon">!</div><div class="empty-text" style="color:var(--red)">${esc(e.message)}</div>`;
   }
 }
 
@@ -357,14 +348,13 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   e.target.value = '';
-  const folders = Object.keys(store.folderMeta);
-  if (folders.length > 0) {
+  if (workspacePath) {
     try {
       const base64 = await readFileAsBase64(file);
-      const savePath = folders[0] + file.name;
+      const savePath = workspacePath + file.name;
       await mup.system('writeFileBase64', { path: savePath, content: base64 });
-      store.docMeta[savePath] = {};
-      save(); renderFileTree();
+      store.docs[savePath] = {};
+      save(); renderFileList();
       await loadPdfFromPath(savePath);
       mup.notifyInteraction('pdf-uploaded', `Uploaded ${file.name}`, { path: savePath });
     } catch { await loadFromMemory(file); }
@@ -410,39 +400,20 @@ async function loadFromBytes(bytes, name, isTemp) {
   if (pageCanvases.length > 0) displayScale = Math.min(1.5, contentWidth / pageCanvases[0].wrapper.offsetWidth);
   updateZoom();
   broadcastState();
-  if (isTemp && !Object.keys(store.folderMeta).length) {
-    document.getElementById('fileTree').innerHTML = `<div style="padding:10px;font-size:11px;color:var(--text-muted);line-height:1.5"><strong>${esc(name)}</strong> loaded.<br><br>Tell the LLM which folder to use for PDFs.</div>`;
-  }
 }
 
-function renderFileTree() {
+function renderFileList() {
   const tree = document.getElementById('fileTree');
-  const files = Object.keys(store.docMeta).sort();
-  const folders = Object.keys(store.folderMeta);
-  if (!files.length && !folders.length) {
-    tree.innerHTML = '<div style="padding:12px;font-size:11px;color:var(--text-muted)">No PDFs. Upload or ask the LLM to import a folder.</div>';
+  const files = Object.keys(store.docs).sort();
+  if (!files.length) {
+    tree.innerHTML = '<div style="padding:12px;font-size:11px;color:var(--text-muted)">No PDFs. Upload or ask the LLM to load one.</div>';
     return;
   }
-  const folderFiles = {};
-  // Include all registered folders (even empty ones)
-  for (const f of Object.keys(store.folderMeta)) folderFiles[f] = [];
-  // Group files into folders
-  for (const f of files) {
-    const dir = f.substring(0, f.lastIndexOf('/') + 1);
-    if (!folderFiles[dir]) folderFiles[dir] = [];
-    folderFiles[dir].push(f);
-  }
   let html = '';
-  for (const [folder, fls] of Object.entries(folderFiles).sort()) {
-    const name = folder.replace(/\/$/, '').split('/').pop() || folder;
-    html += `<div class="folder-item" data-folder="${esc(folder)}"><svg class="folder-arrow expanded" viewBox="0 0 12 12"><path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>${esc(name)}</div>`;
-    html += `<div class="folder-children" data-fc="${esc(folder)}">`;
-    for (const f of fls) {
-      const fname = f.split('/').pop();
-      const active = currentPath === f ? ' active' : '';
-      html += `<div class="file-item${active}" data-path="${esc(f)}"><span class="file-name">${esc(fname)}</span><button class="file-delete" data-del="${esc(f)}" title="Remove">&times;</button></div>`;
-    }
-    html += '</div>';
+  for (const f of files) {
+    const fname = f.split('/').pop();
+    const active = currentPath === f ? ' active' : '';
+    html += `<div class="file-item${active}" data-path="${esc(f)}"><span class="file-name">${esc(fname)}</span><button class="file-delete" data-del="${esc(f)}" title="Remove">&times;</button></div>`;
   }
   tree.innerHTML = html;
 }
@@ -452,11 +423,6 @@ document.getElementById('fileTree').addEventListener('click', (e) => {
   if (del) { e.stopPropagation(); confirmDelete(del.dataset.del); return; }
   const file = e.target.closest('.file-item');
   if (file?.dataset.path) { loadPdfFromPath(file.dataset.path); return; }
-  const folder = e.target.closest('.folder-item');
-  if (folder?.dataset.folder) {
-    const ch = document.querySelector(`[data-fc="${CSS.escape(folder.dataset.folder)}"]`);
-    if (ch) { ch.classList.toggle('collapsed'); folder.querySelector('.folder-arrow')?.classList.toggle('expanded'); }
-  }
 });
 
 let pendingDel = null;
@@ -464,16 +430,15 @@ function confirmDelete(p) {
   pendingDel = p;
   document.getElementById('deleteFileName').textContent = p.split('/').pop();
   document.getElementById('deleteModal').style.display = 'block';
-  console.log('[PDF] confirmDelete:', p);
 }
 document.getElementById('deleteConfirm').addEventListener('click', async () => {
   if (pendingDel) {
     // Delete from disk
     try { await mup.system('deleteFile', { path: pendingDel }); } catch {}
     // Remove from store
-    delete store.docMeta[pendingDel];
+    delete store.docs[pendingDel];
     if (currentPath === pendingDel) { pdfDoc = null; currentPath = null; document.getElementById('emptyState').style.display = ''; document.getElementById('pdfScroller').style.display = 'none'; document.getElementById('pageControls').style.display = 'none'; }
-    save(); renderFileTree(); broadcastState();
+    save(); renderFileList(); broadcastState();
   }
   pendingDel = null; document.getElementById('deleteModal').style.display = 'none';
 });
@@ -484,16 +449,13 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && pendingD
 
 async function scanWorkspace() {
   try {
-    const ws = await mup.registerWorkspace({ fileTypes: ['.pdf'] });
-    store.docMeta = {};
-    const cwd = ws.cwd;
-    if (!store.folderMeta[cwd]) store.folderMeta[cwd] = { description: '', role: '', tags: [] };
+    const ws = await mup.registerWorkspace({ fileTypes: ['.pdf'], dedicated: true });
+    workspacePath = ws.workspacePath;
+    store.docs = {};
     for (const f of ws.files) {
-      store.docMeta[f] = store.docMeta[f] || {};
-      const dir = f.substring(0, f.lastIndexOf('/') + 1);
-      if (dir !== cwd && !store.folderMeta[dir]) store.folderMeta[dir] = { description: '', role: '', tags: [] };
+      store.docs[f] = store.docs[f] || {};
     }
-    save(); renderFileTree(); broadcastState();
+    save(); renderFileList(); broadcastState();
   } catch {}
 }
 
@@ -564,19 +526,14 @@ mup.registerFunction('getPageText', async (p) => {
 
 mup.registerFunction('getContext', async () => {
   return ok('context', {
-    pdf: currentPath, page: currentPage, totalPages, displayScale, selectMode,
+    pdf: currentPath, page: currentPage, totalPages, displayScale, selectMode, workspacePath,
     selection: selection ? { page: selection.page, x: selection.x / RENDER_SCALE, y: selection.y / RENDER_SCALE, w: selection.w / RENDER_SCALE, h: selection.h / RENDER_SCALE } : null,
   });
 });
 
-mup.registerFunction('importFolder', async (p) => {
-  if (p?.path) {
-    const fp = p.path.endsWith('/') ? p.path : p.path + '/';
-    if (!store.folderMeta[fp]) store.folderMeta[fp] = { description: p.description || '', role: '', tags: [] };
-    save();
-  }
+mup.registerFunction('importFolder', async () => {
   await scanWorkspace();
-  return ok(`Rescanned: ${Object.keys(store.docMeta).length} PDF(s)`);
+  return ok(`Rescanned: ${Object.keys(store.docs).length} PDF(s)`);
 });
 
 // ==== INIT ====
@@ -585,7 +542,7 @@ mup.onReady(async ({ theme }) => {
   if (theme === 'dark') document.body.classList.add('dark');
   load(); broadcastState();
   await scanWorkspace();
-  renderFileTree();
+  renderFileList();
   // Restore last opened PDF
   if (!pdfDoc && store.lastOpened?.path) {
     try {

@@ -7,24 +7,21 @@
   <script type="application/mup-manifest">
   {
     "name": "Markdown",
-    "description": "Markdown workspace for collaborative note-taking. User edits in the UI, LLM creates files with native Write tool then calls importFolder + loadFile to display. Supports folder descriptions, tags, annotations (highlight/note/TODO/question/important). Use getKBMap() for structure, loadFile to display, getContext for user focus.",
+    "description": "Markdown workspace with flat file model at .mup/mup-markdown/. LLM creates files with native Write tool then calls importFolder + loadFile to display. Supports annotations (highlight/note/TODO/question/important). Use getContext for user focus, loadFile to display.",
     "grid": { "minWidth": 2, "minHeight": 2, "preferredWidth": 3, "preferredHeight": 3 },
     "darkMode": true,
     "notifications": { "level": "notify", "overridable": true },
     "functions": [
-      { "name": "describeFolders", "description": "Set or get folder descriptions so the LLM knows what each folder contains.", "inputSchema": { "type": "object", "properties": { "folders": { "type": "array", "items": { "type": "object", "properties": { "path": { "type": "string" }, "description": { "type": "string" }, "role": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } } }, "required": ["path", "description"] } } } } },
-      { "name": "manageTags", "description": "Add/remove tags on files, list all tags, or search docs by tag.", "inputSchema": { "type": "object", "properties": { "subAction": { "type": "string", "enum": ["add", "remove", "list", "search"] }, "path": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } } }, "required": ["subAction"] } },
-      { "name": "manageCollections", "description": "Create/update/delete/list named document collections.", "inputSchema": { "type": "object", "properties": { "subAction": { "type": "string", "enum": ["create", "update", "delete", "list", "addDoc", "removeDoc"] }, "id": { "type": "string" }, "name": { "type": "string" }, "description": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } }, "path": { "type": "string" } }, "required": ["subAction"] } },
+      { "name": "loadFile", "description": "Load a file into the viewer.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+      { "name": "getContext", "description": "Get user's current context (workspacePath, currentFile, selection, recentFiles, annotations).", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "importFolder", "description": "Rescan workspace files. Call after creating new files with native Write tool.", "inputSchema": { "type": "object", "properties": {} } },
+      { "name": "search", "description": "Search file names and annotation text.", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] } },
       { "name": "annotate", "description": "Create/update/resolve/delete/list annotations on file lines.", "inputSchema": { "type": "object", "properties": { "subAction": { "type": "string", "enum": ["create", "update", "resolve", "delete", "list"] }, "id": { "type": "string" }, "filePath": { "type": "string" }, "type": { "type": "string", "enum": ["highlight", "note", "todo", "question", "important"] }, "lineStart": { "type": "integer" }, "lineEnd": { "type": "integer" }, "selectedText": { "type": "string" }, "note": { "type": "string" } }, "required": ["subAction"] } },
-      { "name": "setDocStatus", "description": "Set a document's priority/status/notes.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "priority": { "type": "string", "enum": ["high", "normal", "low"] }, "status": { "type": "string", "enum": ["current", "needs-update", "draft", "deprecated"] }, "notes": { "type": "string" } }, "required": ["path"] } },
-      { "name": "managePins", "description": "Pin/unpin/list/reorder pinned documents.", "inputSchema": { "type": "object", "properties": { "subAction": { "type": "string", "enum": ["pin", "unpin", "list", "reorder"] }, "path": { "type": "string" }, "order": { "type": "array", "items": { "type": "string" } } }, "required": ["subAction"] } },
-      { "name": "getKBMap", "description": "Get the full KB structure.", "inputSchema": { "type": "object", "properties": { "scope": { "type": "string", "enum": ["full", "folders", "collections", "annotations", "pins"] } } } },
       { "name": "getOutline", "description": "Get a document's heading structure + annotations.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
       { "name": "getSection", "description": "Read a section by heading or line range.", "inputSchema": { "type": "object", "properties": { "heading": { "type": "string" }, "lineStart": { "type": "integer" }, "lineEnd": { "type": "integer" } } } },
-      { "name": "search", "description": "Search KB metadata.", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "type": { "type": "string", "enum": ["all", "annotations", "tags", "folders", "collections"] } }, "required": ["query"] } },
-      { "name": "loadFile", "description": "Load a file into KB viewer.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
-      { "name": "getContext", "description": "Get user's current context.", "inputSchema": { "type": "object", "properties": {} } },
-      { "name": "importFolder", "description": "Rescan workspace files. Call after creating new files with native Write tool.", "inputSchema": { "type": "object", "properties": {} } }
+      { "name": "createDoc", "description": "Create a new markdown document in the workspace.", "inputSchema": { "type": "object", "properties": { "name": { "type": "string", "description": "File name (auto-adds .md)" }, "path": { "type": "string", "description": "Full path (overrides name)" }, "content": { "type": "string" } } } },
+      { "name": "updateDoc", "description": "Replace the full content of a document.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] } },
+      { "name": "appendToDoc", "description": "Append content to the end of a document.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] } }
     ]
   }
   </script>
@@ -57,6 +54,18 @@
   <div id="mainLayout">
   <!-- Sidebar: file tree -->
   <div id="sidebar">
+    <div id="sidebarHeader">
+      <span class="sidebar-title">Files</span>
+      <div style="display:flex;gap:4px">
+        <button id="uploadBtn" class="icon-btn" title="Upload file">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+        <button id="newFileBtn" class="icon-btn" title="New file">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+      </div>
+      <input type="file" id="fileInput" accept=".md,.mdx,.txt,.markdown" style="display:none">
+    </div>
     <div id="fileTree" class="file-tree"></div>
   </div>
   <div id="sidebarResizer"></div>

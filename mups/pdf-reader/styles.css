@@ -89,16 +89,6 @@ body {
 .file-item:hover .file-delete { opacity: 1; }
 .file-item:hover .file-delete:hover { color: var(--red); }
 
-.folder-item {
-  padding: 3px 10px; font-size: 12px; cursor: pointer;
-  display: flex; align-items: center; gap: 4px; user-select: none;
-}
-.folder-item:hover { background: var(--bg-hover); }
-.folder-arrow { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-muted); transition: transform 0.15s; }
-.folder-arrow.expanded { transform: rotate(90deg); }
-.folder-children { padding-left: 12px; }
-.folder-children.collapsed { display: none; }
-
 /* Content area */
 #content { flex: 1; overflow: hidden; display: flex; flex-direction: column; background: var(--pdf-bg); }
 

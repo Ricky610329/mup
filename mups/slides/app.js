@@ -326,10 +326,24 @@
       return svg;
     }
 
-    function generateTable(headers, rows, th) {
+    function generateTable(headers, rows, th, body, bodyPosition) {
       const borderColor = th.codeBg;
       const accentColor = th.accent;
-      let html = `<div style="font-family:system-ui,sans-serif;padding:12px 24px"><table style="width:100%;border-collapse:separate;border-spacing:0;font-size:15px">`;
+      const hasBody = body && body.trim();
+      const pos = bodyPosition || 'side';
+      const isSide = pos === 'side' && hasBody;
+      const wrapper = isSide
+        ? `<div style="font-family:system-ui,sans-serif;padding:12px 24px;display:flex;gap:32px;align-items:flex-start">`
+        : `<div style="font-family:system-ui,sans-serif;padding:12px 24px">`;
+      let html = wrapper;
+      if (hasBody) {
+        const bodyStyle = isSide
+          ? `flex:1;min-width:0;color:${th.text};font-size:15px;line-height:1.7`
+          : `color:${th.text};font-size:15px;line-height:1.7;margin-bottom:16px`;
+        html += `<div style="${bodyStyle}">${md(body)}</div>`;
+      }
+      const tableWidth = isSide ? 'flex:1.2;min-width:0' : 'width:100%';
+      html += `<div style="${tableWidth}"><table style="width:100%;border-collapse:separate;border-spacing:0;font-size:15px">`;
       // Header
       html += '<thead><tr>';
       headers.forEach((h, i) => {
@@ -338,7 +352,8 @@
         const color = i === 1 ? accentColor : th.muted;
         const weight = i === 1 ? '700' : '600';
         const align = isFirst ? 'text-align:left' : 'text-align:center';
-        html += `<th style="${align};padding:11px 16px;${border};color:${color};font-weight:${weight};font-size:${i === 1 ? '15px' : '14px'}">${h}</th>`;
+        const pad = hasBody ? '7px 12px' : '11px 16px';
+        html += `<th style="${align};padding:${pad};${border};color:${color};font-weight:${weight};font-size:${i === 1 ? '15px' : '14px'}">${h}</th>`;
       });
       html += '</tr></thead><tbody>';
       // Rows
@@ -348,7 +363,8 @@
           const isLast = ri === rows.length - 1;
           const border = isLast ? '' : `border-bottom:1px solid ${borderColor}`;
           const isFirst = ci === 0;
-          let cellStyle = `padding:11px 16px;${border};`;
+          const cellPad = hasBody ? '7px 12px' : '11px 16px';
+          let cellStyle = `padding:${cellPad};${border};`;
           if (isFirst) {
             cellStyle += `font-weight:600;color:${th.text};text-align:left;`;
           } else {
@@ -363,7 +379,7 @@
         });
         html += '</tr>';
       });
-      html += '</tbody></table></div>';
+      html += '</tbody></table></div></div>';
       return html;
     }
 
@@ -374,7 +390,7 @@
           s.content.html = generateChart(s._chart.type, s._chart.data, s._chart.options, th);
         }
         if (s._table) {
-          s.content.html = generateTable(s._table.headers, s._table.rows, th);
+          s.content.html = generateTable(s._table.headers, s._table.rows, th, s._table.body, s._table.bodyPosition);
         }
       });
     }
@@ -638,6 +654,7 @@
 
     document.getElementById('themeSelect').addEventListener('change', (e) => {
       theme = e.target.value;
+      rerenderCharts();
       render(); debouncedSave();
     });
 
@@ -993,11 +1010,12 @@
       return { content: [{ type: 'text', text: `Added embed slide (index ${currentIndex}). Total: ${slides.length}.` }], isError: false };
     });
 
-    mup.registerFunction('addTable', ({ title, caption, headers, rows }) => {
+    mup.registerFunction('addTable', ({ title, caption, headers, rows, body, bodyPosition }) => {
       if (!headers || !rows) return { content: [{ type: 'text', text: 'Missing headers or rows.' }], isError: true };
       const th = themes[theme] || themes.light;
-      const html = generateTable(headers, rows, th);
-      slides.push({ layout: 'embed', content: { title: title || '', html, caption: caption || '' }, _table: { headers, rows } });
+      const bp = bodyPosition || 'side';
+      const html = generateTable(headers, rows, th, body, bp);
+      slides.push({ layout: 'embed', content: { title: title || '', html, caption: caption || '' }, _table: { headers, rows, body, bodyPosition: bp } });
       currentIndex = slides.length - 1;
       render(); save();
       return { content: [{ type: 'text', text: `Added table slide (index ${currentIndex}). Total: ${slides.length}.` }], isError: false };

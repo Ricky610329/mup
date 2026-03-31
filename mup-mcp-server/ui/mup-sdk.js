@@ -22,12 +22,13 @@ class MupSDK {
   async readFile(path) { const r = await this.system("readFile", { path }); if (r?.error) throw new Error(r.error); return r?.content || ""; }
   async readFileBase64(path) { const r = await this.system("readFileBase64", { path }); if (r?.error) throw new Error(r.error); return r?.content || ""; }
   async writeFile(path, content) { const r = await this.system("writeFile", { path, content }); if (r?.error) throw new Error(r.error); }
+  async writeFileBase64(path, content) { const r = await this.system("writeFileBase64", { path, content }); if (r?.error) throw new Error(r.error); }
+  async deleteFile(path) { const r = await this.system("deleteFile", { path }); if (r?.error) throw new Error(r.error); }
   async registerWorkspace(opts) {
     const r = await this.system("registerWorkspace", opts || {});
     if (r?.error) throw new Error(r.error);
     const data = JSON.parse(r.content);
     this._hostPort = data.port;
-    this._cwd = data.cwd;
     return data;
   }
   resolveAssetUrl(src, basePath) {

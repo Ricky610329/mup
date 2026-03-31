@@ -403,28 +403,54 @@ export class UiBridge extends EventEmitter {
       this.sendRaw({ type: "system-response", requestId, result: { content: String(this.port) } });
     } else if (action === "registerWorkspace") {
       const fileTypes = (args.fileTypes || []) as string[];
+      const dedicated = !!(args.dedicated);
       const cwd = process.cwd();
-      const cwdPrefix = cwd.endsWith(path.sep) ? cwd : cwd + path.sep;
-      // Auto-grant cwd access for this MUP
-      const existing = this.fileAccess.get(mupId) || [];
-      this.fileAccess.set(mupId, [...new Set([...existing, cwd])]);
-      // Scan cwd recursively and filter by requested file types
-      const files: string[] = [];
-      const scan = (dir: string) => {
+
+      if (dedicated) {
+        // Dedicated workspace: flat directory at .mup/<mup-id>/
+        const workspacePath = path.join(cwd, '.mup', mupId);
+        fs.mkdirSync(workspacePath, { recursive: true });
+        // Auto-grant access to this MUP's workspace
+        const existing = this.fileAccess.get(mupId) || [];
+        this.fileAccess.set(mupId, [...new Set([...existing, workspacePath, cwd])]);
+        // Flat scan (no recursion)
+        const files: string[] = [];
         try {
-          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
-            const full = path.join(dir, entry.name);
-            if (entry.isDirectory()) scan(full);
-            else if (!fileTypes.length || fileTypes.some(ext => full.toLowerCase().endsWith(ext.toLowerCase()))) files.push(full);
+          for (const entry of fs.readdirSync(workspacePath, { withFileTypes: true })) {
+            if (entry.name.startsWith('.')) continue;
+            if (entry.isFile()) {
+              const full = path.join(workspacePath, entry.name);
+              if (!fileTypes.length || fileTypes.some(ext => full.toLowerCase().endsWith(ext.toLowerCase()))) files.push(full);
+            }
           }
         } catch {}
-      };
-      scan(cwd);
-      this.sendRaw({ type: "system-response", requestId, result: {
-        content: JSON.stringify({ cwd: cwdPrefix, port: this.port, files })
-      }});
-      console.error(`[mup-mcp] Workspace registered for ${mupId}: ${files.length} files (${fileTypes.join(', ') || 'all'})`);
+        const wsPrefix = workspacePath.endsWith(path.sep) ? workspacePath : workspacePath + path.sep;
+        this.sendRaw({ type: "system-response", requestId, result: {
+          content: JSON.stringify({ workspacePath: wsPrefix, port: this.port, files })
+        }});
+        console.error(`[mup-mcp] Dedicated workspace for ${mupId}: ${workspacePath} (${files.length} files)`);
+      } else {
+        // Legacy: scan CWD recursively
+        const cwdPrefix = cwd.endsWith(path.sep) ? cwd : cwd + path.sep;
+        const existing = this.fileAccess.get(mupId) || [];
+        this.fileAccess.set(mupId, [...new Set([...existing, cwd])]);
+        const files: string[] = [];
+        const scan = (dir: string) => {
+          try {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) scan(full);
+              else if (!fileTypes.length || fileTypes.some(ext => full.toLowerCase().endsWith(ext.toLowerCase()))) files.push(full);
+            }
+          } catch {}
+        };
+        scan(cwd);
+        this.sendRaw({ type: "system-response", requestId, result: {
+          content: JSON.stringify({ cwd: cwdPrefix, port: this.port, files })
+        }});
+        console.error(`[mup-mcp] Workspace registered for ${mupId}: ${files.length} files (${fileTypes.join(', ') || 'all'})`);
+      }
     } else if (action === "grantFileAccess") {
       const paths = args.paths as string[];
       if (!paths || !Array.isArray(paths)) {

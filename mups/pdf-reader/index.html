@@ -7,7 +7,7 @@
   <script type="application/mup-manifest">
   {
     "name": "PDF Reader",
-    "description": "PDF viewer with region selection for discussing documents with the LLM. User draws a selection box, LLM captures it as an image. Use loadPDF to open a file, captureSelection to see what the user selected, setSelection to highlight a region.",
+    "description": "PDF viewer with region selection. Workspace: .mup/mup-pdf-reader/. Use loadPDF to open a file, captureSelection to see what the user selected, setSelection to highlight a region.",
     "grid": { "minWidth": 2, "minHeight": 2, "preferredWidth": 3, "preferredHeight": 3 },
     "darkMode": true,
     "notifications": { "level": "notify", "overridable": true },
@@ -19,7 +19,7 @@
       { "name": "captureSelection", "description": "Capture the selected region as a PNG image. With saveTo: also saves to disk.", "inputSchema": { "type": "object", "properties": { "saveTo": { "type": "string", "description": "Optional file path to save the PNG" } } } },
       { "name": "getPageText", "description": "Extract text content from a page.", "inputSchema": { "type": "object", "properties": { "page": { "type": "integer" } } } },
       { "name": "getContext", "description": "Get current state.", "inputSchema": { "type": "object", "properties": {} } },
-      { "name": "importFolder", "description": "Register a folder and scan for PDFs. Call with no args to rescan.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string", "description": "Folder path to register (optional)" }, "description": { "type": "string" } } } }
+      { "name": "importFolder", "description": "Rescan the workspace for PDFs.", "inputSchema": { "type": "object", "properties": {} } }
     ]
   }
   </script>
@@ -78,10 +78,10 @@
     </div>
   </div>
   <div id="deleteModal" style="display:none">
-    <div class="modal-title">Remove from library?</div>
-    <p class="modal-desc">Remove <strong id="deleteFileName"></strong>. The original file will not be deleted.</p>
+    <div class="modal-title">Delete file?</div>
+    <p class="modal-desc">Delete <strong id="deleteFileName"></strong> from the workspace? This will remove the file from disk.</p>
     <div class="modal-actions">
-      <button id="deleteConfirm" class="btn-danger">Remove</button>
+      <button id="deleteConfirm" class="btn-danger">Delete</button>
       <button id="deleteCancel">Cancel</button>
     </div>
   </div>
