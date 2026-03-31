@@ -491,6 +491,15 @@ export class UiBridge extends EventEmitter {
         this.sendRaw({ type: "system-response", requestId, result: { error: `Access denied: ${filePath}. Use setFileAccess to grant access.` } });
         return;
       }
+      // Enforce flat structure in dedicated workspaces (.mup/<mupId>/)
+      const mupDir = path.join(process.cwd(), '.mup');
+      if (resolved.startsWith(mupDir + path.sep)) {
+        const rel = resolved.slice(mupDir.length + 1).split(path.sep);
+        if (rel.length > 2) { // mupId + filename = 2, more = subdirectory
+          this.sendRaw({ type: "system-response", requestId, result: { error: `Subdirectories not allowed in dedicated workspace` } });
+          return;
+        }
+      }
       try {
         const dir = path.dirname(resolved);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

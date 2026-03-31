@@ -100,7 +100,9 @@ function confirmThenOpen(filePath) {
 // ---- Create New Doc ----
 async function createNewDoc(name) {
   if (!workspacePath) return;
-  const fileName = name.endsWith('.md') ? name : name + '.md';
+  const sanitized = name.replace(/[\/\\:*?"<>|]/g, '_').trim();
+  if (!sanitized) return;
+  const fileName = sanitized.endsWith('.md') ? sanitized : sanitized + '.md';
   const filePath = workspacePath + fileName;
   const title = fileName.replace(/\.md$/, '').replace(/[-_]/g, ' ');
   try {

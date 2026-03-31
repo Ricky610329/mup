@@ -395,6 +395,11 @@
       });
     }
 
+    function resolveImg(url) {
+      if (!url) return '';
+      return mup.resolveAssetUrl ? mup.resolveAssetUrl(url) : url;
+    }
+
     // ---- Render slide HTML ----
     function renderSlideHTML(slide, index, total) {
       const c = slide.content || {};
@@ -410,7 +415,7 @@
           inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}<div class="slide-columns"><div class="slide-col">${md(c.left || '')}</div><div class="slide-col">${md(c.right || '')}</div></div>`;
           break;
         case 'image':
-          inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${c.imageUrl ? `<img src="${esc(c.imageUrl)}" alt="">` : ''}<div class="caption">${esc(c.caption || '')}</div>`;
+          inner = `${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${c.imageUrl ? `<img src="${esc(resolveImg(c.imageUrl))}" alt="">` : ''}<div class="caption">${esc(c.caption || '')}</div>`;
           break;
         case 'section':
           inner = `<div class="section-divider"><div class="section-line"></div><h1>${esc(c.title || '')}</h1>${c.subtitle ? `<div class="subtitle">${marked.parseInline(c.subtitle)}</div>` : ''}</div>`;
@@ -422,7 +427,7 @@
           const pos = c.imagePosition || 'left';
           const isVert = pos === 'top' || pos === 'bottom';
           const imgFirst = pos === 'left' || pos === 'top';
-          const imgHtml = c.imageUrl ? `<div class="it-image"><img src="${esc(c.imageUrl)}" alt=""></div>` : '';
+          const imgHtml = c.imageUrl ? `<div class="it-image"><img src="${esc(resolveImg(c.imageUrl))}" alt=""></div>` : '';
           const textHtml = `<div class="it-text">${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${marked.parse(c.body || '')}</div>`;
           inner = `<div class="image-text-layout ${isVert ? 'vertical' : 'horizontal'}">${imgFirst ? imgHtml + textHtml : textHtml + imgHtml}</div>`;
           break;
@@ -1094,6 +1099,9 @@
 
     // ---- Slide Preview (Screenshot) ----
     mup.registerFunction('getSlidePreview', async ({ index }) => {
+      if (typeof html2canvas === 'undefined') {
+        return { content: [{ type: 'text', text: 'html2canvas library not loaded.' }], isError: true };
+      }
       const idx = index ?? currentIndex;
       if (idx < 0 || idx >= slides.length) {
         return { content: [{ type: 'text', text: `Slide index ${idx} out of range (0-${slides.length - 1}).` }], isError: true };
@@ -1144,8 +1152,9 @@
 
     // ---- Init ----
     mup.onThemeChange(applyEditorTheme);
-    mup.onReady((params) => {
+    mup.onReady(async (params) => {
       if (params?.theme) applyEditorTheme(params.theme);
+      try { await mup.registerWorkspace(); } catch {}
       const state = loadState();
       if (state) {
         slides = state.slides || [];

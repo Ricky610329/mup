@@ -378,7 +378,7 @@ async function loadFromMemory(file) {
     try {
       const b64 = btoa(String.fromCharCode(...bytes));
       localStorage.setItem('mup-pdf-temp', JSON.stringify({ name: file.name, data: b64 }));
-    } catch {} // may fail if too large for localStorage
+    } catch (e) { console.warn('[mup-pdf] localStorage cache failed:', e); }
     await loadFromBytes(bytes, file.name, true);
   };
   reader.readAsArrayBuffer(file);
@@ -520,7 +520,15 @@ mup.registerFunction('getPageText', async (p) => {
   const pageNum = p.page || currentPage;
   const page = await pdfDoc.getPage(pageNum);
   const textContent = await page.getTextContent();
-  const text = textContent.items.map(item => item.str).join(' ');
+  const items = textContent.items;
+  let text = '';
+  for (let i = 0; i < items.length; i++) {
+    if (i > 0) {
+      const y = items[i].transform?.[5], prevY = items[i - 1].transform?.[5];
+      text += (y != null && prevY != null && Math.abs(y - prevY) > 5) ? '\n' : ' ';
+    }
+    text += items[i].str;
+  }
   return ok(`Page ${pageNum} text (${text.length} chars)`, { text, page: pageNum });
 });
 
