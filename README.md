@@ -17,6 +17,12 @@ Current version: 0.2.7 | Protocol: `mup/2026-03-17`
 
 Claude creates a full slide deck with charts, tables, and themes — all through function calls.
 
+### PDF to Presentation — AI reads a paper and presents it
+
+[![PDF to Presentation Demo](https://img.youtube.com/vi/GviEqEq88b4/maxresdefault.jpg)](https://youtu.be/GviEqEq88b4)
+
+Claude reads the AlexNet paper from a PDF, takes Markdown notes, captures figures with human-AI collaboration, builds a 19-slide presentation with charts and tables, then presents it slide by slide in the new in-panel reading mode — all narrated live.
+
 ### Sound Pad — AI composes a track from scratch
 
 [![Sound Pad Demo](https://img.youtube.com/vi/e5JqRT9t5vU/maxresdefault.jpg)](https://youtu.be/e5JqRT9t5vU)
@@ -54,7 +60,9 @@ MUP changes this. It puts clickable, visual UI right inside the chat — so anyo
 ## Available MUPs
 
 - **Chat** — Built-in, always available
-- **Slides** — Presentation editor with charts, tables, themes, and export ([demo](https://youtu.be/GKeDc1DMLH0))
+- **Slides** — Presentation editor with charts, tables, themes, reading mode, and export ([demo](https://youtu.be/GKeDc1DMLH0))
+- **PDF Reader** — PDF viewer with page text extraction and region selection/capture
+- **Markdown** — Markdown workspace with annotations and document management
 - **Sound Pad** — 16-pad synthesizer with sequencer, per-track volume, and event system ([demo](https://youtu.be/e5JqRT9t5vU))
 - **Voice** — Speech synthesis and recognition (Jarvis mode)
 - **Progress** — Task progress tracking

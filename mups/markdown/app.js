@@ -4,6 +4,13 @@
 const STORE_KEY = 'mup-kb-data';
 let store = { _v: 3, docs: {}, annotations: [] };
 let workspacePath = null;
+
+// Resolve a path: if relative (no leading /), prepend workspacePath
+function resolvePath(p) {
+  if (!p) return p;
+  if (p.startsWith('/')) return p;
+  return workspacePath ? workspacePath + p : p;
+}
 let currentFile = null; // { path, content, lines }
 let visibleRange = null;
 let selection = null;
@@ -572,8 +579,9 @@ mup.registerFunction('search', async (p) => {
 
 mup.registerFunction('loadFile', async (p) => {
   if (!p.path) return err('path required');
-  await openFile(p.path);
-  return currentFile ? ok(`Loaded ${p.path.split('/').pop()} (${currentFile.lines.length} lines)`) : err('Failed');
+  const resolvedPath = resolvePath(p.path);
+  await openFile(resolvedPath);
+  return currentFile ? ok(`Loaded ${resolvedPath.split('/').pop()} (${currentFile.lines.length} lines)`) : err('Failed');
 });
 
 mup.registerFunction('getContext', async () => {
@@ -594,8 +602,9 @@ mup.registerFunction('createDoc', async (p) => {
   const name = p.name || (p.path ? p.path.split('/').pop() : null);
   if (!name) return err('name or path required');
   const fileName = name.endsWith('.md') ? name : name + '.md';
-  const filePath = p.path || (workspacePath ? workspacePath + fileName : null);
-  if (!filePath) return err('workspacePath not set');
+  if (!workspacePath) return err('workspacePath not set');
+  // Always resolve path inside workspace
+  const filePath = workspacePath + fileName;
   const t = fileName.replace(/\.md$/, '').replace(/[-_]/g, ' ');
   const c = p.content || `# ${t}\n\n`;
   try { await mup.writeFile(filePath, c); } catch (e) { return err(e.message); }
@@ -607,22 +616,24 @@ mup.registerFunction('createDoc', async (p) => {
 
 mup.registerFunction('updateDoc', async (p) => {
   if (!p.path || p.content === undefined) return err('path+content required');
-  try { await mup.writeFile(p.path, p.content); } catch (e) { return err(e.message); }
-  if (!store.docs[p.path]) store.docs[p.path] = {};
-  if (currentFile?.path === p.path) { currentFile.content = p.content; currentFile.lines = p.content.split('\n'); dirty = false; updateUnsaved(); renderContent(); }
+  const resolvedPath = resolvePath(p.path);
+  try { await mup.writeFile(resolvedPath, p.content); } catch (e) { return err(e.message); }
+  if (!store.docs[resolvedPath]) store.docs[resolvedPath] = {};
+  if (currentFile?.path === resolvedPath) { currentFile.content = p.content; currentFile.lines = p.content.split('\n'); dirty = false; updateUnsaved(); renderContent(); }
   broadcastState();
-  return ok(`Updated ${p.path.split('/').pop()}`);
+  return ok(`Updated ${resolvedPath.split('/').pop()}`);
 });
 
 mup.registerFunction('appendToDoc', async (p) => {
   if (!p.path || !p.content) return err('path+content required');
-  let ex; try { ex = await mup.readFile(p.path); } catch { ex = ''; }
+  const resolvedPath = resolvePath(p.path);
+  let ex; try { ex = await mup.readFile(resolvedPath); } catch { ex = ''; }
   const nc = ex + (ex.endsWith('\n') ? '' : '\n') + p.content;
-  try { await mup.writeFile(p.path, nc); } catch (e) { return err(e.message); }
-  if (!store.docs[p.path]) store.docs[p.path] = {};
-  if (currentFile?.path === p.path) { currentFile.content = nc; currentFile.lines = nc.split('\n'); dirty = false; updateUnsaved(); renderContent(); }
+  try { await mup.writeFile(resolvedPath, nc); } catch (e) { return err(e.message); }
+  if (!store.docs[resolvedPath]) store.docs[resolvedPath] = {};
+  if (currentFile?.path === resolvedPath) { currentFile.content = nc; currentFile.lines = nc.split('\n'); dirty = false; updateUnsaved(); renderContent(); }
   broadcastState();
-  return ok(`Appended to ${p.path.split('/').pop()}`);
+  return ok(`Appended to ${resolvedPath.split('/').pop()}`);
 });
 
 // ==== INIT ====

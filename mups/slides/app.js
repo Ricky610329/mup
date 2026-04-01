@@ -1150,6 +1150,126 @@
       }
     });
 
+    // ---- Reading Mode ----
+    let readingMode = false;
+    let readingIndex = 0;
+
+    function enterReading(startIndex) {
+      if (slides.length === 0) return false;
+      readingMode = true;
+      readingIndex = Math.max(0, Math.min(startIndex ?? currentIndex, slides.length - 1));
+      document.getElementById('readingOverlay').classList.add('open');
+      renderReadingSlide();
+      return true;
+    }
+
+    function exitReading() {
+      readingMode = false;
+      document.getElementById('readingOverlay').classList.remove('open');
+      // Sync editor to the slide we were viewing
+      currentIndex = readingIndex;
+      render();
+    }
+
+    function renderReadingSlide() {
+      const area = document.getElementById('readingSlideArea');
+      const slide = slides[readingIndex];
+      if (!slide) return;
+
+      const [designW, designH] = DESIGN_SIZES[aspectRatio] || DESIGN_SIZES['16:9'];
+      const th = themes[theme] || themes.light;
+
+      area.innerHTML = '';
+      const frame = document.createElement('div');
+      frame.className = `slide-frame layout-${slide.layout}`;
+      frame.style.width = designW + 'px';
+      frame.style.height = designH + 'px';
+      frame.style.background = th.bg;
+      frame.style.cssText += `--slide-bg:${th.bg};--slide-text:${th.text};--slide-heading:${th.heading};--slide-accent:${th.accent};--slide-muted:${th.muted};--slide-code-bg:${th.codeBg};`;
+      frame.innerHTML = renderSlideHTML(slide, readingIndex, slides.length);
+      area.appendChild(frame);
+
+      // Scale to fit the reading area while maintaining aspect ratio
+      requestAnimationFrame(() => {
+        const rect = area.getBoundingClientRect();
+        const scale = Math.min(rect.width / designW, rect.height / designH);
+        frame.style.transform = `scale(${scale})`;
+        frame.style.width = designW + 'px';
+        frame.style.height = designH + 'px';
+        frame.style.transformOrigin = 'center center';
+      });
+
+      // Update counter and progress
+      document.getElementById('readingCounter').textContent = `${readingIndex + 1} / ${slides.length}`;
+      const progress = slides.length > 1 ? (readingIndex / (slides.length - 1) * 100) : 100;
+      document.getElementById('readingProgress').style.width = progress + '%';
+    }
+
+    function readingNext() {
+      if (readingIndex < slides.length - 1) { readingIndex++; renderReadingSlide(); }
+    }
+    function readingPrev() {
+      if (readingIndex > 0) { readingIndex--; renderReadingSlide(); }
+    }
+
+    // Reading mode button & nav
+    document.getElementById('readingBtn').addEventListener('click', () => enterReading());
+    document.getElementById('readingExitBtn').addEventListener('click', exitReading);
+    document.getElementById('readingNextBtn').addEventListener('click', readingNext);
+    document.getElementById('readingPrevBtn').addEventListener('click', readingPrev);
+
+    // Reading mode keyboard
+    document.addEventListener('keydown', (e) => {
+      if (!readingMode) return;
+      if (e.key === 'Escape') { e.preventDefault(); exitReading(); }
+      else if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); readingNext(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); readingPrev(); }
+      else if (e.key === 'Home') { e.preventDefault(); readingIndex = 0; renderReadingSlide(); }
+      else if (e.key === 'End') { e.preventDefault(); readingIndex = slides.length - 1; renderReadingSlide(); }
+    });
+
+    // Re-scale reading slide on resize
+    new ResizeObserver(() => {
+      if (readingMode) renderReadingSlide();
+    }).observe(document.getElementById('readingSlideArea'));
+
+    // Register reading mode functions
+    mup.registerFunction('enterReadingMode', ({ index }) => {
+      if (slides.length === 0) return { content: [{ type: 'text', text: 'No slides.' }], isError: true };
+      enterReading(index);
+      const slide = slides[readingIndex];
+      return { content: [{ type: 'text', text: `Reading mode: slide ${readingIndex + 1}/${slides.length} — ${slide.content?.title || slide.layout}` }] };
+    });
+
+    mup.registerFunction('exitReadingMode', () => {
+      if (!readingMode) return { content: [{ type: 'text', text: 'Not in reading mode.' }] };
+      exitReading();
+      return { content: [{ type: 'text', text: 'Exited reading mode.' }] };
+    });
+
+    mup.registerFunction('readingNext', () => {
+      if (!readingMode) return { content: [{ type: 'text', text: 'Not in reading mode. Call enterReadingMode first.' }], isError: true };
+      readingNext();
+      const slide = slides[readingIndex];
+      return { content: [{ type: 'text', text: `Slide ${readingIndex + 1}/${slides.length}: ${slide.content?.title || slide.layout}` }] };
+    });
+
+    mup.registerFunction('readingPrev', () => {
+      if (!readingMode) return { content: [{ type: 'text', text: 'Not in reading mode. Call enterReadingMode first.' }], isError: true };
+      readingPrev();
+      const slide = slides[readingIndex];
+      return { content: [{ type: 'text', text: `Slide ${readingIndex + 1}/${slides.length}: ${slide.content?.title || slide.layout}` }] };
+    });
+
+    mup.registerFunction('readingGoTo', ({ index }) => {
+      if (!readingMode) return { content: [{ type: 'text', text: 'Not in reading mode. Call enterReadingMode first.' }], isError: true };
+      if (index < 0 || index >= slides.length) return { content: [{ type: 'text', text: `Index out of range (0-${slides.length - 1}).` }], isError: true };
+      readingIndex = index;
+      renderReadingSlide();
+      const slide = slides[readingIndex];
+      return { content: [{ type: 'text', text: `Slide ${readingIndex + 1}/${slides.length}: ${slide.content?.title || slide.layout}` }] };
+    });
+
     // ---- Init ----
     mup.onThemeChange(applyEditorTheme);
     mup.onReady(async (params) => {
