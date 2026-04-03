@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script type="application/mup-manifest">
+  {
+    "name": "Star Map",
+    "description": "Location-based interactive star map (default: Taiwan 25°N). Shows ~150 stars, 20+ constellations, horizon, Sun, ecliptic, and Milky Way. AI can highlight constellations, navigate, toggle overlays (ecliptic/milkyway/horizon), set observer location, and display info cards. Users drag to rotate sky, scroll to zoom, click stars.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "showConstellation",
+        "description": "Highlight a constellation with lines and labels, and auto-navigate to center on it. Use the English name (e.g. 'Orion', 'Ursa Major').",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Constellation name (case-insensitive). e.g. Orion, Ursa Major, Scorpius" }
+          },
+          "required": ["name"]
+        }
+      },
+      {
+        "name": "navigate",
+        "description": "Smoothly pan and zoom to a constellation or star.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "target": { "type": "string", "description": "Name of constellation or star to navigate to" },
+            "zoom": { "type": "number", "description": "Zoom level (1=full sky, higher=closer). Default: auto" }
+          },
+          "required": ["target"]
+        }
+      },
+      {
+        "name": "setInfo",
+        "description": "Show or hide the info card overlay. Use for narration, storytelling, or explaining what the user sees. Pass empty title and text to hide.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string", "description": "Info card title" },
+            "text": { "type": "string", "description": "Info card body text (supports plain text)" }
+          },
+          "required": ["title", "text"]
+        }
+      },
+      {
+        "name": "reset",
+        "description": "Reset the view to default: clear all highlighted constellations, reset zoom/pan, hide info card.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "getView",
+        "description": "Get the current view state: center position, zoom level, active constellations, and recently tapped star.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "setLocation",
+        "description": "Set observer location on Earth. Affects horizon, visible stars, and initial view. Default: Taiwan (25°N, 121.5°E).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "latitude": { "type": "number", "description": "Latitude in degrees, -90 to 90" },
+            "longitude": { "type": "number", "description": "Longitude in degrees, -180 to 180" }
+          },
+          "required": ["latitude", "longitude"]
+        }
+      },
+      {
+        "name": "toggleOverlay",
+        "description": "Toggle sky overlays: 'ecliptic' (Sun's annual path, yellow), 'milkyway' (Milky Way band), 'horizon' (horizon line + dim below-horizon stars). All default off except horizon.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "overlay": { "type": "string", "description": "Overlay name: ecliptic, milkyway, or horizon" },
+            "visible": { "type": "boolean", "description": "true=show, false=hide. Omit to toggle." }
+          },
+          "required": ["overlay"]
+        }
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <canvas id="starCanvas"></canvas>
+  <div id="infoCard" class="info-card hidden">
+    <div class="info-title" id="infoTitle"></div>
+    <div class="info-text" id="infoText"></div>
+  </div>
+
+  <!-- Settings button -->
+  <button id="settingsBtn" class="settings-btn" aria-label="Settings">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+
+  <!-- Settings panel -->
+  <div id="settingsPanel" class="settings-panel hidden">
+    <div class="sp-header">
+      <span class="sp-title">Settings</span>
+      <button id="settingsClose" class="sp-close">&times;</button>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-label">Location</div>
+      <select id="locationPreset" class="sp-select">
+        <option value="25.03,121.56">Taiwan</option>
+        <option value="35.68,139.69">Tokyo</option>
+        <option value="37.77,-122.42">San Francisco</option>
+        <option value="40.71,-74.01">New York</option>
+        <option value="51.51,-0.13">London</option>
+        <option value="48.86,2.35">Paris</option>
+        <option value="-33.87,151.21">Sydney</option>
+        <option value="-23.55,-46.63">Sao Paulo</option>
+        <option value="90,0">North Pole</option>
+        <option value="custom">Custom...</option>
+      </select>
+      <div id="customLatLon" class="sp-custom hidden">
+        <input id="inputLat" type="number" class="sp-input" placeholder="Lat" min="-90" max="90" step="0.1">
+        <input id="inputLon" type="number" class="sp-input" placeholder="Lon" min="-180" max="180" step="0.1">
+        <button id="applyLocation" class="sp-apply">Apply</button>
+      </div>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-label">Overlays</div>
+      <label class="sp-toggle"><input type="checkbox" id="togHorizon" checked><span>Horizon</span></label>
+      <label class="sp-toggle"><input type="checkbox" id="togEcliptic"><span>Ecliptic</span></label>
+      <label class="sp-toggle"><input type="checkbox" id="togMilkyway"><span>Milky Way</span></label>
+    </div>
+  </div>
+
+  <!-- Data -->
+  <script src="./data/stars.js"></script>
+  <script src="./data/constellations.js"></script>
+  <script src="./data/deep-sky.js"></script>
+  <!-- Engine -->
+  <script src="./projection.js"></script>
+  <script src="./overlays.js"></script>
+  <script src="./render.js"></script>
+  <script src="./interaction.js"></script>
+  <script src="./settings.js"></script>
+  <!-- Entry -->
+  <script src="./app.js"></script>
+</body>
+</html>
