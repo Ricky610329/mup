@@ -77,6 +77,29 @@
           },
           "required": ["overlay"]
         }
+      },
+      {
+        "name": "highlightStar",
+        "description": "Highlight a star with a pulsing ring indicator. Auto-expires after duration.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Star name to highlight" },
+            "duration": { "type": "number", "description": "Duration in seconds (default 5)" }
+          },
+          "required": ["name"]
+        }
+      },
+      {
+        "name": "hideConstellation",
+        "description": "Fade out a constellation smoothly. Use 'all' to fade out all visible constellations.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Constellation name, or 'all' to hide all" }
+          },
+          "required": ["name"]
+        }
       }
     ]
   }
@@ -88,6 +111,7 @@
   <div id="infoCard" class="info-card hidden">
     <div class="info-title" id="infoTitle"></div>
     <div class="info-text" id="infoText"></div>
+    <div class="info-actions" id="infoActions"></div>
   </div>
 
   <!-- Settings button -->
@@ -123,6 +147,11 @@
         <input id="inputLon" type="number" class="sp-input" placeholder="Lon" min="-180" max="180" step="0.1">
         <button id="applyLocation" class="sp-apply">Apply</button>
       </div>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-label">View Mode</div>
+      <label class="sp-toggle"><input type="checkbox" id="togHorizonLock"><span>Horizon Lock</span></label>
     </div>
 
     <div class="sp-section">

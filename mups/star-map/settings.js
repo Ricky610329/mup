@@ -13,6 +13,7 @@ function initSettings() {
   const inputLat = document.getElementById('inputLat');
   const inputLon = document.getElementById('inputLon');
   const applyBtn = document.getElementById('applyLocation');
+  const togHorizonLock = document.getElementById('togHorizonLock');
   const togHorizon = document.getElementById('togHorizon');
   const togEcliptic = document.getElementById('togEcliptic');
   const togMilkyway = document.getElementById('togMilkyway');
@@ -45,6 +46,10 @@ function initSettings() {
     setViewToLocalSky();
   }
 
+  // Horizon lock toggle
+  togHorizonLock.checked = horizonLock;
+  togHorizonLock.addEventListener('change', () => { setHorizonLock(togHorizonLock.checked); });
+
   // Overlay toggles
   togHorizon.checked = overlays.horizon;
   togEcliptic.checked = overlays.ecliptic;
@@ -56,6 +61,7 @@ function initSettings() {
 
   // Sync UI when overlays change via MUP function calls
   window._syncSettingsUI = () => {
+    togHorizonLock.checked = horizonLock;
     togHorizon.checked = overlays.horizon;
     togEcliptic.checked = overlays.ecliptic;
     togMilkyway.checked = overlays.milkyway;

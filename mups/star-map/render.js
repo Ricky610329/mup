@@ -123,12 +123,19 @@ function render(timestamp) {
   // ---- 3. Deep sky objects (before constellation lines) ----
   drawDeepSky(baseScale);
 
-  // ---- 4. Constellation lines ----
-  activeConstellations.forEach(({ revealStart }, name) => {
+  // ---- 4. Constellation lines (with fade-in/fade-out) ----
+  const conToRemove = [];
+  activeConstellations.forEach(({ revealStart, fadeOutStart }, name) => {
     const con = CONSTELLATIONS[name];
     if (!con) return;
-    const progress = Math.min(1, (timestamp - revealStart) / 500);
-    ctx.strokeStyle = `rgba(80, 140, 255, ${0.45 * progress})`;
+    let alpha;
+    if (fadeOutStart) {
+      alpha = 1 - Math.min(1, (timestamp - fadeOutStart) / 500);
+      if (alpha <= 0) { conToRemove.push(name); return; }
+    } else {
+      alpha = Math.min(1, (timestamp - revealStart) / 500);
+    }
+    ctx.strokeStyle = `rgba(80, 140, 255, ${0.45 * alpha})`;
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     con.lines.forEach(([a, b]) => {
@@ -144,7 +151,7 @@ function render(timestamp) {
     ctx.stroke();
 
     // Constellation label at centroid
-    if (progress > 0.5) {
+    if (alpha > 0.3) {
       const nameSet = new Set(con.lines.flat().map(n => n.toLowerCase()));
       const cStars = stars.filter(s => nameSet.has(s.name.toLowerCase()));
       if (cStars.length) {
@@ -154,7 +161,7 @@ function render(timestamp) {
         if (len > 0) { ax /= len; ay /= len; az /= len; }
         const proj = sphereToScreen(ax, ay, az);
         if (proj) {
-          ctx.globalAlpha = 0.6 * progress;
+          ctx.globalAlpha = 0.6 * alpha;
           ctx.fillStyle = '#80b0ff';
           ctx.font = `${Math.max(11, 13 * baseScale * 0.3)}px system-ui, sans-serif`;
           ctx.textAlign = 'center';
@@ -164,6 +171,7 @@ function render(timestamp) {
       }
     }
   });
+  conToRemove.forEach(name => activeConstellations.delete(name));
 
   // ---- 5. Ecliptic line ----
   if (overlays.ecliptic) {
@@ -222,6 +230,44 @@ function render(timestamp) {
       ctx.fillText(s.name, px, py - r - 6);
     }
   });
+
+  // ---- 7b. Star highlights ----
+  if (typeof highlightedStars !== 'undefined') {
+    const hlToRemove = [];
+    highlightedStars.forEach(({ start, duration }, name) => {
+      const s = starByName[name.toLowerCase()];
+      if (!s) return;
+      const proj = sphereToScreen(s.sx, s.sy, s.sz);
+      if (!proj) return;
+      const elapsed = timestamp - start;
+      if (elapsed > duration) { hlToRemove.push(name); return; }
+      const pulse = 0.5 + 0.5 * Math.sin(elapsed * 0.008);
+      const fadeIn = Math.min(1, elapsed / 300);
+      const fadeOut = Math.min(1, (duration - elapsed) / 300);
+      const a = fadeIn * fadeOut * (0.4 + 0.4 * pulse);
+      const r = starRadius(s.mag) * Math.max(1, baseScale * 0.4);
+      // Outer pulsing ring
+      ctx.strokeStyle = `rgba(120, 200, 255, ${a})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(proj[0], proj[1], r + 8 + pulse * 4, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner ring
+      ctx.strokeStyle = `rgba(120, 200, 255, ${a * 0.5})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.arc(proj[0], proj[1], r + 4 + pulse * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      // Name label
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#a0d4ff';
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(s.name, proj[0], proj[1] - r - 16);
+      ctx.globalAlpha = 1;
+    });
+    hlToRemove.forEach(name => highlightedStars.delete(name));
+  }
 
   // ---- 8. Sun marker ----
   const sunPos = getSunPosition();

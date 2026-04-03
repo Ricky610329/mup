@@ -46,8 +46,14 @@ let observer = { lat: 25.03, lon: 121.56 }; // Taiwan (degrees)
 // ---- Overlay state ----
 let overlays = { ecliptic: false, milkyway: false, horizon: true };
 
+// ---- Horizon lock mode ----
+let horizonLock = false;
+
 // ---- Active constellations ----
-const activeConstellations = new Map(); // name → { revealStart }
+const activeConstellations = new Map(); // name → { revealStart, fadeOutStart }
+
+// ---- Highlighted stars ----
+const highlightedStars = new Map(); // name → { start, duration }
 
 // ---- Navigation animation ----
 let nav = null;
@@ -92,9 +98,21 @@ const infoCard = document.getElementById('infoCard');
 const infoTitle = document.getElementById('infoTitle');
 const infoText = document.getElementById('infoText');
 
-function showInfo(title, text) {
+const infoActions = document.getElementById('infoActions');
+
+function showInfo(title, text, actions) {
   infoTitle.textContent = title;
   infoText.textContent = text;
+  infoActions.innerHTML = '';
+  if (actions && actions.length) {
+    actions.forEach(({ label, handler }) => {
+      const btn = document.createElement('button');
+      btn.className = 'info-action-btn';
+      btn.textContent = label;
+      btn.addEventListener('click', handler);
+      infoActions.appendChild(btn);
+    });
+  }
   infoCard.classList.remove('hidden');
 }
 
@@ -143,19 +161,59 @@ function autoFovForConstellation(name) {
   return Math.max(15, Math.min(80, fov));
 }
 
+// ---- Constellation fade helpers ----
+function hideAllConstellations() {
+  const now = performance.now();
+  activeConstellations.forEach(val => {
+    if (!val.fadeOutStart) val.fadeOutStart = now;
+  });
+}
+
+function showConstellationByKey(key) {
+  // Fade out all others
+  const now = performance.now();
+  activeConstellations.forEach((val, existingKey) => {
+    if (existingKey !== key && !val.fadeOutStart) {
+      val.fadeOutStart = now;
+    }
+  });
+  activeConstellations.set(key, { revealStart: now, fadeOutStart: null });
+}
+
 // ---- Helper: set view to observer's local sky ----
 function setViewToLocalSky(animate) {
-  const lst = computeLST();
-  const zenithRA = lst / 15; // hours
-  const targetLon = zenithRA * (2 * Math.PI / 24);
-  const targetLat = (observer.lat - 45) * Math.PI / 180;
-  if (animate) {
-    navigateTo(targetLon, targetLat, 60, 1000);
+  if (horizonLock) {
+    // In horizon-lock, default: face south, 45° up
+    const targetLon = Math.PI; // south
+    const targetLat = Math.PI / 4; // 45°
+    if (animate) {
+      navigateTo(targetLon, targetLat, 60, 1000);
+    } else {
+      view.lon = targetLon;
+      view.lat = targetLat;
+      view.fov = 60;
+    }
   } else {
-    view.lon = targetLon;
-    view.lat = targetLat;
-    view.fov = 60;
+    const lst = computeLST();
+    const zenithRA = lst / 15; // hours
+    const targetLon = zenithRA * (2 * Math.PI / 24);
+    const targetLat = (observer.lat - 45) * Math.PI / 180;
+    if (animate) {
+      navigateTo(targetLon, targetLat, 60, 1000);
+    } else {
+      view.lon = targetLon;
+      view.lat = targetLat;
+      view.fov = 60;
+    }
   }
+}
+
+// ---- Toggle horizon lock ----
+function setHorizonLock(enabled) {
+  if (horizonLock === enabled) return;
+  horizonLock = enabled;
+  // Re-orient view for the new mode
+  setViewToLocalSky(false);
 }
 
 // ---- MUP function registrations ----
@@ -165,7 +223,7 @@ mup.registerFunction('showConstellation', async (args) => {
     const available = Object.keys(CONSTELLATIONS).join(', ');
     return { content: [{ type: 'text', text: `Unknown constellation "${args.name}". Available: ${available}` }], isError: true };
   }
-  activeConstellations.set(key, { revealStart: performance.now() });
+  showConstellationByKey(key);
   const center = constellationCenter(key);
   const fov = autoFovForConstellation(key);
   if (center) navigateTo(center.lon, center.lat, fov);
@@ -201,8 +259,33 @@ mup.registerFunction('setInfo', async (args) => {
   return { content: [{ type: 'text', text: 'Info card updated' }], isError: false };
 });
 
+mup.registerFunction('highlightStar', async (args) => {
+  const s = starByName[args.name.toLowerCase()];
+  if (!s) {
+    return { content: [{ type: 'text', text: `Star "${args.name}" not found` }], isError: true };
+  }
+  const duration = (args.duration || 5) * 1000;
+  highlightedStars.set(s.name, { start: performance.now(), duration });
+  return { content: [{ type: 'text', text: `Highlighting ${s.name} for ${args.duration || 5}s` }], isError: false };
+});
+
+mup.registerFunction('hideConstellation', async (args) => {
+  if (args.name.toLowerCase() === 'all') {
+    hideAllConstellations();
+    return { content: [{ type: 'text', text: 'Fading out all constellations' }], isError: false };
+  }
+  const key = findConstellation(args.name);
+  if (!key || !activeConstellations.has(key)) {
+    return { content: [{ type: 'text', text: `Constellation "${args.name}" not currently shown` }], isError: true };
+  }
+  const val = activeConstellations.get(key);
+  if (!val.fadeOutStart) val.fadeOutStart = performance.now();
+  return { content: [{ type: 'text', text: `Fading out ${key}` }], isError: false };
+});
+
 mup.registerFunction('reset', async () => {
-  activeConstellations.clear();
+  hideAllConstellations();
+  highlightedStars.clear();
   nav = null;
   observer.lat = 25.03;
   observer.lon = 121.56;

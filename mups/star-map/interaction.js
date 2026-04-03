@@ -29,7 +29,9 @@ function applyMomentum() {
   if (Math.abs(velocity.dLon) > 0.0001 || Math.abs(velocity.dLat) > 0.0001) {
     view.lon += velocity.dLon;
     view.lat += velocity.dLat;
-    view.lat = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, view.lat));
+    const latMin = horizonLock ? -0.05 : -Math.PI / 2;
+    const latMax = horizonLock ? Math.PI / 2 : Math.PI / 2;
+    view.lat = Math.max(latMin, Math.min(latMax, view.lat));
     velocity.dLon *= FRICTION;
     velocity.dLat *= FRICTION;
   } else {
@@ -196,7 +198,25 @@ canvas.addEventListener('click', e => {
   }
   const star = findNearestStar(mx, my, 18);
   if (star) {
-    showInfo(star.name, `Magnitude: ${star.mag.toFixed(2)}  |  RA: ${star.ra.toFixed(1)}h  Dec: ${star.dec.toFixed(1)}°`);
+    // Build action buttons for constellations this star belongs to
+    const actions = [];
+    for (const [key, con] of Object.entries(CONSTELLATIONS)) {
+      const allNames = new Set(con.lines.flat().map(n => n.toLowerCase()));
+      if (allNames.has(star.name.toLowerCase())) {
+        actions.push({
+          label: `Show ${con.displayName}`,
+          handler: () => {
+            showConstellationByKey(key);
+            const center = constellationCenter(key);
+            const fov = autoFovForConstellation(key);
+            if (center) navigateTo(center.lon, center.lat, fov);
+          }
+        });
+      }
+    }
+    const specLabel = star.spectral ? `${star.spectral}-type` : '';
+    const desc = `Mag ${star.mag.toFixed(2)}  |  ${specLabel}  |  RA ${star.ra.toFixed(1)}h  Dec ${star.dec.toFixed(1)}°`;
+    showInfo(star.name, desc, actions);
     mup.notifyInteraction('star-tap', `Tapped ${star.name} (${star.con})`, { star: star.name, constellation: star.con, magnitude: star.mag });
   }
 });

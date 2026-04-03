@@ -54,6 +54,30 @@ body.dragging { cursor: grabbing; }
   color: #a0acc4;
 }
 
+.info-actions {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.info-actions:empty { display: none; }
+
+.info-action-btn {
+  padding: 4px 10px;
+  border: 1px solid rgba(100, 140, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(60, 90, 180, 0.2);
+  color: #90b8e8;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.info-action-btn:hover {
+  background: rgba(60, 90, 180, 0.4);
+  color: #e0e8ff;
+}
+
 /* ---- Settings button ---- */
 .settings-btn {
   position: fixed;

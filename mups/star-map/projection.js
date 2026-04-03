@@ -19,8 +19,27 @@ function getProjectionScale() {
   return Math.min(canvas.clientWidth, canvas.clientHeight) / (2 * Math.tan(fovRad / 2));
 }
 
+// ---- Celestial → Local horizon frame (for horizon-lock mode) ----
+// Maps celestial unit sphere to local Alt/Az frame:
+//   +X = East, +Y = Zenith (up), +Z = North
+function celestialToLocal(px, py, pz) {
+  const lstRad = computeLST() * Math.PI / 180;
+  const latRad = observer.lat * Math.PI / 180;
+  const cosLat = Math.cos(latRad), sinLat = Math.sin(latRad);
+  const cosLST = Math.cos(lstRad), sinLST = Math.sin(lstRad);
+  return [
+    -sinLST * px + cosLST * pz,
+     cosLat * cosLST * px + sinLat * py + cosLat * sinLST * pz,
+    -sinLat * cosLST * px + cosLat * py - sinLat * sinLST * pz
+  ];
+}
+
 // ---- Sphere coordinates → screen pixel coordinates ----
 function sphereToScreen(px, py, pz) {
+  // In horizon-lock mode, transform celestial → local frame first
+  if (typeof horizonLock !== 'undefined' && horizonLock) {
+    [px, py, pz] = celestialToLocal(px, py, pz);
+  }
   const cosLon = Math.cos(view.lon), sinLon = Math.sin(view.lon);
   const cosLat = Math.cos(view.lat), sinLat = Math.sin(view.lat);
   // Look-at rotation matrix: maps view direction (lon,lat) → +Z
