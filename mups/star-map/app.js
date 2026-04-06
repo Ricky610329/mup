@@ -120,6 +120,15 @@ function hideInfo() {
   infoCard.classList.add('hidden');
 }
 
+// ---- Coordinate helper: celestial → view coords (handles horizon-lock) ----
+function targetViewCoords(sx, sy, sz) {
+  if (horizonLock) {
+    const [lx, ly, lz] = celestialToLocal(sx, sy, sz);
+    return { lon: Math.atan2(lz, lx), lat: Math.atan2(ly, Math.sqrt(lx * lx + lz * lz)) };
+  }
+  return sphereToLonLat(sx, sy, sz);
+}
+
 // ---- Constellation helpers ----
 function findConstellation(name) {
   const lower = name.toLowerCase();
@@ -140,7 +149,8 @@ function constellationCenter(name) {
   if (!cStars.length) return null;
   let ax = 0, ay = 0, az = 0;
   cStars.forEach(s => { ax += s.sx; ay += s.sy; az += s.sz; });
-  return sphereToLonLat(ax / cStars.length, ay / cStars.length, az / cStars.length);
+  const n = cStars.length;
+  return targetViewCoords(ax / n, ay / n, az / n);
 }
 
 function autoFovForConstellation(name) {
@@ -242,7 +252,7 @@ mup.registerFunction('navigate', async (args) => {
   }
   const star = starByName[args.target.toLowerCase()];
   if (star) {
-    const { lon, lat } = sphereToLonLat(star.sx, star.sy, star.sz);
+    const { lon, lat } = targetViewCoords(star.sx, star.sy, star.sz);
     const fov = args.zoom ? Math.max(FOV_MIN, Math.min(FOV_MAX, 60 / args.zoom)) : 15;
     navigateTo(lon, lat, fov);
     return { content: [{ type: 'text', text: `Navigating to ${star.name}` }], isError: false };
