@@ -20,7 +20,8 @@
           "type": "object",
           "properties": {
             "text": { "type": "string", "description": "Text to speak aloud" },
-            "lang": { "type": "string", "description": "BCP-47 language tag for TTS voice (e.g. zh-TW, en-US). Defaults to current language." }
+            "lang": { "type": "string", "description": "BCP-47 language tag for TTS voice (e.g. zh-TW, en-US). Defaults to current language." },
+            "id": { "type": "string", "description": "Optional segment ID. Included in speech-start/speech-end events for event-driven chaining via onEvent filters." }
           },
           "required": ["text"]
         }
@@ -454,7 +455,7 @@
     }
     synth.onvoiceschanged = () => { cachedVoice = null; };
 
-    function speakText(text, ttsLang) {
+    function speakText(text, ttsLang, id) {
       return new Promise((resolve) => {
         const wasListening = active && !speaking;
         if (recognition) { try { recognition.abort(); } catch {} recognition = null; }
@@ -462,7 +463,9 @@
         speaking = true;
         updateUI();
         syncState();
-        mup.emitEvent('speech-start', { text: text.slice(0, 80) });
+        const eventData = { text: text.slice(0, 80) };
+        if (id) eventData.id = id;
+        mup.emitEvent('speech-start', eventData);
 
         synth.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
@@ -488,7 +491,9 @@
           volumeFill.style.width = '0%';
           updateUI();
           syncState();
-          mup.emitEvent('speech-end', { text: text.slice(0, 80) });
+          const endData = { text: text.slice(0, 80) };
+          if (id) endData.id = id;
+          mup.emitEvent('speech-end', endData);
           // Delay restart to avoid picking up TTS echo/tail
           if (wasListening) setTimeout(() => { if (active && !speaking) startRecognition(); }, 800);
           resolve();
@@ -518,7 +523,7 @@
       if (!params.text || typeof params.text !== 'string' || !params.text.trim()) {
         return { content: [{ type: 'text', text: 'Error: "text" parameter is required and must be a non-empty string.' }], isError: true };
       }
-      await speakText(params.text, params.lang);
+      await speakText(params.text, params.lang, params.id);
       return { content: [{ type: 'text', text: `Spoke: "${params.text.slice(0, 80)}"` }], isError: false };
     });
 
