@@ -639,4 +639,69 @@ describe("MupManager", () => {
       assert.equal(mgr.drainEvents().length, 0);
     });
   });
+
+  // ---- hasEvents ----
+
+  describe("hasEvents", () => {
+    it("returns false when no events", () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      assert.equal(mgr.hasEvents(), false);
+    });
+
+    it("returns true when events exist", () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      mgr.addEvent("mup-test", "click", "Clicked");
+      assert.equal(mgr.hasEvents(), true);
+    });
+
+    it("respects since parameter", () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      mgr.addEvent("mup-test", "click", "Clicked");
+      const mup = mgr.get("mup-test")!;
+      mup.pendingEvents[0].timestamp = 1000;
+
+      assert.equal(mgr.hasEvents(999), true);
+      assert.equal(mgr.hasEvents(1000), false);
+      assert.equal(mgr.hasEvents(1001), false);
+    });
+  });
+
+  // ---- waitForEvent ----
+
+  describe("waitForEvent", () => {
+    it("resolves when addEvent is called", async () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      const promise = mgr.waitForEvent(5000);
+      mgr.addEvent("mup-test", "click", "Clicked");
+      await promise; // should resolve immediately
+    });
+
+    it("resolves on timeout when no event arrives", async () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      const start = Date.now();
+      await mgr.waitForEvent(50);
+      const elapsed = Date.now() - start;
+      assert.ok(elapsed >= 40, `Expected >= 40ms, got ${elapsed}ms`);
+    });
+
+    it("multiple waiters all resolve on a single addEvent", async () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      const p1 = mgr.waitForEvent(5000);
+      const p2 = mgr.waitForEvent(5000);
+      mgr.addEvent("mup-test", "click", "Clicked");
+      await Promise.all([p1, p2]);
+    });
+  });
+
+  // ---- cancelWaiters ----
+
+  describe("cancelWaiters", () => {
+    it("resolves all pending waiters", async () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      const p1 = mgr.waitForEvent(5000);
+      const p2 = mgr.waitForEvent(5000);
+      mgr.cancelWaiters();
+      await Promise.all([p1, p2]);
+    });
+  });
 });

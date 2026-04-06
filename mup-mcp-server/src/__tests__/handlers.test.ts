@@ -140,25 +140,25 @@ describe("handleList", () => {
 });
 
 describe("handleCheckInteractions", () => {
-  it("returns interactions when events exist", () => {
+  it("returns interactions when events exist", async () => {
     const mgr = makeMockManager({
       events: [
         { mupName: "Test", action: "click", summary: "User clicked", timestamp: 1000 },
       ],
       all: [],
     });
-    const result = handleCheckInteractions(mgr, {});
+    const result = await handleCheckInteractions(mgr, {});
     assert.ok(result.content[0].text.includes("User interactions"));
     assert.ok(result.content[0].text.includes("click"));
   });
 
-  it("returns no-interactions message when empty", () => {
+  it("returns no-interactions message when empty", async () => {
     const mgr = makeMockManager({ events: [], all: [] });
-    const result = handleCheckInteractions(mgr, {});
+    const result = await handleCheckInteractions(mgr, {});
     assert.equal(result.content[0].text, "No interactions or state changes.");
   });
 
-  it("filters events by since timestamp", () => {
+  it("filters events by since timestamp", async () => {
     const mgr = makeMockManager({
       events: [
         { mupName: "Test", action: "old", summary: "Old", timestamp: 500 },
@@ -166,9 +166,41 @@ describe("handleCheckInteractions", () => {
       ],
       all: [],
     });
-    const result = handleCheckInteractions(mgr, { since: 1000 });
+    const result = await handleCheckInteractions(mgr, { since: 1000 });
     assert.ok(result.content[0].text.includes("new"));
     assert.ok(!result.content[0].text.includes("old:"));
+  });
+
+  it("wait=true returns immediately when events exist", async () => {
+    const mgr = makeMockManager({
+      events: [
+        { mupName: "Test", action: "click", summary: "Clicked", timestamp: 1000 },
+      ],
+      all: [],
+    });
+    (mgr as any).hasEvents = () => true;
+    const result = await handleCheckInteractions(mgr, { wait: true });
+    assert.ok(result.content[0].text.includes("click"));
+  });
+
+  it("wait=true with no events waits then returns empty", async () => {
+    const mgr = makeMockManager({ events: [], all: [] });
+    (mgr as any).hasEvents = () => false;
+    (mgr as any).waitForEvent = async () => {};
+    const result = await handleCheckInteractions(mgr, { wait: true, timeout: 1000 });
+    assert.equal(result.content[0].text, "No interactions or state changes.");
+  });
+
+  it("timeout is clamped to valid range", async () => {
+    const mgr = makeMockManager({ events: [], all: [] });
+    let capturedTimeout = 0;
+    (mgr as any).hasEvents = () => false;
+    (mgr as any).waitForEvent = async (ms: number) => { capturedTimeout = ms; };
+    await handleCheckInteractions(mgr, { wait: true, timeout: 50 });
+    assert.equal(capturedTimeout, 1000); // clamped to min 1000
+
+    await handleCheckInteractions(mgr, { wait: true, timeout: 99999 });
+    assert.equal(capturedTimeout, 30000); // clamped to max 30000
   });
 });
 

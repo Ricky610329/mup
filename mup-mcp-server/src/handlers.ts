@@ -77,8 +77,17 @@ export function handleList(manager: MupManager) {
   return { content: [text(sections.join("\n\n"))] };
 }
 
-export function handleCheckInteractions(manager: MupManager, args: Record<string, unknown>) {
+export async function handleCheckInteractions(manager: MupManager, args: Record<string, unknown>) {
   const since = typeof args.since === "number" ? args.since : undefined;
+  const wait = !!args.wait;
+  const timeout = typeof args.timeout === "number"
+    ? Math.min(Math.max(args.timeout, 1000), 30000)
+    : 15000;
+
+  if (wait && !manager.hasEvents(since)) {
+    await manager.waitForEvent(timeout);
+  }
+
   const events = manager.drainEvents(since);
   const states = manager.getAll().filter((m) => m.stateSummary).map((m) => `[${m.manifest.name}] ${m.stateSummary}`);
   const parts: string[] = [];

@@ -11,6 +11,8 @@ export class MupManager {
   private catalog = new Map<string, CatalogEntry>();
   /** Per-MUP notification level overrides set by LLM (session-only) */
   private notificationOverrides = new Map<string, NotificationLevel>();
+  /** Resolvers for long-polling waiters (checkInteractions with wait=true) */
+  private waitResolvers: Array<() => void> = [];
 
   /** Get the effective notification level for a MUP */
   getNotificationLevel(mupId: string): NotificationLevel {
@@ -261,6 +263,12 @@ export class MupManager {
         }
       }
       mup.pendingEvents.push({ action, summary, data, timestamp: Date.now() });
+      // Wake any long-polling waiters
+      if (this.waitResolvers.length > 0) {
+        const resolvers = this.waitResolvers;
+        this.waitResolvers = [];
+        for (const resolve of resolvers) resolve();
+      }
     }
   }
 
@@ -291,6 +299,37 @@ export class MupManager {
       mup._overflowWarned = false;
     }
     return events;
+  }
+
+  /** Check if any MUP has pending events without draining them */
+  hasEvents(since?: number): boolean {
+    for (const [, mup] of this.mups) {
+      if (since !== undefined) {
+        if (mup.pendingEvents.some(e => e.timestamp > since)) return true;
+      } else {
+        if (mup.pendingEvents.length > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Wait for an event to arrive, or resolve on timeout */
+  waitForEvent(timeoutMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.waitResolvers = this.waitResolvers.filter(r => r !== wrappedResolve);
+        resolve();
+      }, timeoutMs);
+      const wrappedResolve = () => { clearTimeout(timer); resolve(); };
+      this.waitResolvers.push(wrappedResolve);
+    });
+  }
+
+  /** Cancel all pending waiters (e.g. on browser disconnect) */
+  cancelWaiters(): void {
+    const resolvers = this.waitResolvers;
+    this.waitResolvers = [];
+    for (const resolve of resolvers) resolve();
   }
 
 }

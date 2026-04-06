@@ -316,7 +316,8 @@ function setupMcpServer(
           `This keeps the conversation responsive — the user can keep talking while work happens in parallel.`,
           ``,
           `## Other Tools`,
-          `- Use { "action": "checkInteractions" } to poll for recent user interactions from MUP panels.`,
+          `- Use { "action": "checkInteractions", "wait": true } to wait for user interactions (long-polling). Call this in a loop to maintain a conversation.`,
+          `- Use { "action": "checkInteractions" } without wait to poll once for recent interactions.`,
           `- Use { "action": "setNotificationLevel", "mupId": "...", "level": "immediate" | "notify" | "silent" } to adjust notifications.`,
           `- MUP panels provide richer visual presentation — prefer them over plain text responses.`,
         ].join("\n"),
@@ -334,12 +335,14 @@ function setupMcpServer(
       inputSchema: {
         type: "object" as const,
         properties: {
-          action: { type: "string", description: '"checkInteractions" to check user UI activity, "list" to list MUPs, "detail" to see a MUP\'s functions before calling, "new-instance" to open another instance of a [multi] MUP, "pipe" to manage data pipes, "setNotificationLevel" to change a MUP\'s notification level, "delayCall" to schedule a delayed function call, "cancelDelay" to cancel a pending delay, "onEvent" to register an event listener, "removeEvent" to remove a listener. Omit when calling a function.' },
+          action: { type: "string", description: '"checkInteractions" to check user UI activity (pass wait:true to block until events arrive), "list" to list MUPs, "detail" to see a MUP\'s functions before calling, "new-instance" to open another instance of a [multi] MUP, "pipe" to manage data pipes, "setNotificationLevel" to change a MUP\'s notification level, "delayCall" to schedule a delayed function call, "cancelDelay" to cancel a pending delay, "onEvent" to register an event listener, "removeEvent" to remove a listener. Omit when calling a function.' },
           level: { type: "string", description: 'For setNotificationLevel: "immediate" (channel push), "notify" (queued for checkInteractions), or "silent" (no events).' },
           mupId: { type: "string", description: "MUP ID (e.g. mup-chess, mup-chart). Auto-activated on first use." },
           functionName: { type: "string", description: "Function to call (e.g. makeMove, renderChart, setPixels)" },
           functionArgs: { type: "object", description: "Arguments for the function. Can be a JSON object or JSON string." },
           since: { type: "number", description: "Unix timestamp (ms). Only return interactions after this time. Used with checkInteractions." },
+          wait: { type: "boolean", description: 'For checkInteractions: if true, blocks until an event arrives or timeout expires. Creates a conversation loop.' },
+          timeout: { type: "number", description: "For checkInteractions with wait: max wait time in ms (1000-30000, default 15000)." },
           subAction: { type: "string", description: 'For pipe action: "create", "list", "delete", "enable", "disable"' },
           pipeId: { type: "string", description: "Pipe ID for delete/enable/disable." },
           sourceMupId: { type: "string", description: "Pipe source MUP ID." },
@@ -513,7 +516,7 @@ async function main() {
     (mupId, fn, args) => bridge.callFunction(mupId, fn, args),
   );
   bridge.typedOn("mup-event", (mupId, event, data) => scheduler.onMupEvent(mupId, event, data));
-  bridge.typedOn("browser-disconnected", () => scheduler.clearAll());
+  bridge.typedOn("browser-disconnected", () => { scheduler.clearAll(); manager.cancelWaiters(); });
 
   // --- Wire up events ---
   setupBrowserEvents(bridge, manager, ws, sendLoadMup);
