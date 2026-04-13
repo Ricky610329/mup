@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "mup": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "D:/Projects/ui_in_llm/mup-mcp-server/dist/index.js",
+        "--mups-dir",
+        "D:/Projects/ui_in_llm/mups"
+      ],
+      "env": {}
+    }
+  }
+}

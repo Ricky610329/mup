@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Diagram</title>
+  <script type="application/mup-manifest">
+  {
+    "name": "Diagram",
+    "description": "Auto-layouted node-and-edge diagram. Build flowcharts, mind maps, and system architectures with one function call. Supports tree/horizontal/vertical/force layouts. Nodes: rect, circle, diamond, pill shapes with custom colors. Edges: solid/dashed/dotted with optional animation. Use setDiagram() for full diagrams, addNode/addEdge for incremental building, updateNode for highlighting walkthroughs. Pan/zoom with mouse.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "setDiagram",
+        "description": "Create a complete diagram in one call, replacing any existing content.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "description": "Array of nodes",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string", "description": "Unique node identifier" },
+                  "label": { "type": "string", "description": "Display label" },
+                  "shape": { "type": "string", "enum": ["rect", "circle", "diamond", "pill"], "description": "Node shape (default: rect)" },
+                  "color": { "type": "string", "description": "Hex color (default: #3b82f6)" }
+                },
+                "required": ["id", "label"]
+              }
+            },
+            "edges": {
+              "type": "array",
+              "description": "Array of edges",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": { "type": "string", "description": "Source node id" },
+                  "to": { "type": "string", "description": "Target node id" },
+                  "label": { "type": "string", "description": "Edge label" },
+                  "style": { "type": "string", "enum": ["solid", "dashed", "dotted"], "description": "Line style (default: solid)" },
+                  "animated": { "type": "boolean", "description": "Flowing dash animation (default: false)" }
+                },
+                "required": ["from", "to"]
+              }
+            },
+            "layout": { "type": "string", "enum": ["tree", "force", "horizontal", "vertical"], "description": "Layout algorithm (default: tree)" }
+          },
+          "required": ["nodes", "edges"]
+        }
+      },
+      {
+        "name": "addNode",
+        "description": "Add a single node incrementally.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "Unique node identifier" },
+            "label": { "type": "string", "description": "Display label" },
+            "shape": { "type": "string", "enum": ["rect", "circle", "diamond", "pill"], "description": "Node shape (default: rect)" },
+            "color": { "type": "string", "description": "Hex color (default: #3b82f6)" }
+          },
+          "required": ["id", "label"]
+        }
+      },
+      {
+        "name": "addEdge",
+        "description": "Add a single edge between two existing nodes.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "from": { "type": "string", "description": "Source node id" },
+            "to": { "type": "string", "description": "Target node id" },
+            "label": { "type": "string", "description": "Edge label" },
+            "style": { "type": "string", "enum": ["solid", "dashed", "dotted"], "description": "Line style (default: solid)" },
+            "animated": { "type": "boolean", "description": "Flowing dash animation (default: false)" }
+          },
+          "required": ["from", "to"]
+        }
+      },
+      {
+        "name": "updateNode",
+        "description": "Update a node's properties (label, color, highlight for pulsing glow).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "Node id to update" },
+            "label": { "type": "string", "description": "New label" },
+            "color": { "type": "string", "description": "New hex color" },
+            "highlight": { "type": "boolean", "description": "Pulsing glow effect" }
+          },
+          "required": ["id"]
+        }
+      },
+      {
+        "name": "removeNode",
+        "description": "Remove a node and all its connected edges.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "Node id to remove" }
+          },
+          "required": ["id"]
+        }
+      },
+      {
+        "name": "clear",
+        "description": "Clear the entire diagram.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "fitView",
+        "description": "Zoom to fit all nodes in view.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    ]
+  }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="toolbar">
+    <span class="toolbar-title">Diagram</span>
+    <span class="toolbar-info" id="diagramInfo">0 nodes, 0 edges</span>
+    <span class="toolbar-spacer"></span>
+    <button class="toolbar-btn" id="fitBtn" title="Fit to view">Fit</button>
+    <button class="toolbar-btn" id="resetBtn" title="Reset zoom">Reset</button>
+    <button class="toolbar-btn" id="clearBtn" title="Clear diagram">Clear</button>
+  </div>
+  <div class="toolbar toolbar-secondary">
+    <!-- Layout buttons -->
+    <button class="toolbar-btn layout-btn active" data-layout="tree">Tree</button>
+    <button class="toolbar-btn layout-btn" data-layout="horizontal">H</button>
+    <button class="toolbar-btn layout-btn" data-layout="force">Force</button>
+
+    <span class="toolbar-sep">|</span>
+
+    <!-- Shape selector -->
+    <button class="shape-btn active" data-shape="rect" title="Rectangle">&#x25ad;</button>
+    <button class="shape-btn" data-shape="circle" title="Circle">&#x25cb;</button>
+    <button class="shape-btn" data-shape="diamond" title="Diamond">&#x25c7;</button>
+    <button class="shape-btn" data-shape="pill" title="Pill">&#x2b2d;</button>
+
+    <span class="toolbar-sep">|</span>
+
+    <!-- Color dots -->
+    <span class="color-dot active" data-color="#3b82f6" style="background:#3b82f6" title="Blue"></span>
+    <span class="color-dot" data-color="#ef4444" style="background:#ef4444" title="Red"></span>
+    <span class="color-dot" data-color="#10b981" style="background:#10b981" title="Green"></span>
+    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b" title="Amber"></span>
+    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6" title="Purple"></span>
+    <span class="color-dot" data-color="#6366f1" style="background:#6366f1" title="Indigo"></span>
+  </div>
+  <div class="canvas-area" id="canvasArea">
+    <div class="empty-state" id="emptyState">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+        <circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/>
+        <line x1="8.5" y1="7.5" x2="10" y2="16" stroke-dasharray="3,2"/>
+        <line x1="15.5" y1="7.5" x2="14" y2="16" stroke-dasharray="3,2"/>
+      </svg>
+      <span>No diagram yet</span>
+      <span style="font-size:11px">Double-click to add a node, or let the LLM use <b>setDiagram()</b></span>
+    </div>
+    <svg id="svgRoot" width="100%" height="100%">
+      <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
+          <polygon points="0 0, 10 3.5, 0 7" fill="var(--edge-color)" />
+        </marker>
+        <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.15" />
+        </filter>
+        <filter id="glowFilter" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <g id="svgContent">
+        <g class="edges" id="edgesGroup"></g>
+        <g class="nodes" id="nodesGroup"></g>
+      </g>
+    </svg>
+  </div>
+  <div id="labelEditor" class="label-editor" style="display:none">
+    <input id="labelInput" type="text" spellcheck="false" />
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>

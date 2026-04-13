@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script type="application/mup-manifest">
+  {
+    "name": "Chord Pad",
+    "description": "Music theory keyboard with rich synth voices. Plays chords by name (Cmaj7, Am, F#dim, Bb7, etc.), chord progressions with tempo control, and melodies. 5 voices: piano, epiano, pad, organ, strings. Visual piano keyboard highlights active notes; animated chord display with waveform visualizer. Use setVoice to pick timbre, playChord for single chords, playProgression for sequences, playMelody for note lines, stop to halt.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "setVoice",
+        "description": "Choose instrument timbre and envelope.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "voice": { "type": "string", "enum": ["piano", "epiano", "pad", "organ", "strings"], "description": "Instrument voice" },
+            "reverb": { "type": "number", "description": "Reverb amount 0-1 (default: 0.3)" },
+            "attack": { "type": "number", "description": "Attack time in seconds (default: 0.01)" },
+            "release": { "type": "number", "description": "Release time in seconds (default: 0.3)" }
+          },
+          "required": ["voice"]
+        }
+      },
+      {
+        "name": "playChord",
+        "description": "Play a single chord by name. Supports major, minor (m), 7, maj7, m7, dim, aug, sus2, sus4, 9, add9. Root can include sharp (#) or flat (b).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "chord": { "type": "string", "description": "Chord name, e.g. 'Cmaj7', 'Am', 'F#dim', 'Bb7', 'Dm7'" },
+            "duration": { "type": "number", "description": "Duration in beats (default: 2)" },
+            "velocity": { "type": "number", "description": "Volume 0-1 (default: 0.7)" },
+            "arpeggiate": { "description": "Break into sequential notes: true, 'up', or 'down' (default: false)" },
+            "octave": { "type": "number", "description": "Base octave (default: 4)" }
+          },
+          "required": ["chord"]
+        }
+      },
+      {
+        "name": "playProgression",
+        "description": "Play a sequence of chords with tempo control. Each chord can have its own duration and arpeggiation.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "chords": {
+              "type": "array",
+              "description": "Array of chord objects: { chord: string, duration?: number, arpeggiate?: boolean }",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "chord": { "type": "string" },
+                  "duration": { "type": "number" },
+                  "arpeggiate": {}
+                },
+                "required": ["chord"]
+              }
+            },
+            "bpm": { "type": "number", "description": "Tempo in BPM (default: 120)" },
+            "loop": { "type": "boolean", "description": "Repeat progression (default: false)" }
+          },
+          "required": ["chords"]
+        }
+      },
+      {
+        "name": "playMelody",
+        "description": "Play a melody using space-separated note names. Each note: letter + optional #/b + octave. | = bar line (visual), - = rest.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "notes": { "type": "string", "description": "Space-separated notes, e.g. 'C4 D4 E4 G4 | A4 G4 E4 C4'" },
+            "bpm": { "type": "number", "description": "Tempo in BPM (default: 120)" },
+            "octave": { "type": "number", "description": "Default octave if not specified per note (default: 4)" }
+          },
+          "required": ["notes"]
+        }
+      },
+      {
+        "name": "stop",
+        "description": "Stop all playback immediately.",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="header-bar">
+    <div class="voice-name" id="voiceName">Piano</div>
+    <div class="bpm-display" id="bpmDisplay">120 BPM</div>
+    <div class="status" id="status">Ready</div>
+  </div>
+  <div class="controls">
+    <div class="voice-buttons">
+      <button class="voice-btn active" data-voice="piano">Piano</button>
+      <button class="voice-btn" data-voice="epiano">E.Piano</button>
+      <button class="voice-btn" data-voice="pad">Pad</button>
+      <button class="voice-btn" data-voice="organ">Organ</button>
+      <button class="voice-btn" data-voice="strings">Strings</button>
+    </div>
+    <button class="stop-btn" id="stopBtn" title="Stop">&#9632;</button>
+  </div>
+  <div class="chord-display" id="chordDisplay">
+    <div class="chord-name" id="chordName"></div>
+    <div class="chord-history" id="chordHistory"></div>
+  </div>
+  <canvas class="waveform" id="waveform"></canvas>
+  <div class="keyboard" id="keyboard"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

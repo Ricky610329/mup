@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script type="application/mup-manifest">
+  {
+    "name": "Color Palette",
+    "description": "Live color palette designer. Generates harmonious color schemes with animated swatches, gradients, circles, or waves. Supports WCAG accessibility checks. Use generateFromSeed with a hex color + harmony type, generateFromConcept with a keyword, or setPalette directly. Switch display modes with setDisplay. Export CSS variables with exportCSS.",
+    "grid": { "minWidth": 2, "minHeight": 2 },
+    "darkMode": true,
+    "functions": [
+      {
+        "name": "setPalette",
+        "description": "Set a complete palette directly with an array of hex colors.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "colors": { "type": "array", "items": { "type": "string" }, "description": "Array of hex color strings, e.g. [\"#ff6b35\", \"#ffd700\", \"#1a1a2e\"]" },
+            "name": { "type": "string", "description": "Palette name to display, e.g. \"Cyberpunk Neon\"" },
+            "type": { "type": "string", "enum": ["complementary", "analogous", "triadic", "split-complementary", "monochromatic", "custom"], "description": "Palette type (default: \"custom\")" }
+          },
+          "required": ["colors"]
+        }
+      },
+      {
+        "name": "generateFromSeed",
+        "description": "Generate a harmonious palette from a seed hex color and a harmony rule.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "seed": { "type": "string", "description": "Seed hex color, e.g. \"#ff6b35\"" },
+            "type": { "type": "string", "enum": ["complementary", "analogous", "triadic", "split-complementary", "monochromatic"], "description": "Harmony type (default: \"analogous\")" },
+            "count": { "type": "number", "description": "Number of colors 3-8 (default: 5)" }
+          },
+          "required": ["seed"]
+        }
+      },
+      {
+        "name": "generateFromConcept",
+        "description": "Generate a palette from a keyword/concept like \"cyberpunk\", \"ocean sunset\", \"forest\", \"candy\".",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "concept": { "type": "string", "description": "Concept keyword, e.g. \"cyberpunk\", \"ocean sunset\", \"forest\"" }
+          },
+          "required": ["concept"]
+        }
+      },
+      {
+        "name": "setDisplay",
+        "description": "Change the visual display mode and toggle contrast/name overlays.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string", "enum": ["swatches", "gradient", "circles", "waves"], "description": "Display mode (default: \"swatches\")" },
+            "showContrast": { "type": "boolean", "description": "Show WCAG contrast scores (default: false)" },
+            "showNames": { "type": "boolean", "description": "Show hex codes on swatches (default: true)" }
+          }
+        }
+      },
+      {
+        "name": "exportCSS",
+        "description": "Return CSS custom properties for the current palette.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="header">
+    <div class="palette-name" id="paletteName">Color Palette</div>
+    <div class="badges">
+      <span class="badge type-badge" id="typeBadge">custom</span>
+      <span class="badge mode-badge" id="modeBadge">swatches</span>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="mode-buttons" title="切換色票顯示方式">
+      <button class="mode-btn active" data-mode="swatches">Swatches</button>
+      <button class="mode-btn" data-mode="gradient">Gradient</button>
+      <button class="mode-btn" data-mode="circles">Circles</button>
+      <button class="mode-btn" data-mode="waves">Waves</button>
+    </div>
+    <div class="toggle-buttons">
+      <button class="toggle-btn" id="contrastToggle" title="顯示 WCAG 無障礙對比度">Contrast</button>
+      <button class="toggle-btn active" id="namesToggle" title="顯示色碼 (hex)">Names</button>
+    </div>
+    <div class="concept-input-wrap">
+      <input type="text" id="conceptInput" placeholder="e.g. ocean, cyberpunk..." spellcheck="false" title="Type a style keyword and press Enter to generate" />
+      <input type="range" id="colorCount" min="3" max="8" value="5" title="Number of colors" />
+      <span id="colorCountLabel" class="count-label">5</span>
+    </div>
+  </div>
+  <div class="main" id="main"></div>
+  <canvas id="wavesCanvas" style="display:none"></canvas>
+  <div class="footer">
+    <div class="gradient-bar" id="gradientBar"></div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
