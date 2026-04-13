@@ -139,7 +139,10 @@ body {
 }
 
 /* --- Node styles --- */
-.node { cursor: default; }
+.node {
+  cursor: default;
+  transition: transform 0.35s ease;
+}
 
 /* --- Group styles --- */
 .group-label {
@@ -228,6 +231,8 @@ body {
 }
 
 .node-enter {
+  transform-box: fill-box;
+  transform-origin: center;
   animation: nodeEnter 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 

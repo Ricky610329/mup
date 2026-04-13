@@ -8,6 +8,8 @@
   let currentLayout = 'tree';
   let defaultCurve = 'straight';
   const markerCache = new Map();
+  let renderedNodeEls = new Map(); // id -> outer <g> DOM element (for diff rendering)
+  let previousEdgeCount = 0;
 
   let vbX = 0, vbY = 0, vbW = 800, vbH = 600;
   let isPanning = false, panStartX = 0, panStartY = 0, panVbX = 0, panVbY = 0;
@@ -368,14 +370,83 @@
     });
   }
 
-  // ---- Rendering ----
-  function render(animate) {
-    nodesGroup.innerHTML = '';
+  // ---- Build node shapes & label at origin (0,0) ----
+  function buildNodeContent(node) {
+    const frag = document.createDocumentFragment();
+    const color = node.color || DEFAULT_COLOR;
+    const fillColor = hexToRgba(color, 0.15);
+    const strokeColor = color;
+    const dims = getNodeDimensions(node);
+    let shape;
+
+    switch (node.shape) {
+      case 'circle':
+        shape = svgEl('circle', {
+          cx: 0, cy: 0, r: CIRCLE_R,
+          fill: fillColor, stroke: strokeColor, 'stroke-width': '2'
+        });
+        break;
+      case 'diamond': {
+        const s = DIAMOND_SIZE;
+        const pts = [
+          `0,${-s}`, `${s},0`, `0,${s}`, `${-s},0`
+        ].join(' ');
+        shape = svgEl('polygon', {
+          points: pts,
+          fill: fillColor, stroke: strokeColor, 'stroke-width': '2'
+        });
+        break;
+      }
+      case 'pill':
+        shape = svgEl('rect', {
+          x: -dims.w / 2, y: -dims.h / 2,
+          width: dims.w, height: dims.h,
+          rx: 25,
+          fill: fillColor, stroke: strokeColor, 'stroke-width': '2'
+        });
+        break;
+      default: // rect
+        shape = svgEl('rect', {
+          x: -dims.w / 2, y: -dims.h / 2,
+          width: dims.w, height: dims.h,
+          rx: 8,
+          fill: fillColor, stroke: strokeColor, 'stroke-width': '2'
+        });
+    }
+    frag.appendChild(shape);
+
+    // Label -- wrap long text
+    const maxChars = node.shape === 'circle' ? 8 : 16;
+    const label = node.label || '';
+    if (label.length > maxChars) {
+      const lines = wrapText(label, maxChars);
+      const lineHeight = 16;
+      const startY = -((lines.length - 1) * lineHeight) / 2;
+      lines.forEach((line, li) => {
+        const text = svgEl('text', { x: 0, y: startY + li * lineHeight });
+        text.textContent = line;
+        frag.appendChild(text);
+      });
+    } else {
+      const text = svgEl('text', { x: 0, y: 0 });
+      text.textContent = label;
+      frag.appendChild(text);
+    }
+
+    return frag;
+  }
+
+  // ---- Rendering (diff-based for nodes, rebuild for edges) ----
+  function render(animate, newNodeIds) {
+    // Edges: always rebuild (paths change with layout recalculation)
     edgesGroup.innerHTML = '';
     clearMarkerCache();
 
     if (nodes.length === 0) {
+      nodesGroup.innerHTML = '';
       groupsGroup.innerHTML = '';
+      renderedNodeEls.clear();
+      previousEdgeCount = 0;
       updateInfo();
       return;
     }
@@ -383,9 +454,11 @@
     // Render groups (behind everything)
     renderGroups(currentGroups, animate);
 
-    // Render edges (behind nodes)
+    // Render edges — only animate genuinely new ones
     edges.forEach((edge, i) => {
-      const g = svgEl('g', { class: 'edge' + (animate ? ' edge-enter' : '') });
+      const isNewEdge = i >= previousEdgeCount;
+      const shouldAnimate = animate && isNewEdge;
+      const g = svgEl('g', { class: 'edge' + (shouldAnimate ? ' edge-enter' : '') });
       const pathD = buildEdgePath(edge);
       if (!pathD) return;
 
@@ -409,13 +482,13 @@
       if (dir === 'backward' || dir === 'both') {
         path.setAttribute('marker-start', getArrowMarker(edge.color, 'backward'));
       }
-      // 'none': no markers set
 
-      // Set edge length for draw-in animation
-      if (animate) {
+      // Set edge length for draw-in animation (only new edges)
+      if (shouldAnimate) {
         const len = estimatePathLength(pathD);
         g.style.setProperty('--edge-length', len);
-        path.style.animationDelay = `${0.15 + i * 0.05}s`;
+        const relIdx = i - previousEdgeCount;
+        path.style.animationDelay = `${0.15 + relIdx * 0.05}s`;
       }
 
       g.appendChild(path);
@@ -439,84 +512,47 @@
 
       edgesGroup.appendChild(g);
     });
+    previousEdgeCount = edges.length;
 
-    // Render nodes
+    // ---- Diff-based node rendering ----
+    const currentIds = new Set(nodes.map(n => n.id));
+
+    // Remove nodes that no longer exist
+    for (const [id, el] of renderedNodeEls) {
+      if (!currentIds.has(id)) {
+        el.remove();
+        renderedNodeEls.delete(id);
+      }
+    }
+
+    // Add new nodes / update existing node positions
     nodes.forEach((node, i) => {
-      const g = svgEl('g', {
-        class: 'node' + (node.highlight ? ' highlight' : '') + (animate ? ' node-enter' : ''),
-        'data-id': node.id
-      });
-      if (animate) {
-        g.style.animationDelay = `${i * 0.06}s`;
-        g.style.transformOrigin = `${node.x}px ${node.y}px`;
-      }
-
-      const color = node.color || DEFAULT_COLOR;
-      const fillColor = hexToRgba(color, 0.15);
-      const strokeColor = color;
-
-      const dims = getNodeDimensions(node);
-      let shape;
-
-      switch (node.shape) {
-        case 'circle':
-          shape = svgEl('circle', {
-            cx: node.x, cy: node.y, r: CIRCLE_R,
-            fill: fillColor, stroke: strokeColor, 'stroke-width': '2'
-          });
-          break;
-        case 'diamond': {
-          const s = DIAMOND_SIZE;
-          const pts = [
-            `${node.x},${node.y - s}`,
-            `${node.x + s},${node.y}`,
-            `${node.x},${node.y + s}`,
-            `${node.x - s},${node.y}`
-          ].join(' ');
-          shape = svgEl('polygon', {
-            points: pts,
-            fill: fillColor, stroke: strokeColor, 'stroke-width': '2'
-          });
-          break;
-        }
-        case 'pill':
-          shape = svgEl('rect', {
-            x: node.x - dims.w / 2, y: node.y - dims.h / 2,
-            width: dims.w, height: dims.h,
-            rx: 25,
-            fill: fillColor, stroke: strokeColor, 'stroke-width': '2'
-          });
-          break;
-        default: // rect
-          shape = svgEl('rect', {
-            x: node.x - dims.w / 2, y: node.y - dims.h / 2,
-            width: dims.w, height: dims.h,
-            rx: 8,
-            fill: fillColor, stroke: strokeColor, 'stroke-width': '2'
-          });
-      }
-
-      g.appendChild(shape);
-
-      // Label -- wrap long text
-      const maxChars = node.shape === 'circle' ? 8 : 16;
-      const label = node.label || '';
-      if (label.length > maxChars) {
-        const lines = wrapText(label, maxChars);
-        const lineHeight = 16;
-        const startY = node.y - ((lines.length - 1) * lineHeight) / 2;
-        lines.forEach((line, li) => {
-          const text = svgEl('text', { x: node.x, y: startY + li * lineHeight });
-          text.textContent = line;
-          g.appendChild(text);
-        });
+      const existing = renderedNodeEls.get(node.id);
+      if (existing) {
+        // Existing node: smoothly update position via CSS transition (no re-animation)
+        existing.style.transform = `translate(${node.x}px, ${node.y}px)`;
+        existing.classList.toggle('highlight', !!node.highlight);
       } else {
-        const text = svgEl('text', { x: node.x, y: node.y });
-        text.textContent = label;
-        g.appendChild(text);
-      }
+        // New node: create element, optionally with entry animation
+        const shouldAnimate = animate && (!newNodeIds || newNodeIds.has(node.id));
+        const g = svgEl('g', {
+          class: 'node' + (node.highlight ? ' highlight' : ''),
+          'data-id': node.id
+        });
+        g.style.transform = `translate(${node.x}px, ${node.y}px)`;
 
-      nodesGroup.appendChild(g);
+        // Inner group holds shapes & text; entry animation goes here
+        const inner = svgEl('g', {});
+        if (shouldAnimate) {
+          inner.classList.add('node-enter');
+          inner.style.animationDelay = `${i * 0.06}s`;
+        }
+        inner.appendChild(buildNodeContent(node));
+        g.appendChild(inner);
+
+        nodesGroup.appendChild(g);
+        renderedNodeEls.set(node.id, g);
+      }
     });
 
     updateInfo();
@@ -647,6 +683,8 @@
     nodes = []; edges = []; currentGroups = []; nodeMap.clear();
     defaultCurve = 'bezier';
     clearMarkerCache();
+    renderedNodeEls.clear();
+    previousEdgeCount = 0;
     render(false);
     updateMupState();
     emitUpdate();
@@ -659,7 +697,8 @@
       btn.classList.add('active');
       const layoutType = btn.dataset.layout;
       runLayout(layoutType);
-      render(true);
+      render(false); // no animation — CSS transition handles smooth repositioning
+      fitViewInternal();
       updateMupState();
     });
   });
@@ -678,6 +717,11 @@
     if (!Array.isArray(newEdges)) return err('edges must be an array');
 
     if (curve) defaultCurve = curve;
+
+    // Full replacement — clear tracking
+    renderedNodeEls.clear();
+    previousEdgeCount = 0;
+    nodesGroup.innerHTML = '';
 
     nodes = newNodes.map(n => ({
       id: n.id,
@@ -713,7 +757,7 @@
     });
 
     runLayout(layout || 'tree');
-    render(true);
+    render(true); // all nodes are new — animate everything
     updateMupState();
     emitUpdate();
     return ok(`Diagram set: ${nodes.length} nodes, ${edges.length} edges (${currentLayout} layout)`);
@@ -728,7 +772,7 @@
     nodeMap.set(id, node);
 
     runLayout();
-    render(true);
+    render(true, new Set([id])); // only animate the new node
     updateMupState();
     emitUpdate();
     return ok(`Node "${id}" added (${nodes.length} total)`);
@@ -756,7 +800,7 @@
     });
 
     runLayout();
-    render(true);
+    render(true, new Set()); // no new nodes — only the new edge animates
     updateMupState();
     emitUpdate();
     return ok(`Edge ${from} -> ${to} added (${edges.length} total)`);
@@ -770,7 +814,19 @@
     if (color !== undefined) node.color = color;
     if (highlight !== undefined) node.highlight = highlight;
 
-    render(false);
+    // Direct DOM update — no full re-render needed
+    const el = renderedNodeEls.get(id);
+    if (el) {
+      el.classList.toggle('highlight', !!node.highlight);
+      const inner = el.firstChild;
+      if (inner) {
+        inner.innerHTML = '';
+        inner.appendChild(buildNodeContent(node));
+      }
+    } else {
+      render(false);
+    }
+
     updateMupState();
     emitUpdate();
     const changes = [];
@@ -787,6 +843,7 @@
     nodes.splice(idx, 1);
     nodeMap.delete(id);
     edges = edges.filter(e => e.from !== id && e.to !== id);
+    previousEdgeCount = edges.length;
 
     if (nodes.length > 0) runLayout();
     render(false);
@@ -802,6 +859,8 @@
     nodeMap.clear();
     defaultCurve = 'bezier';
     clearMarkerCache();
+    renderedNodeEls.clear();
+    previousEdgeCount = 0;
     render(false);
     updateMupState();
     emitUpdate();
