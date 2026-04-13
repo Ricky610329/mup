@@ -276,6 +276,34 @@ describe("PipelineManager", () => {
       assert.equal(calls.length, 1);
       assert.deepEqual(calls[0].args, { on: true, off: false });
     });
+
+    it("resolves dot-path with leading dot", async () => {
+      pm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt",
+        targetFunction: "setVal",
+        transform: { val: ".foo" },
+        debounceMs: 0,
+      });
+      pm.onStateUpdate("mup-src", { foo: "bar" });
+      await new Promise(r => setTimeout(r, 20));
+      assert.equal(calls.length, 1);
+      assert.deepEqual(calls[0].args, { val: "bar" });
+    });
+
+    it("resolves dot-path with trailing dot", async () => {
+      pm.addPipe({
+        sourceMupId: "mup-src",
+        targetMupId: "mup-tgt",
+        targetFunction: "setVal",
+        transform: { val: "foo." },
+        debounceMs: 0,
+      });
+      pm.onStateUpdate("mup-src", { foo: "bar" });
+      await new Promise(r => setTimeout(r, 20));
+      assert.equal(calls.length, 1);
+      assert.deepEqual(calls[0].args, { val: "bar" });
+    });
   });
 
   // ---- addPipe self-loop ----

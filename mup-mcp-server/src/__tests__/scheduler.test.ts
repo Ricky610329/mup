@@ -316,6 +316,37 @@ describe("Scheduler", () => {
     });
   });
 
+  // ---- executeCalls delayed timer cleanup ----
+
+  describe("executeCalls delayed timer cleanup", () => {
+    it("clearAll cancels delayed calls within executeCalls", async () => {
+      scheduler.registerEvent("mup-a", "fire", [
+        { mupId: "mup-a", functionName: "delayed", functionArgs: {}, delayMs: 100 }
+      ], false);
+
+      await scheduler.onMupEvent("mup-a", "fire");
+
+      scheduler.clearAll();
+
+      await new Promise(r => setTimeout(r, 150));
+
+      assert.equal(callFn.mock.callCount(), 0);
+    });
+
+    it("delayed calls in executeCalls fire normally when not cleared", async () => {
+      scheduler.registerEvent("mup-a", "fire", [
+        { mupId: "mup-a", functionName: "delayed", functionArgs: { v: 1 }, delayMs: 20 }
+      ], false);
+
+      await scheduler.onMupEvent("mup-a", "fire");
+
+      await new Promise(r => setTimeout(r, 50));
+
+      assert.equal(callFn.mock.callCount(), 1);
+      assert.deepEqual(callFn.mock.calls[0].arguments, ["mup-a", "delayed", { v: 1 }]);
+    });
+  });
+
   // ---- pendingDelays / activeListeners getters ----
 
   describe("pendingDelays / activeListeners getters", () => {

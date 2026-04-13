@@ -6,12 +6,12 @@
     "url": "https://github.com/Ricky610329/mup",
     "source": "github"
   },
-  "version": "0.1.1",
+  "version": "0.2.8",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mup-mcp-server",
-      "version": "0.1.1",
+      "version": "0.2.8",
       "transport": {
         "type": "stdio"
       },

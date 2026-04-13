@@ -239,7 +239,20 @@ describe("MupManager", () => {
       assert.equal(events.length, 1);
       assert.equal(events[0].action, "new");
 
-      // All events drained (old discarded, new returned) — queue is empty
+      // Old events (timestamp <= since) remain in queue; only returned events were drained
+      const remaining = mgr.drainEvents();
+      assert.equal(remaining.length, 1);
+      assert.equal(remaining[0].action, "old");
+    });
+
+    it("drainEvents without since drains all events", () => {
+      mgr.loadFromHtml(SAMPLE_HTML, "test.html");
+      mgr.addEvent("mup-test", "a", "Event A");
+      mgr.addEvent("mup-test", "b", "Event B");
+
+      const events = mgr.drainEvents();
+      assert.equal(events.length, 2);
+
       const remaining = mgr.drainEvents();
       assert.equal(remaining.length, 0);
     });

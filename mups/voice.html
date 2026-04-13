@@ -325,7 +325,7 @@
       const newLang = opt.dataset.lang;
       if (newLang !== lang) {
         lang = newLang;
-        localStorage.setItem('mup-voice-lang', lang);
+        try { localStorage.setItem('mup-voice-lang', lang); } catch {}
         updateUI();
         if (active) { stopRecognition(); startRecognition(); }
       }
@@ -500,7 +500,7 @@
         };
 
         // Timeout fallback
-        const timeout = setTimeout(finish, Math.max(5000, text.length * 300));
+        const timeout = setTimeout(finish, Math.min(60000, Math.max(5000, text.length * 300)));
         utterance.onend = () => { clearTimeout(timeout); finish(); };
         utterance.onerror = () => { clearTimeout(timeout); finish(); };
 

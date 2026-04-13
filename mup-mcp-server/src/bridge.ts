@@ -482,10 +482,6 @@ export class UiBridge extends EventEmitter {
         return;
       }
       const resolved = path.resolve(filePath);
-      if (resolved.includes("..") || !path.isAbsolute(resolved)) {
-        this.sendRaw({ type: "system-response", requestId, result: { error: "Invalid path" } });
-        return;
-      }
       const hasAccess = this.checkPathAccess(mupId, resolved);
       if (!hasAccess) {
         this.sendRaw({ type: "system-response", requestId, result: { error: `Access denied: ${filePath}. Use setFileAccess to grant access.` } });

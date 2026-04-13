@@ -34,6 +34,7 @@ interface EventListener {
 export class Scheduler {
   private delays = new Map<string, DelayEntry>();
   private listeners = new Map<string, EventListener>();
+  private executeTimers = new Set<ReturnType<typeof setTimeout>>();
   private nextDelayId = 1;
   private nextListenerId = 1;
   private callFn: CallFn;
@@ -117,13 +118,15 @@ export class Scheduler {
   private async executeCalls(calls: ScheduledCall[], sourceId: string): Promise<void> {
     for (const call of calls) {
       if (call.delayMs && call.delayMs > 0) {
-        setTimeout(async () => {
+        const timer = setTimeout(async () => {
+          this.executeTimers.delete(timer);
           try {
             await this.callFn(call.mupId, call.functionName, call.functionArgs);
           } catch (e: any) {
             console.error(`[mup-mcp] Scheduler ${sourceId} delayed call failed:`, e.message || e);
           }
         }, call.delayMs);
+        this.executeTimers.add(timer);
       } else {
         try {
           await this.callFn(call.mupId, call.functionName, call.functionArgs);
@@ -142,6 +145,8 @@ export class Scheduler {
     }
     this.delays.clear();
     this.listeners.clear();
+    for (const t of this.executeTimers) clearTimeout(t);
+    this.executeTimers.clear();
   }
 
   get pendingDelays(): number { return this.delays.size; }

@@ -293,9 +293,13 @@ export class MupManager {
         if (!since || event.timestamp > since) {
           events.push({ mupId, mupName: mup.manifest.name, ...event });
         }
-        // Events with timestamp <= since are discarded (already seen)
       }
-      mup.pendingEvents = []; // Drain all processed events
+      // Only drain events that were returned; keep unmatched events
+      if (since) {
+        mup.pendingEvents = mup.pendingEvents.filter(e => e.timestamp <= since);
+      } else {
+        mup.pendingEvents = [];
+      }
       mup._overflowWarned = false;
     }
     return events;

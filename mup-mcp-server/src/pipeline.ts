@@ -191,7 +191,7 @@ export class PipelineManager {
     if (expr === ".") return data;
     // Dot-path traversal
     let current: any = data;
-    for (const part of expr.split(".")) {
+    for (const part of expr.split(".").filter(Boolean)) {
       if (current == null || typeof current !== "object") return undefined;
       current = (current as Record<string, unknown>)[part];
     }
