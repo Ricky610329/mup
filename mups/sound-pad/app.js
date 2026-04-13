@@ -263,7 +263,7 @@ function highlightStep(idx) {
 }
 
 // ---- Sequencer ----
-let bpm = 126, swing = 0.6, playing = false;
+let bpm = 120, swing = 0.6, isPlaying = false;
 let currentStep = 0, totalSteps = 0, stepTimeout = null;
 let currentTracks = {}, trackVolumes = {}, masterVol = 0.7, patternQueue = [];
 
@@ -322,7 +322,7 @@ function triggerPadAt(name, vol, when) {
 }
 
 function scheduleStep() {
-  if (!playing) return;
+  if (!isPlaying) return;
   const c = getCtx();
 
   // Schedule all steps that fall within the lookahead window
@@ -334,7 +334,7 @@ function scheduleStep() {
         startPattern(next.tracks, next.bars, next.volume);
         return; // startPattern will restart the scheduler
       } else {
-        playing = false;
+        isPlaying = false;
         document.getElementById('status').textContent = 'Ready';
         highlightStep(-1);
         mup.emitEvent('playback-end', { bars: totalSteps / STEPS_PER_BAR });
@@ -376,8 +376,8 @@ function startPattern(tracks, bars, volume) {
   nextStepTime = c.currentTime;
   initStepDisplay(b);
   document.getElementById('status').textContent = `Playing (${b} bars)`;
-  playing = true;
-  mup.emitEvent('pattern-start', { index: patternIndex++, bars: b });
+  isPlaying = true;
+  mup.emitEvent('playback-start', { index: patternIndex++, bars: b });
   scheduleStep();
 }
 
@@ -404,7 +404,7 @@ applyAllColors();
 // ---- MUP Functions ----
 mup.registerFunction('setBPM', ({ bpm: b, swing: s }) => {
   getCtx();
-  bpm = b || 126;
+  bpm = b || 120;
   if (s !== undefined) swing = Math.max(0, Math.min(1, s));
   document.getElementById('bpmDisplay').textContent = `${bpm} BPM`;
   return { content: [{ type: 'text', text: `BPM: ${bpm}, swing: ${swing}` }], isError: false };
@@ -415,7 +415,7 @@ mup.registerFunction('playBars', ({ tracks, bars, volume }) => {
   const b = bars || 4;
   const dur = calcDurationMs(b);
   const entry = { tracks: tracks || {}, bars: b, volume: volume ?? 0.7 };
-  if (playing) {
+  if (isPlaying) {
     patternQueue.push(entry);
     return { content: [{ type: 'text', text: `Queued ${b} bars (${dur}ms).` }], isError: false };
   }
@@ -438,12 +438,22 @@ mup.registerFunction('setPadColors', ({ colors }) => {
   return { content: [{ type: 'text', text: `Updated ${Object.keys(colors).length} pad colors.` }], isError: false };
 });
 
-mup.registerFunction('stop', () => {
-  playing = false; patternQueue = []; clearTimeout(stepTimeout);
+function stopPlayback() {
+  isPlaying = false; patternQueue = []; clearTimeout(stepTimeout);
   patternIndex = 0;
   highlightStep(-1);
   document.getElementById('status').textContent = 'Stopped';
+}
+
+mup.registerFunction('stop', () => {
+  stopPlayback();
+  mup.notifyInteraction('stop', 'Stopped', {});
   return { content: [{ type: 'text', text: 'Stopped.' }], isError: false };
+});
+
+document.getElementById('stopBtn').addEventListener('click', () => {
+  stopPlayback();
+  mup.notifyInteraction('stop', 'Stopped playback', {});
 });
 
 mup.onReady(({ theme }) => {

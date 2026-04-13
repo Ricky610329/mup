@@ -4,7 +4,7 @@
   <script type="application/mup-manifest">
   {
     "name": "Sound Pad",
-    "description": "16-pad synthesizer with Web Audio. 4 rows: drums (kick/snare/clap/rim), cymbals (hihat/openhat/ride/crash), bass (bass/bass2/sub/pluck), melodic (brass/synth/stab/perc). Patterns use 8th-note grid: 'x'=hit, '.'=rest. Write 1 bar (8 chars), it auto-repeats. Per-track volume via {pattern, volume}. Emits 'pattern-start' and 'playback-end' events for scheduling. Use setBPM first, then playBars to sequence.",
+    "description": "16-pad synthesizer with Web Audio. 4 rows: drums (kick/snare/clap/rim), cymbals (hihat/openhat/ride/crash), bass (bass/bass2/sub/pluck), melodic (brass/synth/stab/perc). Patterns use 8th-note grid: 'x'=hit, '.'=rest. Write 1 bar (8 chars), it auto-repeats. Per-track volume via {pattern, volume}. Emits 'playback-start' and 'playback-end' events for scheduling. Use setBPM first, then playBars to sequence.",
     "grid": { "minWidth": 2, "minHeight": 2 },
     "darkMode": true,
     "functions": [
@@ -14,14 +14,14 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "bpm": { "type": "number", "description": "Beats per minute (default: 126)" },
+            "bpm": { "type": "number", "description": "Beats per minute (default: 120)" },
             "swing": { "type": "number", "description": "Swing ratio 0-1. 0=straight, 0.5-0.6=electro swing feel (default: 0.6)" }
           }
         }
       },
       {
         "name": "playBars",
-        "description": "Queue a pattern (non-blocking, returns immediately with durationMs). Each track value is a pattern string OR {pattern, volume} for per-track volume. Pattern = 8 chars per bar (8th notes): 'x'=hit, '.'=rest. Auto-repeats: write 1 bar 'x...x...' and it loops to fill all bars. Multiple playBars calls queue seamlessly. Emits 'pattern-start' at start and 'playback-end' when all queued patterns finish.",
+        "description": "Queue a pattern (non-blocking, returns immediately with durationMs). Each track value is a pattern string OR {pattern, volume} for per-track volume. Pattern = 8 chars per bar (8th notes): 'x'=hit, '.'=rest. Auto-repeats: write 1 bar 'x...x...' and it loops to fill all bars. Multiple playBars calls queue seamlessly. Emits 'playback-start' at start and 'playback-end' when all queued patterns finish.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -69,10 +69,14 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div class="top-bar">
-    <div class="bpm" id="bpmDisplay">126 BPM</div>
+  <div class="header">
+    <div class="bpm" id="bpmDisplay">120 BPM</div>
     <div class="step-display" id="stepDisplay"></div>
     <div class="status" id="status">Ready</div>
+  </div>
+  <div class="controls">
+    <button class="stop-btn" id="stopBtn" title="Stop">&#9632;</button>
+    <input type="range" id="volumeSlider" min="0" max="100" value="100" class="vol-slider" title="Master Volume" />
   </div>
   <div class="pad-grid" id="padGrid"></div>
 

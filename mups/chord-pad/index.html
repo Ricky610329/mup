@@ -76,6 +76,17 @@
         }
       },
       {
+        "name": "setBPM",
+        "description": "Set tempo and optional swing. Call before playProgression/playMelody. Subsequent calls to playProgression/playMelody will use this BPM unless they specify their own.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "bpm": { "type": "number", "description": "Beats per minute (default: 120)" },
+            "swing": { "type": "number", "description": "Swing ratio 0-1. 0=straight (default: 0)" }
+          }
+        }
+      },
+      {
         "name": "stop",
         "description": "Stop all playback immediately.",
         "inputSchema": { "type": "object", "properties": {} }
@@ -86,12 +97,13 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div class="header-bar">
-    <div class="voice-name" id="voiceName">Piano</div>
-    <div class="bpm-display" id="bpmDisplay">120 BPM</div>
+  <div class="header">
+    <div class="bpm" id="bpmDisplay">120 BPM</div>
+    <div class="step-display" id="stepDisplay"></div>
     <div class="status" id="status">Ready</div>
   </div>
   <div class="controls">
+    <div class="voice-name" id="voiceName">Piano</div>
     <div class="voice-buttons">
       <button class="voice-btn active" data-voice="piano">Piano</button>
       <button class="voice-btn" data-voice="epiano">E.Piano</button>
@@ -100,6 +112,7 @@
       <button class="voice-btn" data-voice="strings">Strings</button>
     </div>
     <button class="stop-btn" id="stopBtn" title="Stop">&#9632;</button>
+    <input type="range" id="volumeSlider" min="0" max="100" value="100" class="vol-slider" title="Volume" />
   </div>
   <div class="chord-display" id="chordDisplay">
     <div class="chord-name" id="chordName"></div>

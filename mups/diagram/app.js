@@ -3,30 +3,21 @@
 
   let nodes = [];
   let edges = [];
+  let currentGroups = [];
   let nodeMap = new Map(); // id -> node, for O(1) lookup
   let currentLayout = 'tree';
-  let selectedShape = 'rect';
-  let selectedColor = '#3b82f6';
+  let defaultCurve = 'straight';
+  const markerCache = new Map();
 
   let vbX = 0, vbY = 0, vbW = 800, vbH = 600;
   let isPanning = false, panStartX = 0, panStartY = 0, panVbX = 0, panVbY = 0;
 
-  // Interaction state
-  let selectedNodeId = null;
-  let nodeCounter = 0;
-  let draggingNodeId = null;
-  let isDraggingNode = false;
-  let dragStartSvg = null;
-  let dragNodeStartPos = null;
-  const DRAG_THRESHOLD = 3;
-
   const svg = document.getElementById('svgRoot');
   const nodesGroup = document.getElementById('nodesGroup');
   const edgesGroup = document.getElementById('edgesGroup');
+  const groupsGroup = document.getElementById('groupsGroup');
   const emptyState = document.getElementById('emptyState');
   const infoSpan = document.getElementById('diagramInfo');
-  const labelEditor = document.getElementById('labelEditor');
-  const labelInput = document.getElementById('labelInput');
 
   const NODE_W = 140;
   const NODE_H = 50;
@@ -46,6 +37,34 @@
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function getArrowMarker(color, direction) {
+    const key = `${color || 'default'}-${direction || 'forward'}`;
+    if (markerCache.has(key)) return `url(#${markerCache.get(key)})`;
+    const id = 'arrow-' + key.replace(/[^a-z0-9]/gi, '_');
+    const marker = svgEl('marker', {
+      id, markerWidth: 10, markerHeight: 7,
+      refX: direction === 'backward' ? 1 : 9, refY: 3.5,
+      orient: 'auto', markerUnits: 'strokeWidth'
+    });
+    const poly = svgEl('polygon', {
+      points: direction === 'backward' ? '10 0, 0 3.5, 10 7' : '0 0, 10 3.5, 0 7',
+      fill: color || 'var(--edge-color)'
+    });
+    marker.appendChild(poly);
+    document.querySelector('#svgRoot defs').appendChild(marker);
+    markerCache.set(key, id);
+    return `url(#${id})`;
+  }
+
+  function clearMarkerCache() {
+    const defs = document.querySelector('#svgRoot defs');
+    markerCache.forEach(id => {
+      const el = defs.querySelector('#' + id);
+      if (el) defs.removeChild(el);
+    });
+    markerCache.clear();
   }
 
   function getNodeById(id) {
@@ -76,53 +95,28 @@
     }
   }
 
-  // ---- Coordinate helpers ----
-  function screenToSvg(clientX, clientY) {
-    const rect = svg.getBoundingClientRect();
-    return {
-      x: vbX + (clientX - rect.left) / rect.width * vbW,
-      y: vbY + (clientY - rect.top) / rect.height * vbH
-    };
-  }
-
-  function nextNodeId() {
-    nodeCounter++;
-    while (getNodeById('node-' + nodeCounter)) nodeCounter++;
-    return 'node-' + nodeCounter;
-  }
-
-  // ---- Selection ----
-  function selectNode(id) {
-    selectedNodeId = id;
-    nodesGroup.querySelectorAll('.node').forEach(g => {
-      g.classList.toggle('selected', g.getAttribute('data-id') === id);
-    });
-  }
-
-  function deselectAll() {
-    selectedNodeId = null;
-    nodesGroup.querySelectorAll('.node.selected').forEach(g => g.classList.remove('selected'));
-  }
-
-  // ---- Find node group from click target ----
-  function findNodeGroup(el) {
-    while (el && el !== svg) {
-      if (el.classList && el.classList.contains('node')) return el;
-      el = el.parentElement;
-    }
-    return null;
-  }
-
-  // Shared dagre graph builder -- single source of truth for dagre setup
+  // Shared dagre graph builder -- uses compound graph when groups exist
   function buildDagreGraph(rankdir) {
-    const g = new dagre.graphlib.Graph();
+    const hasGroups = currentGroups.length > 0 && nodes.some(n => n.group);
+    const g = new dagre.graphlib.Graph({ compound: hasGroups });
     g.setGraph({ rankdir, nodesep: 60, ranksep: 80, edgesep: 30 });
     g.setDefaultEdgeLabel(() => ({}));
+    if (hasGroups) {
+      currentGroups.forEach(grp => {
+        g.setNode(grp.id, { label: grp.label, clusterLabelPos: 'top', style: 'fill: none', paddingTop: 30, paddingBottom: 20, paddingLeft: 20, paddingRight: 20 });
+      });
+    }
     nodes.forEach(n => {
       const dims = getNodeDimensions(n);
       g.setNode(n.id, { label: n.label, width: dims.w, height: dims.h });
+      if (hasGroups && n.group && g.hasNode(n.group)) {
+        g.setParent(n.id, n.group);
+      }
     });
-    edges.forEach(e => g.setEdge(e.from, e.to));
+    edges.forEach(e => {
+      // Only add edges where both endpoints are nodes (not group edges)
+      if (!e._isGroupEdge) g.setEdge(e.from, e.to);
+    });
     dagre.layout(g);
     return g;
   }
@@ -137,9 +131,21 @@
       const node = getNodeById(id);
       if (node && pos) { node.x = pos.x; node.y = pos.y; }
     });
+    // Read group bounding boxes from dagre compound layout
+    currentGroups.forEach(grp => {
+      const gNode = g.node(grp.id);
+      if (gNode) {
+        grp._x = gNode.x; grp._y = gNode.y;
+        grp._w = gNode.width; grp._h = gNode.height;
+      }
+    });
     edges.forEach(e => {
-      const dagreEdge = g.edge(e.from, e.to);
-      e._points = (dagreEdge && dagreEdge.points) ? dagreEdge.points : null;
+      if (e._isGroupEdge) {
+        e._points = null; // Group edges use fallback path calculation
+      } else {
+        const dagreEdge = g.edge(e.from, e.to);
+        e._points = (dagreEdge && dagreEdge.points) ? dagreEdge.points : null;
+      }
     });
   }
 
@@ -230,21 +236,32 @@
     }
   }
 
+  // Resolve an ID to a node or a virtual group node (for edge endpoints)
+  function resolveEndpoint(id) {
+    const node = getNodeById(id);
+    if (node) return node;
+    const group = currentGroups.find(g => g.id === id);
+    if (group && group._x !== undefined) {
+      return { x: group._x, y: group._y, shape: 'rect', _isGroup: true, _w: group._w, _h: group._h };
+    }
+    return null;
+  }
+
   function buildEdgePath(edge) {
-    const fromNode = getNodeById(edge.from);
-    const toNode = getNodeById(edge.to);
+    const fromNode = resolveEndpoint(edge.from);
+    const toNode = resolveEndpoint(edge.to);
     if (!fromNode || !toNode) return '';
 
     if (edge._points && edge._points.length > 1) {
-      return pointsToPath(edge._points);
+      return pointsToPath(edge._points, edge.curve);
     }
 
-    // Fallback for force layout: bezier between node centers
+    // Fallback for force layout or group edges: bezier between node centers
     const dx = toNode.x - fromNode.x;
     const dy = toNode.y - fromNode.y;
     const angle = Math.atan2(dy, dx);
-    const fromDims = getNodeDimensions(fromNode);
-    const toDims = getNodeDimensions(toNode);
+    const fromDims = fromNode._isGroup ? { w: fromNode._w, h: fromNode._h } : getNodeDimensions(fromNode);
+    const toDims = toNode._isGroup ? { w: toNode._w, h: toNode._h } : getNodeDimensions(toNode);
     const fromR = Math.max(fromDims.w, fromDims.h) / 2;
     const toR = Math.max(toDims.w, toDims.h) / 2;
 
@@ -252,6 +269,11 @@
     const y1 = fromNode.y + Math.sin(angle) * fromR * 0.6;
     const x2 = toNode.x - Math.cos(angle) * toR * 0.6;
     const y2 = toNode.y - Math.sin(angle) * toR * 0.6;
+
+    const useBezier = (edge.curve || defaultCurve) === 'bezier';
+    if (!useBezier) {
+      return `M ${x1} ${y1} L ${x2} ${y2}`;
+    }
 
     const cx1 = x1 + (x2 - x1) * 0.4;
     const cy1 = y1;
@@ -261,28 +283,105 @@
     return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
   }
 
-  function pointsToPath(points) {
+  function pointsToPath(points, curve) {
     if (points.length < 2) return '';
-    if (points.length === 2) {
-      return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+    const useBezier = (curve || defaultCurve) === 'bezier';
+
+    if (!useBezier || points.length === 2) {
+      let d = `M ${points[0].x} ${points[0].y}`;
+      for (let i = 1; i < points.length; i++) {
+        d += ` L ${points[i].x} ${points[i].y}`;
+      }
+      return d;
     }
-    // Polyline through dagre waypoints with smooth segments
+
+    // Smooth bezier through dagre waypoints
     let d = `M ${points[0].x} ${points[0].y}`;
     for (let i = 1; i < points.length; i++) {
-      d += ` L ${points[i].x} ${points[i].y}`;
+      const prev = points[i - 1];
+      const curr = points[i];
+      const mx = (prev.x + curr.x) / 2;
+      const my = (prev.y + curr.y) / 2;
+      if (i === 1) {
+        d += ` Q ${prev.x} ${prev.y} ${mx} ${my}`;
+      } else if (i === points.length - 1) {
+        d += ` Q ${curr.x} ${curr.y} ${curr.x} ${curr.y}`;
+      } else {
+        d += ` T ${mx} ${my}`;
+      }
     }
     return d;
+  }
+
+  // ---- Group rendering ----
+  function renderGroups(groups, animate) {
+    groupsGroup.innerHTML = '';
+    if (!groups || groups.length === 0) return;
+
+    groups.forEach(group => {
+      const memberNodes = nodes.filter(n => n.group === group.id);
+      if (memberNodes.length === 0) return;
+
+      let bx, by, bw, bh;
+      if (group._w && group._h) {
+        // Use dagre compound layout bounding box
+        bx = group._x - group._w / 2;
+        by = group._y - group._h / 2;
+        bw = group._w;
+        bh = group._h;
+      } else {
+        // Fallback: manual calculation for force layout
+        const PAD = 30;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        memberNodes.forEach(n => {
+          const dims = getNodeDimensions(n);
+          minX = Math.min(minX, n.x - dims.w / 2);
+          minY = Math.min(minY, n.y - dims.h / 2);
+          maxX = Math.max(maxX, n.x + dims.w / 2);
+          maxY = Math.max(maxY, n.y + dims.h / 2);
+        });
+        bx = minX - PAD; by = minY - PAD;
+        bw = (maxX - minX) + PAD * 2; bh = (maxY - minY) + PAD * 2;
+      }
+
+      const color = group.color || '#888';
+      const g = svgEl('g', { class: 'group-box' });
+
+      const rect = svgEl('rect', {
+        x: bx, y: by, width: bw, height: bh,
+        rx: 12,
+        fill: hexToRgba(color, 0.06),
+        stroke: hexToRgba(color, 0.25),
+        'stroke-width': 1.5
+      });
+      g.appendChild(rect);
+
+      const label = svgEl('text', {
+        x: bx + 10, y: by + 16,
+        class: 'group-label'
+      });
+      label.style.fill = hexToRgba(color, 0.6);
+      label.textContent = group.label;
+      g.appendChild(label);
+
+      groupsGroup.appendChild(g);
+    });
   }
 
   // ---- Rendering ----
   function render(animate) {
     nodesGroup.innerHTML = '';
     edgesGroup.innerHTML = '';
+    clearMarkerCache();
 
     if (nodes.length === 0) {
+      groupsGroup.innerHTML = '';
       updateInfo();
       return;
     }
+
+    // Render groups (behind everything)
+    renderGroups(currentGroups, animate);
 
     // Render edges (behind nodes)
     edges.forEach((edge, i) => {
@@ -296,6 +395,21 @@
       if (edge.style === 'dotted') classes.push('dotted');
       if (edge.animated) classes.push('animated');
       if (classes.length) path.setAttribute('class', classes.join(' '));
+
+      // Custom edge color
+      if (edge.color) {
+        path.style.stroke = edge.color;
+      }
+
+      // Arrow direction
+      const dir = edge.direction || 'forward';
+      if (dir === 'forward' || dir === 'both') {
+        path.setAttribute('marker-end', getArrowMarker(edge.color, 'forward'));
+      }
+      if (dir === 'backward' || dir === 'both') {
+        path.setAttribute('marker-start', getArrowMarker(edge.color, 'backward'));
+      }
+      // 'none': no markers set
 
       // Set edge length for draw-in animation
       if (animate) {
@@ -328,9 +442,8 @@
 
     // Render nodes
     nodes.forEach((node, i) => {
-      const isSelected = node.id === selectedNodeId;
       const g = svgEl('g', {
-        class: 'node' + (node.highlight ? ' highlight' : '') + (isSelected ? ' selected' : '') + (animate ? ' node-enter' : ''),
+        class: 'node' + (node.highlight ? ' highlight' : '') + (animate ? ' node-enter' : ''),
         'data-id': node.id
       });
       if (animate) {
@@ -427,8 +540,8 @@
   }
 
   function getPathMidpoint(edge) {
-    const from = getNodeById(edge.from);
-    const to = getNodeById(edge.to);
+    const from = resolveEndpoint(edge.from);
+    const to = resolveEndpoint(edge.to);
     if (!from || !to) return { x: 0, y: 0 };
 
     if (edge._points && edge._points.length > 0) {
@@ -498,48 +611,18 @@
     applyViewBox();
   }, { passive: false });
 
-  // ---- Unified mouse interaction ----
+  // ---- Pan interaction ----
   svg.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
-    const nodeGroup = findNodeGroup(e.target);
-
-    if (nodeGroup) {
-      // Start potential node drag
-      draggingNodeId = nodeGroup.getAttribute('data-id');
-      isDraggingNode = false;
-      dragStartSvg = screenToSvg(e.clientX, e.clientY);
-      const node = getNodeById(draggingNodeId);
-      if (node) dragNodeStartPos = { x: node.x, y: node.y };
-      e.stopPropagation();
-    } else {
-      // Start pan (existing logic)
-      isPanning = true;
-      panStartX = e.clientX;
-      panStartY = e.clientY;
-      panVbX = vbX;
-      panVbY = vbY;
-      svg.style.cursor = 'grabbing';
-    }
+    isPanning = true;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    panVbX = vbX;
+    panVbY = vbY;
+    svg.style.cursor = 'grabbing';
   });
 
   window.addEventListener('mousemove', (e) => {
-    if (draggingNodeId) {
-      const pos = screenToSvg(e.clientX, e.clientY);
-      const dx = pos.x - dragStartSvg.x;
-      const dy = pos.y - dragStartSvg.y;
-      if (!isDraggingNode && Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-        isDraggingNode = true;
-      }
-      if (isDraggingNode && dragNodeStartPos) {
-        const node = getNodeById(draggingNodeId);
-        if (node) {
-          node.x = dragNodeStartPos.x + dx;
-          node.y = dragNodeStartPos.y + dy;
-          render(false);
-        }
-      }
-      return;
-    }
     if (!isPanning) return;
     const rect = svg.getBoundingClientRect();
     const scaleX = vbW / rect.width;
@@ -549,152 +632,9 @@
     applyViewBox();
   });
 
-  window.addEventListener('mouseup', (e) => {
-    if (draggingNodeId) {
-      if (!isDraggingNode) {
-        // It was a click (not drag) -- select node or create edge
-        if (selectedNodeId && selectedNodeId !== draggingNodeId) {
-          // Create edge between selected and clicked node
-          edges.push({
-            from: selectedNodeId, to: draggingNodeId,
-            label: '', style: 'solid', animated: false, _points: null
-          });
-          runLayout(); render(false);
-          if (typeof mup !== 'undefined' && mup.notifyInteraction) {
-            mup.notifyInteraction('edge-create',
-              `Created edge ${selectedNodeId} -> ${draggingNodeId}`,
-              { from: selectedNodeId, to: draggingNodeId });
-          }
-          deselectAll();
-          updateMupState(); emitUpdate();
-        } else {
-          selectNode(draggingNodeId);
-        }
-      } else {
-        // Drag ended -- notify
-        if (typeof mup !== 'undefined' && mup.notifyInteraction) {
-          mup.notifyInteraction('node-move', `Moved ${draggingNodeId}`, { id: draggingNodeId });
-        }
-        updateMupState();
-      }
-      draggingNodeId = null;
-      isDraggingNode = false;
-      dragStartSvg = null;
-      dragNodeStartPos = null;
-      return;
-    }
-    if (isPanning) {
-      // Check if it was a click (no real pan movement) on empty area
-      const dx = Math.abs(e.clientX - panStartX);
-      const dy = Math.abs(e.clientY - panStartY);
-      if (dx < 3 && dy < 3) {
-        deselectAll();
-      }
-    }
+  window.addEventListener('mouseup', () => {
     isPanning = false;
     svg.style.cursor = '';
-  });
-
-  // ---- Double-click: create node or edit label ----
-  svg.addEventListener('dblclick', (e) => {
-    const nodeGroup = findNodeGroup(e.target);
-    if (nodeGroup) {
-      // Edit label
-      startLabelEdit(nodeGroup.getAttribute('data-id'));
-    } else {
-      // Create new node at click position
-      const pos = screenToSvg(e.clientX, e.clientY);
-      const id = nextNodeId();
-      const node = { id, label: 'New Node', shape: selectedShape, color: selectedColor, highlight: false, x: pos.x, y: pos.y };
-      nodes.push(node);
-      nodeMap.set(id, node);
-      render(false);
-      updateMupState(); emitUpdate();
-      // Immediately start editing label
-      startLabelEdit(id);
-      if (typeof mup !== 'undefined' && mup.notifyInteraction) {
-        mup.notifyInteraction('node-create', `Created node "${id}"`, { id, x: pos.x, y: pos.y });
-      }
-    }
-  });
-
-  // ---- Inline label editing ----
-  let activeLabelCleanup = null;
-
-  function startLabelEdit(nodeId) {
-    const node = getNodeById(nodeId);
-    if (!node) return;
-
-    // Clean up any previous edit session
-    if (activeLabelCleanup) activeLabelCleanup();
-
-    // Position the overlay over the node
-    const rect = svg.getBoundingClientRect();
-    const screenX = rect.left + (node.x - vbX) / vbW * rect.width;
-    const screenY = rect.top + (node.y - vbY) / vbH * rect.height;
-
-    labelEditor.style.display = 'block';
-    labelEditor.style.left = (screenX - 60) + 'px';
-    labelEditor.style.top = (screenY - 12) + 'px';
-    labelInput.value = node.label;
-    labelInput.focus();
-    labelInput.select();
-
-    let finished = false;
-
-    function cleanup() {
-      labelInput.removeEventListener('keydown', onKey);
-      labelInput.removeEventListener('blur', finish);
-      activeLabelCleanup = null;
-    }
-
-    function finish() {
-      if (finished) return;
-      finished = true;
-      const newLabel = labelInput.value.trim() || node.label;
-      node.label = newLabel;
-      labelEditor.style.display = 'none';
-      cleanup();
-      render(false);
-      updateMupState(); emitUpdate();
-      if (typeof mup !== 'undefined' && mup.notifyInteraction) {
-        mup.notifyInteraction('node-rename', `Renamed "${nodeId}" to "${newLabel}"`, { id: nodeId, label: newLabel });
-      }
-    }
-
-    function onKey(e) {
-      if (e.key === 'Enter') { e.preventDefault(); finish(); }
-      if (e.key === 'Escape') {
-        labelEditor.style.display = 'none';
-        cleanup();
-      }
-    }
-
-    labelInput.addEventListener('keydown', onKey);
-    labelInput.addEventListener('blur', finish);
-    activeLabelCleanup = cleanup;
-  }
-
-  // ---- Keyboard: Delete selected node ----
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      // Don't delete if editing a label
-      if (document.activeElement === labelInput) return;
-      if (!selectedNodeId) return;
-      const id = selectedNodeId;
-      const idx = nodes.findIndex(n => n.id === id);
-      if (idx === -1) return;
-      nodes.splice(idx, 1);
-      nodeMap.delete(id);
-      edges = edges.filter(edge => edge.from !== id && edge.to !== id);
-      selectedNodeId = null;
-      if (nodes.length > 0) runLayout();
-      render(false);
-      updateMupState(); emitUpdate();
-      if (typeof mup !== 'undefined' && mup.notifyInteraction) {
-        mup.notifyInteraction('node-delete', `Deleted node "${id}"`, { id });
-      }
-    }
   });
 
   // ---- Toolbar buttons ----
@@ -704,8 +644,9 @@
     applyViewBox();
   });
   document.getElementById('clearBtn').addEventListener('click', () => {
-    nodes = []; edges = []; nodeMap.clear();
-    selectedNodeId = null;
+    nodes = []; edges = []; currentGroups = []; nodeMap.clear();
+    defaultCurve = 'bezier';
+    clearMarkerCache();
     render(false);
     updateMupState();
     emitUpdate();
@@ -720,27 +661,6 @@
       runLayout(layoutType);
       render(true);
       updateMupState();
-      if (typeof mup !== 'undefined' && mup.notifyInteraction) {
-        mup.notifyInteraction('layout-change', `Layout changed to ${layoutType}`, { layout: layoutType });
-      }
-    });
-  });
-
-  // ---- Shape selector buttons ----
-  document.querySelectorAll('.shape-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedShape = btn.dataset.shape;
-    });
-  });
-
-  // ---- Color dot selector ----
-  document.querySelectorAll('.color-dot').forEach(dot => {
-    dot.addEventListener('click', () => {
-      document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-      dot.classList.add('active');
-      selectedColor = dot.dataset.color;
     });
   });
 
@@ -753,31 +673,45 @@
     return { content: [{ type: 'text', text }], isError: true };
   }
 
-  mup.registerFunction('setDiagram', ({ nodes: newNodes, edges: newEdges, layout }) => {
+  mup.registerFunction('setDiagram', ({ nodes: newNodes, edges: newEdges, groups, layout, curve }) => {
     if (!Array.isArray(newNodes)) return err('nodes must be an array');
     if (!Array.isArray(newEdges)) return err('edges must be an array');
+
+    if (curve) defaultCurve = curve;
 
     nodes = newNodes.map(n => ({
       id: n.id,
       label: n.label,
       shape: n.shape || 'rect',
       color: n.color || DEFAULT_COLOR,
+      group: n.group || null,
       highlight: false,
       x: undefined,
       y: undefined
     }));
     rebuildNodeMap();
 
-    edges = newEdges.map(e => ({
-      from: e.from,
-      to: e.to,
-      label: e.label || '',
-      style: e.style || 'solid',
-      animated: e.animated || false,
-      _points: null
-    }));
+    currentGroups = Array.isArray(groups) ? groups : [];
 
-    selectedNodeId = null;
+    edges = newEdges.map(e => {
+      const fromIsNode = !!getNodeById(e.from);
+      const toIsNode = !!getNodeById(e.to);
+      const fromIsGroup = !fromIsNode && currentGroups.some(g => g.id === e.from);
+      const toIsGroup = !toIsNode && currentGroups.some(g => g.id === e.to);
+      return {
+        from: e.from,
+        to: e.to,
+        label: e.label || '',
+        style: e.style || 'solid',
+        animated: e.animated || false,
+        curve: e.curve || null,
+        color: e.color || null,
+        direction: e.direction || 'forward',
+        _points: null,
+        _isGroupEdge: fromIsGroup || toIsGroup
+      };
+    });
+
     runLayout(layout || 'tree');
     render(true);
     updateMupState();
@@ -785,11 +719,11 @@
     return ok(`Diagram set: ${nodes.length} nodes, ${edges.length} edges (${currentLayout} layout)`);
   });
 
-  mup.registerFunction('addNode', ({ id, label, shape, color }) => {
+  mup.registerFunction('addNode', ({ id, label, shape, color, group }) => {
     if (!id || !label) return err('id and label are required');
     if (getNodeById(id)) return err(`Node "${id}" already exists`);
 
-    const node = { id, label, shape: shape || 'rect', color: color || DEFAULT_COLOR, highlight: false, x: undefined, y: undefined };
+    const node = { id, label, shape: shape || 'rect', color: color || DEFAULT_COLOR, group: group || null, highlight: false, x: undefined, y: undefined };
     nodes.push(node);
     nodeMap.set(id, node);
 
@@ -800,17 +734,25 @@
     return ok(`Node "${id}" added (${nodes.length} total)`);
   });
 
-  mup.registerFunction('addEdge', ({ from, to, label, style, animated }) => {
+  mup.registerFunction('addEdge', ({ from, to, label, style, animated, curve, color, direction }) => {
     if (!from || !to) return err('from and to are required');
-    if (!getNodeById(from)) return err(`Source node "${from}" not found`);
-    if (!getNodeById(to)) return err(`Target node "${to}" not found`);
+    const fromIsNode = !!getNodeById(from);
+    const toIsNode = !!getNodeById(to);
+    const fromIsGroup = !fromIsNode && currentGroups.some(g => g.id === from);
+    const toIsGroup = !toIsNode && currentGroups.some(g => g.id === to);
+    if (!fromIsNode && !fromIsGroup) return err(`Source "${from}" not found (not a node or group)`);
+    if (!toIsNode && !toIsGroup) return err(`Target "${to}" not found (not a node or group)`);
 
     edges.push({
       from, to,
       label: label || '',
       style: style || 'solid',
       animated: animated || false,
-      _points: null
+      curve: curve || null,
+      color: color || null,
+      direction: direction || 'forward',
+      _points: null,
+      _isGroupEdge: fromIsGroup || toIsGroup
     });
 
     runLayout();
@@ -846,7 +788,6 @@
     nodeMap.delete(id);
     edges = edges.filter(e => e.from !== id && e.to !== id);
 
-    if (id === selectedNodeId) selectedNodeId = null;
     if (nodes.length > 0) runLayout();
     render(false);
     updateMupState();
@@ -857,8 +798,10 @@
   mup.registerFunction('clear', () => {
     nodes = [];
     edges = [];
+    currentGroups = [];
     nodeMap.clear();
-    selectedNodeId = null;
+    defaultCurve = 'bezier';
+    clearMarkerCache();
     render(false);
     updateMupState();
     emitUpdate();
@@ -869,6 +812,59 @@
     if (nodes.length === 0) return ok('No nodes to fit');
     fitViewInternal();
     return ok('View fitted to diagram bounds');
+  });
+
+  mup.registerFunction('exportSVG', () => {
+    if (nodes.length === 0) return err('No diagram to export');
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svg);
+    return { content: [{ type: 'text', text: svgStr }], isError: false };
+  });
+
+  mup.registerFunction('exportPNG', () => {
+    if (nodes.length === 0) return err('No diagram to export');
+    return new Promise((resolve) => {
+      const serializer = new XMLSerializer();
+      // Inline styles for standalone rendering
+      const svgClone = svg.cloneNode(true);
+      const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      const computedBg = getComputedStyle(document.body).getPropertyValue('--bg').trim() || '#f5f5f5';
+      const computedEdge = getComputedStyle(document.body).getPropertyValue('--edge-color').trim() || '#999';
+      const computedText = getComputedStyle(document.body).getPropertyValue('--text').trim() || '#333';
+      const computedLabel = getComputedStyle(document.body).getPropertyValue('--label-color').trim() || '#666';
+      styleEl.textContent = `
+        .edge path { fill: none; stroke: ${computedEdge}; stroke-width: 1.5; }
+        .node text { fill: ${computedText}; font-size: 13px; font-family: sans-serif; dominant-baseline: central; text-anchor: middle; }
+        .edge text { fill: ${computedLabel}; font-size: 11px; font-family: sans-serif; dominant-baseline: central; text-anchor: middle; }
+        .edge-label-bg { fill: ${computedBg}; opacity: 0.85; }
+        .group-label { font-size: 11px; font-weight: 600; font-family: sans-serif; }
+      `;
+      svgClone.insertBefore(styleEl, svgClone.firstChild);
+      const svgStr = serializer.serializeToString(svgClone);
+      const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const vb = svg.getAttribute('viewBox');
+        const parts = vb ? vb.split(/\s+/).map(Number) : [0, 0, 800, 600];
+        canvas.width = Math.max(parts[2], 100);
+        canvas.height = Math.max(parts[3], 100);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = computedBg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/png');
+        URL.revokeObjectURL(url);
+        const base64 = dataUrl.split(',')[1];
+        resolve({ content: [{ type: 'image', data: base64, mimeType: 'image/png' }], isError: false });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(err('Failed to render PNG'));
+      };
+      img.src = url;
+    });
   });
 
   // ---- Theme ----

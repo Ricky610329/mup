@@ -29,6 +29,18 @@ function createImpulseResponse(duration, decay) {
   return buf;
 }
 
+let masterNode = null;
+let masterVolume = 1.0;
+function getMasterNode() {
+  const c = getCtx();
+  if (!masterNode) {
+    masterNode = c.createGain();
+    masterNode.connect(c.destination);
+  }
+  masterNode.gain.value = masterVolume;
+  return masterNode;
+}
+
 function setupReverb(amount) {
   const c = getCtx();
   if (reverbNode) { reverbNode.disconnect(); reverbDry.disconnect(); reverbWet.disconnect(); }
@@ -38,8 +50,9 @@ function setupReverb(amount) {
   reverbWet = c.createGain();
   reverbDry.gain.value = 1;
   reverbWet.gain.value = amount;
-  reverbDry.connect(c.destination);
-  reverbWet.connect(reverbNode).connect(c.destination);
+  const master = getMasterNode();
+  reverbDry.connect(master);
+  reverbWet.connect(reverbNode).connect(master);
 }
 
 function getOutput() {
@@ -63,6 +76,47 @@ function setupAnalyser() {
 let currentVoice = 'piano';
 let voiceAttack = 0.01;
 let voiceRelease = 0.3;
+
+// ---- Central BPM / swing ----
+let centralBpm = 120;
+let swing = 0;
+
+// ---- Step display ----
+const STEPS_PER_BAR = 8;
+let stepDots = [];
+let stepInterval = null;
+
+function initStepDisplay(bars) {
+  const display = document.getElementById('stepDisplay');
+  display.innerHTML = '';
+  stepDots = [];
+  for (let i = 0; i < STEPS_PER_BAR * bars; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'step-dot' + (i % STEPS_PER_BAR === 0 ? ' beat' : '');
+    display.appendChild(dot);
+    stepDots.push(dot);
+  }
+}
+
+function highlightStep(idx) {
+  stepDots.forEach((d, i) => d.classList.toggle('active', i === idx));
+}
+
+function clearStepInterval() {
+  if (stepInterval) { clearInterval(stepInterval); stepInterval = null; }
+}
+
+function startStepTimer(bpm, totalSteps) {
+  clearStepInterval();
+  const stepDuration = 60 / bpm / 2 * 1000; // each step = 1/8 note
+  let step = 0;
+  highlightStep(0);
+  stepInterval = setInterval(() => {
+    step++;
+    if (step >= totalSteps) { clearStepInterval(); highlightStep(-1); return; }
+    highlightStep(step);
+  }, stepDuration);
+}
 
 // ---- Note / Chord mapping ----
 const NOTE_NAMES = { 'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11 };
@@ -496,6 +550,8 @@ function stopAll() {
   playbackTimeouts = [];
   clearAllKeys();
   clearChordDisplay();
+  clearStepInterval();
+  highlightStep(-1);
   document.getElementById('status').textContent = 'Stopped';
 }
 
@@ -588,7 +644,7 @@ mup.registerFunction('playChord', ({ chord, duration, velocity, arpeggiate, octa
   }, endMs);
   playbackTimeouts.push(tid);
 
-  mup.emitEvent('chord-start', { chord: chord, notes: parsed.midiNotes });
+  mup.emitEvent('playback-start', { chord: chord, notes: parsed.midiNotes });
 
   return {
     content: [{ type: 'text', text: `Playing ${chord} (${dur} beats, oct ${oct})` }],
@@ -602,7 +658,7 @@ mup.registerFunction('playProgression', ({ chords, bpm, loop }) => {
     return { content: [{ type: 'text', text: 'No chords provided' }], isError: true };
   }
 
-  const tempo = bpm || 120;
+  const tempo = bpm || centralBpm;
   const shouldLoop = loop || false;
 
   // Stop any current playback
@@ -611,6 +667,14 @@ mup.registerFunction('playProgression', ({ chords, bpm, loop }) => {
   document.getElementById('bpmDisplay').textContent = tempo + ' BPM';
   isPlaying = true;
   document.getElementById('status').textContent = `Playing (${chords.length} chords)`;
+
+  // Calculate total bars for step display
+  let totalBeats = 0;
+  chords.forEach(entry => { totalBeats += (entry.duration || 2); });
+  const totalBars = Math.ceil(totalBeats / 4);
+  const totalSteps = totalBars * STEPS_PER_BAR;
+  initStepDisplay(totalBars);
+  startStepTimer(tempo, totalSteps);
 
   function scheduleProgression() {
     const c = getCtx();
@@ -628,10 +692,10 @@ mup.registerFunction('playProgression', ({ chords, bpm, loop }) => {
 
       scheduleChord(parsed, time, durationSec, 0.7, arp);
 
-      // Emit chord-start event at the right time
+      // Emit playback-start event at the right time
       const delayMs = Math.max(0, (time - c.currentTime) * 1000);
       const tid = setTimeout(() => {
-        mup.emitEvent('chord-start', { chord: chordName, notes: parsed.midiNotes });
+        mup.emitEvent('playback-start', { chord: chordName, notes: parsed.midiNotes });
       }, delayMs);
       playbackTimeouts.push(tid);
 
@@ -645,13 +709,17 @@ mup.registerFunction('playProgression', ({ chords, bpm, loop }) => {
       if (shouldLoop) {
         clearAllKeys();
         pruneStoppedNodes();
+        initStepDisplay(totalBars);
+        startStepTimer(tempo, totalSteps);
         scheduleProgression();
       } else {
         isPlaying = false;
         clearChordDisplay();
         clearAllKeys();
+        clearStepInterval();
+        highlightStep(-1);
         document.getElementById('status').textContent = 'Ready';
-        mup.emitEvent('progression-end', { chords: chords.length });
+        mup.emitEvent('playback-end', { chords: chords.length });
       }
     }, totalDuration * 1000);
     playbackTimeouts.push(endTid);
@@ -669,7 +737,7 @@ mup.registerFunction('playMelody', ({ notes, bpm, octave }) => {
   getCtx();
   if (!notes) return { content: [{ type: 'text', text: 'No notes provided' }], isError: true };
 
-  const tempo = bpm || 120;
+  const tempo = bpm || centralBpm;
   const defaultOctave = octave || 4;
   const beatDuration = 60 / tempo;
 
@@ -687,6 +755,12 @@ mup.registerFunction('playMelody', ({ notes, bpm, octave }) => {
   const velGain = c.createGain();
   velGain.gain.value = 0.7;
   velGain.connect(output);
+
+  // Step display: each token = 1 beat, bars = ceil(tokens / 4)
+  const totalBars = Math.ceil(tokens.length / 4);
+  const totalSteps = totalBars * STEPS_PER_BAR;
+  initStepDisplay(totalBars);
+  startStepTimer(tempo, totalSteps);
 
   let noteCount = 0;
   tokens.forEach(token => {
@@ -724,8 +798,10 @@ mup.registerFunction('playMelody', ({ notes, bpm, octave }) => {
     isPlaying = false;
     clearChordDisplay();
     clearAllKeys();
+    clearStepInterval();
+    highlightStep(-1);
     document.getElementById('status').textContent = 'Ready';
-    mup.emitEvent('melody-end', { notes: noteCount });
+    mup.emitEvent('playback-end', { notes: noteCount });
   }, totalDuration * 1000);
   playbackTimeouts.push(endTid);
 
@@ -733,6 +809,13 @@ mup.registerFunction('playMelody', ({ notes, bpm, octave }) => {
     content: [{ type: 'text', text: `Playing melody: ${noteCount} notes at ${tempo} BPM` }],
     isError: false
   };
+});
+
+mup.registerFunction('setBPM', ({ bpm: b, swing: s }) => {
+  if (b !== undefined) centralBpm = b;
+  if (s !== undefined) swing = Math.max(0, Math.min(1, s));
+  document.getElementById('bpmDisplay').textContent = `${centralBpm} BPM`;
+  return { content: [{ type: 'text', text: `BPM: ${centralBpm}, swing: ${swing}` }], isError: false };
 });
 
 mup.registerFunction('stop', () => {
@@ -776,6 +859,11 @@ document.querySelectorAll('.voice-btn').forEach(btn => {
 document.getElementById('stopBtn').addEventListener('click', () => {
   stopAll();
   mup.notifyInteraction('stop', 'Stopped playback', {});
+});
+
+document.getElementById('volumeSlider').addEventListener('input', function() {
+  masterVolume = this.value / 100;
+  if (masterNode) masterNode.gain.value = masterVolume;
 });
 
 // ---- MUP lifecycle ----

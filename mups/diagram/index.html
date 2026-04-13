@@ -12,7 +12,7 @@
     "functions": [
       {
         "name": "setDiagram",
-        "description": "Create a complete diagram in one call, replacing any existing content.",
+        "description": "Create a complete diagram. Nodes can belong to groups for visual clustering.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -25,7 +25,8 @@
                   "id": { "type": "string", "description": "Unique node identifier" },
                   "label": { "type": "string", "description": "Display label" },
                   "shape": { "type": "string", "enum": ["rect", "circle", "diamond", "pill"], "description": "Node shape (default: rect)" },
-                  "color": { "type": "string", "description": "Hex color (default: #3b82f6)" }
+                  "color": { "type": "string", "description": "Hex color (default: #3b82f6)" },
+                  "group": { "type": "string", "description": "Group ID this node belongs to" }
                 },
                 "required": ["id", "label"]
               }
@@ -40,12 +41,29 @@
                   "to": { "type": "string", "description": "Target node id" },
                   "label": { "type": "string", "description": "Edge label" },
                   "style": { "type": "string", "enum": ["solid", "dashed", "dotted"], "description": "Line style (default: solid)" },
-                  "animated": { "type": "boolean", "description": "Flowing dash animation (default: false)" }
+                  "animated": { "type": "boolean", "description": "Flowing dash animation (default: false)" },
+                  "curve": { "type": "string", "enum": ["bezier", "straight"], "description": "Curve style. Default: bezier" },
+                  "color": { "type": "string", "description": "Edge color (hex). Defaults to theme edge color" },
+                  "direction": { "type": "string", "enum": ["forward", "backward", "both", "none"], "description": "Arrow direction (default: forward)" }
                 },
                 "required": ["from", "to"]
               }
             },
-            "layout": { "type": "string", "enum": ["tree", "force", "horizontal", "vertical"], "description": "Layout algorithm (default: tree)" }
+            "groups": {
+              "type": "array",
+              "description": "Visual groups that cluster nodes together",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string", "description": "Group identifier, referenced by node.group" },
+                  "label": { "type": "string", "description": "Group label displayed at top of group box" },
+                  "color": { "type": "string", "description": "Group border/background color (hex)" }
+                },
+                "required": ["id", "label"]
+              }
+            },
+            "layout": { "type": "string", "enum": ["tree", "force", "horizontal", "vertical"], "description": "Layout algorithm (default: tree)" },
+            "curve": { "type": "string", "enum": ["bezier", "straight"], "description": "Default curve for all edges (default: bezier)" }
           },
           "required": ["nodes", "edges"]
         }
@@ -59,7 +77,8 @@
             "id": { "type": "string", "description": "Unique node identifier" },
             "label": { "type": "string", "description": "Display label" },
             "shape": { "type": "string", "enum": ["rect", "circle", "diamond", "pill"], "description": "Node shape (default: rect)" },
-            "color": { "type": "string", "description": "Hex color (default: #3b82f6)" }
+            "color": { "type": "string", "description": "Hex color (default: #3b82f6)" },
+            "group": { "type": "string", "description": "Group ID this node belongs to" }
           },
           "required": ["id", "label"]
         }
@@ -74,7 +93,10 @@
             "to": { "type": "string", "description": "Target node id" },
             "label": { "type": "string", "description": "Edge label" },
             "style": { "type": "string", "enum": ["solid", "dashed", "dotted"], "description": "Line style (default: solid)" },
-            "animated": { "type": "boolean", "description": "Flowing dash animation (default: false)" }
+            "animated": { "type": "boolean", "description": "Flowing dash animation (default: false)" },
+            "curve": { "type": "string", "enum": ["bezier", "straight"], "description": "Curve style. Default: bezier" },
+            "color": { "type": "string", "description": "Edge color (hex). Defaults to theme edge color" },
+            "direction": { "type": "string", "enum": ["forward", "backward", "both", "none"], "description": "Arrow direction (default: forward)" }
           },
           "required": ["from", "to"]
         }
@@ -119,6 +141,22 @@
           "type": "object",
           "properties": {}
         }
+      },
+      {
+        "name": "exportSVG",
+        "description": "Export the current diagram as an SVG string.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "exportPNG",
+        "description": "Export the current diagram as a PNG image (base64).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
       }
     ]
   }
@@ -140,24 +178,6 @@
     <button class="toolbar-btn layout-btn active" data-layout="tree">Tree</button>
     <button class="toolbar-btn layout-btn" data-layout="horizontal">H</button>
     <button class="toolbar-btn layout-btn" data-layout="force">Force</button>
-
-    <span class="toolbar-sep">|</span>
-
-    <!-- Shape selector -->
-    <button class="shape-btn active" data-shape="rect" title="Rectangle">&#x25ad;</button>
-    <button class="shape-btn" data-shape="circle" title="Circle">&#x25cb;</button>
-    <button class="shape-btn" data-shape="diamond" title="Diamond">&#x25c7;</button>
-    <button class="shape-btn" data-shape="pill" title="Pill">&#x2b2d;</button>
-
-    <span class="toolbar-sep">|</span>
-
-    <!-- Color dots -->
-    <span class="color-dot active" data-color="#3b82f6" style="background:#3b82f6" title="Blue"></span>
-    <span class="color-dot" data-color="#ef4444" style="background:#ef4444" title="Red"></span>
-    <span class="color-dot" data-color="#10b981" style="background:#10b981" title="Green"></span>
-    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b" title="Amber"></span>
-    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6" title="Purple"></span>
-    <span class="color-dot" data-color="#6366f1" style="background:#6366f1" title="Indigo"></span>
   </div>
   <div class="canvas-area" id="canvasArea">
     <div class="empty-state" id="emptyState">
@@ -167,7 +187,7 @@
         <line x1="15.5" y1="7.5" x2="14" y2="16" stroke-dasharray="3,2"/>
       </svg>
       <span>No diagram yet</span>
-      <span style="font-size:11px">Double-click to add a node, or let the LLM use <b>setDiagram()</b></span>
+      <span style="font-size:11px">Use the LLM to create diagrams</span>
     </div>
     <svg id="svgRoot" width="100%" height="100%">
       <defs>
@@ -186,13 +206,11 @@
         </filter>
       </defs>
       <g id="svgContent">
+        <g id="groupsGroup"></g>
         <g class="edges" id="edgesGroup"></g>
         <g class="nodes" id="nodesGroup"></g>
       </g>
     </svg>
-  </div>
-  <div id="labelEditor" class="label-editor" style="display:none">
-    <input id="labelInput" type="text" spellcheck="false" />
   </div>
   <script src="./app.js"></script>
 </body>
