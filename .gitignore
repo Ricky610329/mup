@@ -8,6 +8,7 @@ CLAUDE.md
 
 # MUP workspace state
 .mup/
+.mcp.json
 
 # Personal notes (testing)
 notes/

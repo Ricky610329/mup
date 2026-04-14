@@ -299,12 +299,13 @@ function setupMcpServer(
         experimental: { "claude/channel": {}, "claude/channel/permission": {} },
       },
       instructions: [
-          `MUP channel events arrive as <channel source="mup" mup_id="..." mup_name="..." action="...">. These are real-time user interactions from MUP UI panels in the browser.`,
+          `MUP channel events arrive as <channel source="mup" mup_id="..." mup_name="..." action="..." reply_mup_id="..." reply_function="...">. These are real-time user interactions from MUP UI panels in the browser.`,
           ``,
           `## Conversation Mode — CRITICAL`,
           `When you receive a channel event, you MUST reply through the originating MUP:`,
-          `- Voice (mup-voice, action="speech"): ALWAYS call mup tool with mupId="mup-voice", functionName="speak" to reply verbally.`,
-          `- Chat (mup-chat, action="message"): ALWAYS call mup tool with mupId="mup-chat", functionName="sendMessage" to reply in chat.`,
+          `- Use the reply_mup_id and reply_function attributes from the tag to route your reply (e.g. call mup tool with mupId=reply_mup_id, functionName=reply_function).`,
+          `- Voice (mup-voice, action="speech"): reply_function="speak". Keep voice replies concise and conversational.`,
+          `- Chat (mup-chat, action="message"): reply_function="sendMessage". Chat replies can be longer with markdown.`,
           `- NEVER respond with plain text only. Route ALL responses through the MUP that sent the event.`,
           `- Keep voice replies concise and conversational. Chat replies can be longer with markdown.`,
           ``,
@@ -567,11 +568,12 @@ async function main() {
         const mup = manager.get(mupId);
         const mupName = mup?.manifest.name ?? mupId;
 
-        // Build reply hint based on MUP type
+        // Build reply hint based on MUP type (meta values must be strings per channel spec)
         const replyFn = mupId === "mup-voice" ? "speak" : mupId === "mup-chat" ? "sendMessage" : null;
-        const meta: Record<string, unknown> = { mup_id: mupId, mup_name: mupName, action };
+        const meta: Record<string, string> = { mup_id: mupId, mup_name: mupName, action };
         if (replyFn) {
-          meta.replyHint = { mupId, function: replyFn };
+          meta.reply_mup_id = mupId;
+          meta.reply_function = replyFn;
         }
 
         server.notification({
