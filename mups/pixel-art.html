@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>Pixel Art</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Pixel Art",
+    "description": "Pixel art canvas for LLM drawing. Key function: drawPattern() uses ASCII-art string arrays mapped to colors for efficient sprite/icon creation. Also supports shapes, flood fill, and batch pixels. Canvas sizes 4-64px. exportPNG for output.",
+    "grid": { "minWidth": 2, "minHeight": 2, "preferredWidth": 3, "preferredHeight": 3 },
+    "darkMode": true,
+    "notifications": { "level": "notify", "overridable": true },
+    "functions": [
+      {
+        "name": "setCanvas",
+        "description": "Create or resize the pixel canvas. Existing content is preserved when possible.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "width": { "type": "integer", "description": "Canvas width in pixels (4-64, default 16)" },
+            "height": { "type": "integer", "description": "Canvas height in pixels (4-64, default 16)" },
+            "bgColor": { "type": "string", "description": "Background color hex (default: null = transparent)" }
+          }
+        }
+      },
+      {
+        "name": "drawPattern",
+        "description": "Draw using ASCII-art string arrays. Each character maps to a color. This is the most efficient way to draw complex pixel art. Example: drawPattern(0, 0, ['..XX..', '.XBBX.', 'XBBBBX'], {'X': '#000', 'B': '#48f', '.': null}) — null or missing char = transparent/skip.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "integer", "description": "Top-left X position" },
+            "y": { "type": "integer", "description": "Top-left Y position" },
+            "pattern": { "type": "array", "description": "Array of strings, each string is one row of pixels. Each character maps to a color via colorMap." },
+            "colorMap": { "type": "object", "description": "Map of character → hex color string. null or missing = skip/transparent. Example: {'X': '#000', 'R': '#f00', '.': null}" }
+          },
+          "required": ["x", "y", "pattern", "colorMap"]
+        }
+      },
+      {
+        "name": "setPixels",
+        "description": "Batch set individual pixels. Use drawPattern for structured art; use this for scattered pixels.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "pixels": { "type": "array", "description": "Array of {x, y, color} objects. color is hex string or null to clear." }
+          },
+          "required": ["pixels"]
+        }
+      },
+      {
+        "name": "drawRect",
+        "description": "Draw a rectangle (filled or outline).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "integer", "description": "Top-left X" },
+            "y": { "type": "integer", "description": "Top-left Y" },
+            "w": { "type": "integer", "description": "Width" },
+            "h": { "type": "integer", "description": "Height" },
+            "color": { "type": "string", "description": "Hex color" },
+            "fill": { "type": "boolean", "description": "Fill the rectangle (default: true)" }
+          },
+          "required": ["x", "y", "w", "h", "color"]
+        }
+      },
+      {
+        "name": "drawCircle",
+        "description": "Draw a circle (filled or outline) using midpoint algorithm.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cx": { "type": "integer", "description": "Center X" },
+            "cy": { "type": "integer", "description": "Center Y" },
+            "r": { "type": "integer", "description": "Radius" },
+            "color": { "type": "string", "description": "Hex color" },
+            "fill": { "type": "boolean", "description": "Fill the circle (default: true)" }
+          },
+          "required": ["cx", "cy", "r", "color"]
+        }
+      },
+      {
+        "name": "drawLine",
+        "description": "Draw a line using Bresenham's algorithm.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "x1": { "type": "integer", "description": "Start X" },
+            "y1": { "type": "integer", "description": "Start Y" },
+            "x2": { "type": "integer", "description": "End X" },
+            "y2": { "type": "integer", "description": "End Y" },
+            "color": { "type": "string", "description": "Hex color" }
+          },
+          "required": ["x1", "y1", "x2", "y2", "color"]
+        }
+      },
+      {
+        "name": "fill",
+        "description": "Flood fill from a point, replacing connected same-color pixels.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "integer", "description": "Start X" },
+            "y": { "type": "integer", "description": "Start Y" },
+            "color": { "type": "string", "description": "Fill color hex" }
+          },
+          "required": ["x", "y", "color"]
+        }
+      },
+      {
+        "name": "clear",
+        "description": "Clear the entire canvas.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "color": { "type": "string", "description": "Fill color hex (default: null = transparent)" }
+          }
+        }
+      },
+      {
+        "name": "exportPNG",
+        "description": "Export the canvas as a base64 PNG data URL.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "preview",
+        "description": "Get a scaled-up preview image of the current canvas to review your work. Returns the image so you can see it and make adjustments.",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #E2E8F0;
+      --bg-card: #F1F5F9;
+      --text: #1E293B;
+      --text-secondary: #64748B;
+      --text-muted: #94A3B8;
+      --border: #CBD5E1;
+      --accent: #8B5CF6;
+      --accent-light: #EDE9FE;
+      --checker-a: #ffffff;
+      --checker-b: #d4d4d4;
+      --grid-line: rgba(0,0,0,0.2);
+      --canvas-shadow: rgba(0,0,0,0.12);
+    }
+
+    body.dark {
+      --bg: #0B1120;
+      --bg-card: #1A2332;
+      --text: #F1F5F9;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --border: #2D3B4E;
+      --accent: #A78BFA;
+      --accent-light: #2E1065;
+      --checker-a: #1e1e1e;
+      --checker-b: #282828;
+      --grid-line: rgba(255,255,255,0.12);
+      --canvas-shadow: rgba(0,0,0,0.3);
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      transition: background 0.3s, color 0.3s;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .toolbar-label {
+      color: var(--text-muted);
+      font-size: 11px;
+      user-select: none;
+    }
+
+    .toolbar-value {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      min-width: 44px;
+    }
+
+    .toolbar-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      width: 26px; height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.15s;
+    }
+    .toolbar-btn:hover { background: var(--accent-light); }
+    .toolbar-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .toolbar-sep {
+      width: 1px; height: 18px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    .coord-display {
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      min-width: 50px;
+      text-align: right;
+      margin-left: auto;
+    }
+
+    .canvas-area {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .canvas-wrap {
+      position: absolute;
+      image-rendering: pixelated;
+      border-radius: 4px;
+      box-shadow: 0 2px 12px var(--canvas-shadow);
+      cursor: grab;
+    }
+    .canvas-wrap.dragging { cursor: grabbing; }
+
+    #pixelCanvas {
+      image-rendering: pixelated;
+      display: block;
+    }
+
+    #gridOverlay {
+      position: absolute;
+      top: 0; left: 0;
+      pointer-events: none;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      padding: 4px 10px;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .status-text {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .checkerboard {
+      background-image:
+        linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%);
+      background-color: var(--checker-b);
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <span class="toolbar-label">Canvas</span>
+      <select id="sizeSelect" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-size:12px;cursor:pointer;">
+        <option value="8">8x8</option>
+        <option value="16" selected>16x16</option>
+        <option value="32">32x32</option>
+        <option value="48">48x48</option>
+        <option value="64">64x64</option>
+      </select>
+    </div>
+    <div class="toolbar-sep"></div>
+    <div class="toolbar-group">
+      <span class="toolbar-label">Zoom</span>
+      <button class="toolbar-btn" id="zoomOut" title="Zoom Out">-</button>
+      <span class="toolbar-value" id="zoomDisplay" style="text-align:center;min-width:36px">x8</span>
+      <button class="toolbar-btn" id="zoomIn" title="Zoom In">+</button>
+      <button class="toolbar-btn" id="zoomFit" title="Fit">F</button>
+    </div>
+    <div class="toolbar-sep"></div>
+    <button class="toolbar-btn active" id="gridToggle" title="Toggle Grid">#</button>
+  </div>
+
+  <div class="canvas-area" id="canvasArea">
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="pixelCanvas"></canvas>
+      <canvas id="gridOverlay"></canvas>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="status-text" id="statusText">Ready</span>
+  </div>
+
+  <script>
+  (function() {
+    // --- State ---
+    let W = 16, H = 16;
+    let pixels = []; // 2D: pixels[y][x] = '#hex' | null
+    let zoom = 8;
+    let showGrid = true;
+
+    const canvas = document.getElementById('pixelCanvas');
+    const ctx = canvas.getContext('2d');
+    const gridCanvas = document.getElementById('gridOverlay');
+    const gridCtx = gridCanvas.getContext('2d');
+    const canvasWrap = document.getElementById('canvasWrap');
+    const canvasArea = document.getElementById('canvasArea');
+
+    // --- Init pixels ---
+    function initPixels(w, h, preserve) {
+      const old = pixels;
+      pixels = [];
+      for (let y = 0; y < h; y++) {
+        pixels[y] = [];
+        for (let x = 0; x < w; x++) {
+          pixels[y][x] = (preserve && old[y] && old[y][x] !== undefined) ? old[y][x] : null;
+        }
+      }
+      W = w; H = h;
+    }
+
+    function setPixel(x, y, color) {
+      if (x < 0 || x >= W || y < 0 || y >= H) return;
+      pixels[y][x] = color;
+    }
+
+    function getPixel(x, y) {
+      if (x < 0 || x >= W || y < 0 || y >= H) return null;
+      return pixels[y][x];
+    }
+
+    // --- Render ---
+    function render() {
+      const pw = W * zoom, ph = H * zoom;
+      canvas.width = pw; canvas.height = ph;
+      gridCanvas.width = pw; gridCanvas.height = ph;
+      canvasWrap.style.width = pw + 'px';
+      canvasWrap.style.height = ph + 'px';
+
+      const cs = zoom;
+      canvasWrap.style.backgroundSize = (cs * 2) + 'px ' + (cs * 2) + 'px';
+      canvasWrap.style.backgroundPosition = `0 0, 0 ${cs}px, ${cs}px -${cs}px, -${cs}px 0px`;
+
+      ctx.clearRect(0, 0, pw, ph);
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (pixels[y][x]) {
+            ctx.fillStyle = pixels[y][x];
+            ctx.fillRect(x * zoom, y * zoom, zoom, zoom);
+          }
+        }
+      }
+
+      renderGrid();
+      updateInfo();
+    }
+
+    function renderGrid() {
+      gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+      if (!showGrid || zoom < 4) return;
+      // Draw subtle dots at grid intersections instead of full lines
+      const dotColor = getComputedStyle(document.documentElement).getPropertyValue('--grid-line').trim();
+      gridCtx.fillStyle = dotColor;
+      const dotR = Math.max(0.8, zoom * 0.06);
+      for (let x = 0; x <= W; x++) {
+        for (let y = 0; y <= H; y++) {
+          gridCtx.beginPath();
+          gridCtx.arc(x * zoom, y * zoom, dotR, 0, Math.PI * 2);
+          gridCtx.fill();
+        }
+      }
+    }
+
+    function updateInfo() {
+      document.getElementById('zoomDisplay').textContent = 'x' + zoom;
+    }
+
+    // --- Zoom ---
+    function autoFitZoom() {
+      const area = canvasArea.getBoundingClientRect();
+      const maxW = Math.floor((area.width - 20) / W);
+      const maxH = Math.floor((area.height - 20) / H);
+      zoom = Math.max(2, Math.min(maxW, maxH, 64));
+      render();
+      centerCanvas();
+    }
+
+    function zoomStep(dir) {
+      const step = zoom < 8 ? 1 : zoom < 16 ? 2 : 4;
+      zoom = dir > 0 ? Math.min(64, zoom + step) : Math.max(2, zoom - step);
+      render();
+    }
+
+    document.getElementById('zoomIn').onclick = () => { zoomStep(1); centerCanvas(); };
+    document.getElementById('zoomOut').onclick = () => { zoomStep(-1); centerCanvas(); };
+    document.getElementById('zoomFit').onclick = autoFitZoom;
+    document.getElementById('gridToggle').onclick = function() {
+      showGrid = !showGrid;
+      this.classList.toggle('active', showGrid);
+      renderGrid();
+    };
+
+    // Canvas size selector
+    document.getElementById('sizeSelect').onchange = function() {
+      const s = parseInt(this.value);
+      initPixels(s, s, true);
+      autoFitZoom();
+      setStatus('Canvas: ' + W + 'x' + H);
+    };
+
+    // --- Pan & Zoom state ---
+    let panX = 0, panY = 0;
+
+    function centerCanvas() {
+      const area = canvasArea.getBoundingClientRect();
+      const pw = W * zoom, ph = H * zoom;
+      panX = (area.width - pw) / 2;
+      panY = (area.height - ph) / 2;
+      applyTransform();
+    }
+
+    function applyTransform() {
+      canvasWrap.style.left = panX + 'px';
+      canvasWrap.style.top = panY + 'px';
+    }
+
+    // Scroll wheel zoom (zoom toward cursor)
+    canvasArea.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvasArea.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      // Position relative to canvas before zoom
+      const relX = (mx - panX) / (W * zoom);
+      const relY = (my - panY) / (H * zoom);
+      zoomStep(e.deltaY < 0 ? 1 : -1);
+      // Adjust pan so same pixel stays under cursor
+      panX = mx - relX * W * zoom;
+      panY = my - relY * H * zoom;
+      applyTransform();
+    }, { passive: false });
+
+    // Mouse drag to pan
+    let isPanning = false, panStartX = 0, panStartY = 0, panOriginX = 0, panOriginY = 0;
+    canvasArea.addEventListener('mousedown', (e) => {
+      isPanning = true;
+      panStartX = e.clientX; panStartY = e.clientY;
+      panOriginX = panX; panOriginY = panY;
+      canvasWrap.classList.add('dragging');
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      panX = panOriginX + (e.clientX - panStartX);
+      panY = panOriginY + (e.clientY - panStartY);
+      applyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+      canvasWrap.classList.remove('dragging');
+    });
+
+    // --- Drawing algorithms ---
+    function bresenhamLine(x1, y1, x2, y2, color) {
+      let dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
+      let sx = x1 < x2 ? 1 : -1, sy = y1 < y2 ? 1 : -1;
+      let err = dx - dy;
+      while (true) {
+        setPixel(x1, y1, color);
+        if (x1 === x2 && y1 === y2) break;
+        let e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x1 += sx; }
+        if (e2 < dx) { err += dx; y1 += sy; }
+      }
+    }
+
+    function midpointCircle(cx, cy, r, color, filled) {
+      let x = r, y = 0, d = 1 - r;
+      function plot(px, py) { setPixel(px, py, color); }
+      function hline(y, x1, x2) {
+        for (let i = Math.min(x1, x2); i <= Math.max(x1, x2); i++) setPixel(i, y, color);
+      }
+      while (x >= y) {
+        if (filled) {
+          hline(cy + y, cx - x, cx + x);
+          hline(cy - y, cx - x, cx + x);
+          hline(cy + x, cx - y, cx + y);
+          hline(cy - x, cx - y, cx + y);
+        } else {
+          plot(cx+x,cy+y); plot(cx-x,cy+y); plot(cx+x,cy-y); plot(cx-x,cy-y);
+          plot(cx+y,cy+x); plot(cx-y,cy+x); plot(cx+y,cy-x); plot(cx-y,cy-x);
+        }
+        y++;
+        if (d <= 0) { d += 2*y+1; }
+        else { x--; d += 2*y-2*x+1; }
+      }
+    }
+
+    function floodFill(sx, sy, newColor) {
+      const target = getPixel(sx, sy);
+      if (target === newColor) return;
+      const stack = [[sx, sy]];
+      const visited = new Set();
+      while (stack.length) {
+        const [x, y] = stack.pop();
+        const key = x + ',' + y;
+        if (visited.has(key)) continue;
+        if (x < 0 || x >= W || y < 0 || y >= H) continue;
+        if (getPixel(x, y) !== target) continue;
+        visited.add(key);
+        setPixel(x, y, newColor);
+        stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
+      }
+    }
+
+    // --- Helper: wrap return value in MUP result format ---
+    function ok(msg) { return { content: [{ type: 'text', text: msg }], isError: false }; }
+
+    // --- MUP Functions ---
+    mup.registerFunction('setCanvas', (args) => {
+      const w = Math.max(4, Math.min(64, args.width || 16));
+      const h = Math.max(4, Math.min(64, args.height || 16));
+      initPixels(w, h, true);
+      if (args.bgColor) {
+        for (let y = 0; y < H; y++)
+          for (let x = 0; x < W; x++)
+            if (!pixels[y][x]) pixels[y][x] = args.bgColor;
+      }
+      // Sync dropdown if size matches a preset
+      const sel = document.getElementById('sizeSelect');
+      const opt = [...sel.options].find(o => o.value === String(w));
+      if (opt && w === h) sel.value = String(w);
+      autoFitZoom();
+      setStatus('Canvas: ' + W + 'x' + H);
+      return ok('Canvas: ' + W + 'x' + H);
+    });
+
+    mup.registerFunction('drawPattern', (args) => {
+      const { x: ox, y: oy, pattern, colorMap } = args;
+      let count = 0;
+      for (let r = 0; r < pattern.length; r++) {
+        const row = pattern[r];
+        for (let c = 0; c < row.length; c++) {
+          const ch = row[c];
+          const color = colorMap[ch];
+          if (color !== null && color !== undefined) {
+            setPixel(ox + c, oy + r, color);
+            count++;
+          }
+        }
+      }
+      render();
+      setStatus('Pattern: ' + count + ' pixels');
+      return ok('Pattern: ' + count + ' pixels drawn');
+    });
+
+    mup.registerFunction('setPixels', (args) => {
+      const list = args.pixels || [];
+      list.forEach(p => setPixel(p.x, p.y, p.color || null));
+      render();
+      setStatus('Set ' + list.length + ' pixels');
+      return ok('Set ' + list.length + ' pixels');
+    });
+
+    mup.registerFunction('drawRect', (args) => {
+      const { x, y, w, h, color, fill } = args;
+      const filled = fill !== false;
+      if (filled) {
+        for (let dy = 0; dy < h; dy++)
+          for (let dx = 0; dx < w; dx++)
+            setPixel(x + dx, y + dy, color);
+      } else {
+        for (let dx = 0; dx < w; dx++) { setPixel(x+dx, y, color); setPixel(x+dx, y+h-1, color); }
+        for (let dy = 0; dy < h; dy++) { setPixel(x, y+dy, color); setPixel(x+w-1, y+dy, color); }
+      }
+      render();
+      setStatus('Rect ' + w + 'x' + h);
+      return ok('Rect ' + w + 'x' + h + (filled ? ' filled' : ' outline'));
+    });
+
+    mup.registerFunction('drawCircle', (args) => {
+      const filled = args.fill !== false;
+      midpointCircle(args.cx, args.cy, args.r, args.color, filled);
+      render();
+      setStatus('Circle r=' + args.r);
+      return ok('Circle r=' + args.r + (filled ? ' filled' : ' outline'));
+    });
+
+    mup.registerFunction('drawLine', (args) => {
+      bresenhamLine(args.x1, args.y1, args.x2, args.y2, args.color);
+      render();
+      setStatus('Line');
+      return ok('Line drawn');
+    });
+
+    mup.registerFunction('fill', (args) => {
+      floodFill(args.x, args.y, args.color);
+      render();
+      setStatus('Flood fill');
+      return ok('Flood fill at (' + args.x + ',' + args.y + ')');
+    });
+
+    mup.registerFunction('clear', (args) => {
+      const c = args?.color || null;
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++)
+          pixels[y][x] = c;
+      render();
+      setStatus('Cleared');
+      return ok('Cleared' + (c ? ' with ' + c : ''));
+    });
+
+    mup.registerFunction('exportPNG', () => {
+      // Render a clean 1:1 canvas
+      const ex = document.createElement('canvas');
+      ex.width = W; ex.height = H;
+      const ectx = ex.getContext('2d');
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++)
+          if (pixels[y][x]) { ectx.fillStyle = pixels[y][x]; ectx.fillRect(x, y, 1, 1); }
+      const dataUrl = ex.toDataURL('image/png');
+      setStatus('Exported PNG');
+      return { content: [{ type: 'image', data: dataUrl.split(',')[1], mimeType: 'image/png' }], isError: false };
+    });
+
+    mup.registerFunction('preview', () => {
+      // Render a scaled-up preview (8x) so pixels are visible
+      const scale = Math.max(4, Math.min(8, Math.floor(512 / Math.max(W, H))));
+      const ex = document.createElement('canvas');
+      ex.width = W * scale; ex.height = H * scale;
+      const ectx = ex.getContext('2d');
+      // Draw checkerboard background for transparency
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          ectx.fillStyle = (x + y) % 2 === 0 ? '#e0e0e0' : '#c0c0c0';
+          ectx.fillRect(x * scale, y * scale, scale, scale);
+        }
+      }
+      // Draw pixels
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++)
+          if (pixels[y][x]) { ectx.fillStyle = pixels[y][x]; ectx.fillRect(x * scale, y * scale, scale, scale); }
+      const dataUrl = ex.toDataURL('image/png');
+      setStatus('Preview ' + W + 'x' + H + ' @' + scale + 'x');
+      return { content: [{ type: 'image', data: dataUrl.split(',')[1], mimeType: 'image/png' }], isError: false };
+    });
+
+    function setStatus(msg) {
+      document.getElementById('statusText').textContent = msg;
+      mup.updateState(msg, { width: W, height: H });
+    }
+
+    // --- Init ---
+    initPixels(16, 16, false);
+
+    // Ensure layout is ready before centering
+    function initLayout() {
+      requestAnimationFrame(() => {
+        autoFitZoom();
+        centerCanvas();
+      });
+    }
+
+    mup.onReady((ctx) => {
+      if (ctx?.theme === 'dark') document.body.classList.add('dark');
+      canvasWrap.classList.add('checkerboard');
+      initLayout();
+      // Double-check after a short delay for iframe sizing
+      setTimeout(initLayout, 100);
+    });
+
+    mup.onThemeChange((theme) => {
+      document.body.classList.toggle('dark', theme === 'dark');
+      render();
+    });
+
+    new ResizeObserver(() => {
+      autoFitZoom();
+      centerCanvas();
+    }).observe(canvasArea);
+  })();
+  </script>
+</body>
+</html>
