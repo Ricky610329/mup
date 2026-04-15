@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>Timer</title>
+
+  <script type="application/mup-manifest">
+  {
+    "name": "Timer",
+    "description": "A styleable countdown timer fully controlled by the LLM. Set a timer with a title, adjust visual style (accent color, background, glow) to match the mood — focus, meditation, cooking, exercise, anything. Emits 'timer-complete' event when done. Pair with onEvent to chain actions (play music, send message) on completion.",
+    "grid": { "minWidth": 2, "minHeight": 2, "preferredWidth": 2, "preferredHeight": 3 },
+    "darkMode": true,
+    "notifications": { "level": "notify", "overridable": true },
+    "functions": [
+      {
+        "name": "setTimer",
+        "description": "Set and start a countdown timer.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "seconds": { "type": "number", "description": "Countdown duration in seconds" },
+            "title": { "type": "string", "description": "Display title (e.g. '專注：寫報告', '泡茶 3 分鐘')" },
+            "autoStart": { "type": "boolean", "description": "Start immediately (default: true)" }
+          },
+          "required": ["seconds"]
+        }
+      },
+      {
+        "name": "setStyle",
+        "description": "Change the timer's visual style to match the mood. All parameters optional — only pass what you want to change.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "accent": { "type": "string", "description": "Main color for ring and highlights (any CSS color, e.g. '#E74C3C', 'hsl(210,80%,55%)')" },
+            "bg": { "type": "string", "description": "Background color" },
+            "text": { "type": "string", "description": "Text color" },
+            "font": { "type": "string", "description": "Font family (e.g. 'Georgia, serif', 'Courier New, monospace')" },
+            "glow": { "type": "boolean", "description": "Enable soft glow effect on the ring (default: true)" },
+            "title": { "type": "string", "description": "Update the title" }
+          }
+        }
+      },
+      {
+        "name": "pause",
+        "description": "Pause the timer.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "resume",
+        "description": "Resume the paused timer.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "stop",
+        "description": "Stop and reset the timer to idle state.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "getStatus",
+        "description": "Get current timer state.",
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --accent: #E07A5F;
+      --accent-glow: rgba(224, 122, 95, 0.25);
+      --bg: #FFFBF7;
+      --text: #2D2A26;
+      --text-dim: rgba(45, 42, 38, 0.4);
+      --card: rgba(0,0,0,0.03);
+      --ring-track: rgba(0,0,0,0.06);
+    }
+
+    body.dark {
+      --bg: #1C1917;
+      --text: #F5F0EB;
+      --text-dim: rgba(245, 240, 235, 0.3);
+      --card: rgba(255,255,255,0.04);
+      --ring-track: rgba(255,255,255,0.08);
+    }
+
+    body {
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: min(14px, 2.5vh);
+      overflow: hidden;
+      transition: background 0.6s, color 0.4s;
+      padding: 12px;
+    }
+
+    /* Title */
+    .title {
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-align: center;
+      opacity: 0.85;
+      max-width: 90%;
+      flex-shrink: 0;
+      transition: opacity 0.4s, font-size 0.3s;
+      min-height: 1.2em;
+      white-space: nowrap;
+    }
+
+    .title.idle { opacity: 0.35; }
+
+    /* Ring */
+    .ring-wrap {
+      position: relative;
+      width: min(170px, 42vw, 42vh);
+      height: min(170px, 42vw, 42vh);
+      flex-shrink: 1;
+    }
+
+    .ring-svg {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+      filter: drop-shadow(0 0 0px transparent);
+      transition: filter 0.6s;
+    }
+
+    .ring-svg.glow {
+      filter: drop-shadow(0 0 12px var(--accent-glow));
+    }
+
+    .ring-track {
+      fill: none;
+      stroke: var(--ring-track);
+      stroke-width: 5;
+    }
+
+    .ring-fill {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 5;
+      stroke-linecap: round;
+      transition: stroke 0.6s;
+    }
+
+    .time-display {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .time-text {
+      font-size: min(44px, 12vw, 12vh);
+      font-weight: 300;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      transition: opacity 0.3s;
+    }
+
+    .time-sub {
+      font-size: min(10px, 2.5vw);
+      opacity: 0.35;
+      margin-top: 6px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      gap: min(16px, 4vw);
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .ctrl-btn {
+      border: 1.5px solid var(--ring-track);
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.25s;
+      background: var(--card);
+      color: var(--text);
+      opacity: 0.6;
+    }
+
+    .ctrl-btn:hover { opacity: 1; background: var(--ring-track); }
+    .ctrl-btn:active { transform: scale(0.9); }
+
+    .ctrl-btn.main {
+      width: min(52px, 13vw);
+      height: min(52px, 13vw);
+      background: var(--accent);
+      border: none;
+      color: white;
+      opacity: 1;
+      box-shadow: 0 3px 16px var(--accent-glow);
+      transition: all 0.3s;
+    }
+
+    .ctrl-btn.main:hover {
+      box-shadow: 0 5px 24px var(--accent-glow);
+      transform: scale(1.06);
+    }
+
+    .ctrl-btn.main:active { transform: scale(0.92); }
+
+    .ctrl-btn.side {
+      width: min(36px, 9vw);
+      height: min(36px, 9vw);
+    }
+
+    /* Completion animation */
+    @keyframes completePulse {
+      0% { opacity: 0; transform: scale(0.95); }
+      40% { opacity: 0.12; transform: scale(1); }
+      100% { opacity: 0; transform: scale(1.05); }
+    }
+
+    .completion-flash {
+      position: fixed;
+      inset: 0;
+      background: var(--accent);
+      pointer-events: none;
+      opacity: 0;
+      border-radius: 12px;
+    }
+
+    .completion-flash.active {
+      animation: completePulse 0.8s ease-out 2;
+    }
+
+    /* Breathing animation for running state */
+    @keyframes breathe {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
+    }
+
+    .time-text.running {
+      animation: breathe 3s ease-in-out infinite;
+    }
+
+    .time-text.paused {
+      animation: breathe 1.2s ease-in-out infinite;
+    }
+
+    /* Idle state */
+    .time-text.idle {
+      opacity: 0.2;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="title idle" id="title">Timer</div>
+
+  <div class="ring-wrap">
+    <svg class="ring-svg glow" viewBox="0 0 180 180" id="ringSvg">
+      <circle class="ring-track" cx="90" cy="90" r="84"/>
+      <circle class="ring-fill" cx="90" cy="90" r="84"
+        stroke-dasharray="527.79" stroke-dashoffset="0" id="ringFill"/>
+    </svg>
+    <div class="time-display">
+      <div class="time-text idle" id="timeText">--:--</div>
+      <div class="time-sub" id="timeSub"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="ctrl-btn side" id="btnStop" title="Stop">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="6" width="12" height="12" rx="2"/>
+      </svg>
+    </button>
+    <button class="ctrl-btn main" id="btnMain">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" id="mainIcon">
+        <polygon points="7,4 20,12 7,20"/>
+      </svg>
+    </button>
+    <button class="ctrl-btn side" style="visibility:hidden"></button>
+  </div>
+
+  <div class="completion-flash" id="completionFlash"></div>
+
+  <script>
+    const C = 2 * Math.PI * 84;
+    const PLAY = '<polygon points="7,4 20,12 7,20"/>';
+    const PAUSE = '<rect x="5" y="4" width="5" height="16" rx="1"/><rect x="14" y="4" width="5" height="16" rx="1"/>';
+
+    let timer = {
+      total: 0,
+      remainingSecs: 0,
+      running: false,
+      title: '',
+      glow: true,
+      startedAt: 0,
+      remainingAtStart: 0
+    };
+
+    // Track which style properties LLM has explicitly set
+    let styleLock = { bg: false, text: false, accent: false, font: false };
+
+    let rafId = null;
+    let audioCtx = null;
+    let lastDisplayedSec = -1;
+
+    function fmt(s) {
+      if (s <= 0) return '00:00';
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+      return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    }
+
+    // Smooth fraction: how much of total has elapsed (0→1)
+    function getElapsedFraction() {
+      if (timer.total === 0) return 0;
+      if (!timer.running) return 1 - (timer.remainingSecs / timer.total);
+      const elapsed = (performance.now() - timer.startedAt) / 1000;
+      const remaining = Math.max(0, timer.remainingAtStart - elapsed);
+      return 1 - (remaining / timer.total);
+    }
+
+    function getRemainingFloat() {
+      if (!timer.running) return timer.remainingSecs;
+      const elapsed = (performance.now() - timer.startedAt) / 1000;
+      return Math.max(0, timer.remainingAtStart - elapsed);
+    }
+
+    function renderRing() {
+      const ringFill = document.getElementById('ringFill');
+      const fraction = getElapsedFraction();
+      ringFill.style.strokeDasharray = C;
+      ringFill.style.strokeDashoffset = C * (1 - (1 - fraction));
+    }
+
+    function renderUI() {
+      const timeEl = document.getElementById('timeText');
+      const titleEl = document.getElementById('title');
+      const ringSvg = document.getElementById('ringSvg');
+      const mainIcon = document.getElementById('mainIcon');
+      const subEl = document.getElementById('timeSub');
+
+      const idle = timer.total === 0;
+
+      const titleText = timer.title || 'Timer';
+      titleEl.textContent = titleText;
+      titleEl.classList.toggle('idle', idle && !timer.title);
+      const len = titleText.length;
+      const sz = len <= 4 ? 24 : len <= 8 ? 20 : len <= 14 ? 17 : len <= 20 ? 15 : 13;
+      titleEl.style.fontSize = sz + 'px';
+
+      timeEl.textContent = idle ? '--:--' : fmt(timer.remainingSecs);
+      timeEl.className = 'time-text' + (idle ? ' idle' : timer.running ? ' running' : timer.remainingSecs > 0 ? ' paused' : '');
+
+      subEl.textContent = idle ? '' : timer.running ? 'running' : timer.remainingSecs > 0 ? 'paused' : 'done';
+
+      ringSvg.classList.toggle('glow', timer.glow && !idle);
+      mainIcon.innerHTML = timer.running ? PAUSE : PLAY;
+    }
+
+    function syncState() {
+      const idle = timer.total === 0;
+      const summary = idle
+        ? 'Idle'
+        : `${timer.title || 'Timer'} — ${fmt(timer.remainingSecs)} ${timer.running ? '(running)' : '(paused)'}`;
+      mup.updateState(summary, {
+        total: timer.total,
+        remaining: timer.remainingSecs,
+        running: timer.running,
+        title: timer.title
+      });
+    }
+
+    function animationLoop() {
+      if (!timer.running) return;
+
+      // Smooth ring every frame
+      renderRing();
+
+      // Update digit display once per second
+      const remaining = getRemainingFloat();
+      const displaySec = Math.ceil(remaining);
+
+      if (displaySec !== lastDisplayedSec) {
+        lastDisplayedSec = displaySec;
+        timer.remainingSecs = displaySec;
+        renderUI();
+        syncState();
+      }
+
+      if (remaining <= 0) {
+        complete();
+        return;
+      }
+
+      rafId = requestAnimationFrame(animationLoop);
+    }
+
+    function start() {
+      if (timer.running || timer.total === 0) return;
+      timer.running = true;
+      timer.startedAt = performance.now();
+      timer.remainingAtStart = timer.remainingSecs;
+      lastDisplayedSec = timer.remainingSecs;
+      renderUI();
+      renderRing();
+      rafId = requestAnimationFrame(animationLoop);
+    }
+
+    function pause() {
+      if (!timer.running) return;
+      // Freeze at current position
+      timer.remainingSecs = Math.ceil(getRemainingFloat());
+      timer.running = false;
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      renderUI();
+      renderRing();
+      syncState();
+    }
+
+    function stopTimer() {
+      pause();
+      timer.total = 0;
+      timer.remainingSecs = 0;
+      timer.title = '';
+      lastDisplayedSec = -1;
+      // Release all style locks, restore defaults
+      styleLock = { bg: false, text: false, accent: false, font: false };
+      document.body.style.background = '';
+      document.body.style.fontFamily = '';
+      document.documentElement.style.removeProperty('--bg');
+      document.documentElement.style.removeProperty('--text');
+      document.documentElement.style.removeProperty('--text-dim');
+      document.documentElement.style.removeProperty('--accent');
+      document.documentElement.style.removeProperty('--accent-glow');
+      document.querySelector('.ctrl-btn.main').style.background = '';
+      document.querySelector('.ctrl-btn.main').style.boxShadow = '';
+      // Re-apply current theme
+      const isDark = document.body.classList.contains('dark');
+      applyTheme(isDark ? 'dark' : 'light');
+      renderUI();
+      renderRing();
+      syncState();
+    }
+
+    function chime() {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = audioCtx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((freq, i) => {
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          g.gain.setValueAtTime(0, t + i * 0.2);
+          g.gain.linearRampToValueAtTime(0.2, t + i * 0.2 + 0.04);
+          g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.2 + 1);
+          osc.connect(g).connect(audioCtx.destination);
+          osc.start(t + i * 0.2);
+          osc.stop(t + i * 0.2 + 1);
+        });
+      } catch {}
+    }
+
+    function flash() {
+      const el = document.getElementById('completionFlash');
+      el.classList.remove('active');
+      void el.offsetWidth;
+      el.classList.add('active');
+      el.addEventListener('animationend', () => el.classList.remove('active'), { once: true });
+    }
+
+    function complete() {
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      timer.running = false;
+      timer.remainingSecs = 0;
+      chime();
+      flash();
+      renderUI();
+      renderRing();
+      syncState();
+      mup.notifyInteraction('timer-complete', `${timer.title || 'Timer'} — 時間到`, { title: timer.title, total: timer.total });
+      mup.emitEvent('timer-complete', { title: timer.title, total: timer.total });
+    }
+
+    function applyAccent(color) {
+      document.documentElement.style.setProperty('--accent', color);
+      // Derive glow color with alpha
+      const el = document.createElement('canvas').getContext('2d');
+      el.fillStyle = color;
+      const hex = el.fillStyle;
+      document.documentElement.style.setProperty('--accent-glow', hex + '40');
+      // Update main button
+      document.querySelector('.ctrl-btn.main').style.background = color;
+      document.querySelector('.ctrl-btn.main').style.boxShadow = `0 2px 12px ${hex}40`;
+    }
+
+    // UI
+    document.getElementById('btnMain').addEventListener('click', () => {
+      if (timer.total === 0) return;
+      timer.running ? pause() : start();
+    });
+
+    document.getElementById('btnStop').addEventListener('click', stopTimer);
+
+    // MUP functions
+    mup.registerFunction('setTimer', async (params) => {
+      pause();
+      const secs = Math.max(1, Math.round(params.seconds));
+      timer.total = secs;
+      timer.remainingSecs = secs;
+      lastDisplayedSec = -1;
+      if (params.title !== undefined) timer.title = params.title;
+      renderUI();
+      renderRing();
+      syncState();
+      if (params.autoStart !== false) start();
+      return {
+        content: [{ type: 'text', text: `Timer set: ${timer.title || ''} ${fmt(secs)}` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('setStyle', async (params) => {
+      const changes = [];
+      if (params.accent) { applyAccent(params.accent); styleLock.accent = true; changes.push('accent'); }
+      if (params.bg) { document.documentElement.style.setProperty('--bg', params.bg); document.body.style.background = params.bg; styleLock.bg = true; changes.push('bg'); }
+      if (params.text) { document.documentElement.style.setProperty('--text', params.text); styleLock.text = true; changes.push('text'); }
+      if (params.font) { document.body.style.fontFamily = params.font; styleLock.font = true; changes.push('font'); }
+      if (params.glow !== undefined) { timer.glow = params.glow; changes.push('glow'); }
+      if (params.title !== undefined) { timer.title = params.title; changes.push('title'); }
+      renderUI();
+      renderRing();
+      return {
+        content: [{ type: 'text', text: `Style updated: ${changes.join(', ')}` }],
+        isError: false
+      };
+    });
+
+    mup.registerFunction('pause', async () => {
+      pause();
+      return { content: [{ type: 'text', text: `Paused at ${fmt(timer.remainingSecs)}` }], isError: false };
+    });
+
+    mup.registerFunction('resume', async () => {
+      start();
+      return { content: [{ type: 'text', text: `Resumed — ${fmt(timer.remainingSecs)} remaining` }], isError: false };
+    });
+
+    mup.registerFunction('stop', async () => {
+      stopTimer();
+      return { content: [{ type: 'text', text: 'Timer stopped and reset' }], isError: false };
+    });
+
+    mup.registerFunction('getStatus', async () => {
+      return {
+        content: [
+          { type: 'text', text: timer.total === 0 ? 'Idle' : `${timer.title || 'Timer'} — ${fmt(timer.remainingSecs)} ${timer.running ? '(running)' : '(paused)'}` },
+          { type: 'data', data: { total: timer.total, remaining: timer.remainingSecs, running: timer.running, title: timer.title, glow: timer.glow } }
+        ],
+        isError: false
+      };
+    });
+
+    function applyTheme(theme) {
+      const isDark = theme === 'dark';
+      // Only apply theme colors to unlocked properties
+      if (!styleLock.bg && !styleLock.text) {
+        document.body.classList.toggle('dark', isDark);
+        document.body.style.background = '';
+      } else if (!styleLock.bg) {
+        // text locked, bg not — still flip bg
+        document.body.classList.toggle('dark', isDark);
+        document.body.style.background = '';
+      } else if (!styleLock.text) {
+        // bg locked, text not — apply text from theme
+        document.documentElement.style.setProperty('--text', isDark ? '#F5F0EB' : '#2D2A26');
+        document.documentElement.style.setProperty('--text-dim', isDark ? 'rgba(245,240,235,0.3)' : 'rgba(45,42,38,0.4)');
+      }
+      // If both locked, do nothing — LLM has full control
+    }
+
+    mup.onReady(({ theme }) => {
+      applyTheme(theme);
+      renderUI();
+      renderRing();
+    });
+
+    mup.onThemeChange((theme) => {
+      applyTheme(theme);
+    });
+  </script>
+</body>
+</html>
